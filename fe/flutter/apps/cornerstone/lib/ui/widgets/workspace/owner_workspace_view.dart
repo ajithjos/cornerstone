@@ -52,12 +52,21 @@ class _OwnerWorkspaceView extends StatelessWidget {
         .where((learner) => learner.todaySession != null)
         .length;
     final selectedDetail = detail;
-    final journey = selectedDetail?.journey;
+    final assignedJourneys =
+      selectedDetail?.assignedJourneys ?? const <LearnerAssignedJourney>[];
+    final primaryAssignedJourney =
+      assignedJourneys.isNotEmpty ? assignedJourneys.first : null;
+    final journey = primaryAssignedJourney?.journey ?? selectedDetail?.journey;
     final workspace = selectedDetail?.workspace;
     final continueBlock = workspace?.continueBlock;
     final recentWins = workspace?.recentWins ?? const <LearnerRecentWin>[];
+    final assignedPathwayCount = assignedJourneys
+      .map((assignedJourney) => assignedJourney.journey.pathwayId ?? assignedJourney.journey.playlistId)
+      .toSet()
+      .length;
     SessionDetail? activeSession;
-    if (selectedDetail != null) {
+    activeSession = continueBlock?.session;
+    if (activeSession == null && selectedDetail != null) {
       for (final session in selectedDetail.sessions) {
         if (session.status != 'completed') {
           activeSession = session;
@@ -183,12 +192,19 @@ class _OwnerWorkspaceView extends StatelessWidget {
                             color: theme.colorScheme.surfaceContainerHighest,
                             textColor: theme.colorScheme.onSurfaceVariant,
                           ),
-                        if (selectedDetail.activeAssignment != null)
+                        if (assignedJourneys.isNotEmpty)
                           _PillBadge(
-                            text:
-                                '${selectedDetail.activeAssignment!.completedSessions}/${selectedDetail.activeAssignment!.totalSessions} completed',
+                            text: '${assignedJourneys.length} playlists',
                             color: theme.colorScheme.tertiaryContainer,
                             textColor: theme.colorScheme.onTertiaryContainer,
+                          ),
+                        if (assignedPathwayCount > 0)
+                          _PillBadge(
+                            text: '$assignedPathwayCount pathways',
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.12,
+                            ),
+                            textColor: theme.colorScheme.primary,
                           ),
                       ],
                     ),
@@ -199,13 +215,13 @@ class _OwnerWorkspaceView extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           _Band(
-            title: 'Assigned pathway',
-            child: journey == null
+            title: 'Assigned pathways',
+            child: assignedJourneys.isEmpty && journey == null
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'No pathway is assigned to this learner yet.',
+                        'No pathways are assigned to this learner yet.',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -215,69 +231,180 @@ class _OwnerWorkspaceView extends StatelessWidget {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (journey.pathwayTitle != null)
-                        Text(
-                          journey.pathwayTitle!,
-                          style: theme.textTheme.titleLarge,
-                        ),
-                      if ((journey.pathwayDescription ?? '').isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          journey.pathwayDescription!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
                       Text(
-                        journey.playlistTitle,
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        journey.playlistDescription,
-                        style: theme.textTheme.bodySmall?.copyWith(
+                        'Each assigned playlist keeps its own pathway and current session standing.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          if (currentStanding != null)
-                            _PillBadge(
-                              text:
-                                  'Current session: $currentStanding/${journey.totalSessionCount}',
-                              color: theme.colorScheme.secondaryContainer,
-                              textColor: theme.colorScheme.onSecondaryContainer,
-                            ),
-                          _PillBadge(
-                            text: 'Completed: ${journey.completedSessionCount}',
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.12,
-                            ),
-                            textColor: theme.colorScheme.primary,
+                      ...(assignedJourneys.isNotEmpty
+                              ? assignedJourneys
+                              : journey == null
+                              ? const <LearnerAssignedJourney>[]
+                              : <LearnerAssignedJourney>[])
+                          .map((assignedJourney) {
+                            final assignedJourneyInfo = assignedJourney.journey;
+                            final currentJourneySession =
+                                assignedJourney.continueBlock?.session ??
+                                assignedJourney.sessions
+                                    .where((session) => session.status != 'completed')
+                                    .cast<SessionDetail?>()
+                                    .firstWhere((_) => true, orElse: () => assignedJourney.sessions.isEmpty ? null : assignedJourney.sessions.first);
+                            final currentJourneyStanding =
+                                currentJourneySession?.sequenceNumber ??
+                                (assignedJourneyInfo.totalSessionCount > 0
+                                    ? (assignedJourneyInfo.completedSessionCount + 1)
+                                        .clamp(1, assignedJourneyInfo.totalSessionCount)
+                                    : null);
+                            final assignedJourneyProgress =
+                                assignedJourneyInfo.totalSessionCount == 0
+                                ? null
+                                : (assignedJourneyInfo.completedSessionCount /
+                                        assignedJourneyInfo.totalSessionCount)
+                                    .clamp(0.0, 1.0);
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 14),
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface.withValues(
+                                    alpha: 0.62,
+                                  ),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outlineVariant,
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      assignedJourneyInfo.pathwayTitle ??
+                                          assignedJourneyInfo.playlistTitle,
+                                      style: theme.textTheme.titleLarge,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      assignedJourneyInfo.playlistTitle,
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      assignedJourneyInfo.playlistDescription,
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        _PillBadge(
+                                          text: 'status:${assignedJourney.assignment.status}',
+                                          color: theme.colorScheme.secondaryContainer,
+                                          textColor: theme.colorScheme.onSecondaryContainer,
+                                        ),
+                                        if (currentJourneyStanding != null)
+                                          _PillBadge(
+                                            text: 'Current session: $currentJourneyStanding/${assignedJourneyInfo.totalSessionCount}',
+                                            color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                                            textColor: theme.colorScheme.primary,
+                                          ),
+                                        _PillBadge(
+                                          text: 'Completed: ${assignedJourneyInfo.completedSessionCount}',
+                                          color: theme.colorScheme.surfaceContainerHighest,
+                                          textColor: theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                        _PillBadge(
+                                          text: 'Pending: ${assignedJourneyInfo.pendingSessionCount}',
+                                          color: theme.colorScheme.tertiaryContainer,
+                                          textColor: theme.colorScheme.onTertiaryContainer,
+                                        ),
+                                      ],
+                                    ),
+                                    if (assignedJourneyProgress != null) ...[
+                                      const SizedBox(height: 12),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(999),
+                                        child: LinearProgressIndicator(
+                                          minHeight: 10,
+                                          value: assignedJourneyProgress,
+                                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                      if (assignedJourneys.isEmpty && journey != null) ...[
+                        if (journey.pathwayTitle != null)
+                          Text(
+                            journey.pathwayTitle!,
+                            style: theme.textTheme.titleLarge,
                           ),
-                          _PillBadge(
-                            text: 'Pending: ${journey.pendingSessionCount}',
-                            color: theme.colorScheme.tertiaryContainer,
-                            textColor: theme.colorScheme.onTertiaryContainer,
+                        if ((journey.pathwayDescription ?? '').isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            journey.pathwayDescription!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
-                      ),
-                      if (journeyProgress != null) ...[
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: LinearProgressIndicator(
-                            minHeight: 10,
-                            value: journeyProgress,
-                            backgroundColor:
-                                theme.colorScheme.surfaceContainerHighest,
+                        const SizedBox(height: 10),
+                        Text(
+                          journey.playlistTitle,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          journey.playlistDescription,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (currentStanding != null)
+                              _PillBadge(
+                                text:
+                                    'Current session: $currentStanding/${journey.totalSessionCount}',
+                                color: theme.colorScheme.secondaryContainer,
+                                textColor: theme.colorScheme.onSecondaryContainer,
+                              ),
+                            _PillBadge(
+                              text: 'Completed: ${journey.completedSessionCount}',
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.12,
+                              ),
+                              textColor: theme.colorScheme.primary,
+                            ),
+                            _PillBadge(
+                              text: 'Pending: ${journey.pendingSessionCount}',
+                              color: theme.colorScheme.tertiaryContainer,
+                              textColor: theme.colorScheme.onTertiaryContainer,
+                            ),
+                          ],
+                        ),
+                        if (journeyProgress != null) ...[
+                          const SizedBox(height: 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(
+                              minHeight: 10,
+                              value: journeyProgress,
+                              backgroundColor:
+                                  theme.colorScheme.surfaceContainerHighest,
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),

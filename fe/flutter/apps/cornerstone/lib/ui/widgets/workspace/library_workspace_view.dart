@@ -412,11 +412,11 @@ class _LibraryWorkspaceView extends StatelessWidget {
                                                           .bodyMedium,
                                                     ),
                                                     if (target
-                                                            .activeAssignmentTitle !=
-                                                        null) ...[
+                                                        .assignedAssignmentTitles
+                                                        .isNotEmpty) ...[
                                                       const SizedBox(height: 4),
                                                       Text(
-                                                        'Current: ${target.activeAssignmentTitle}',
+                                                        'Assigned: ${target.assignedAssignmentTitles.join(', ')}',
                                                         style: theme
                                                             .textTheme
                                                             .bodySmall

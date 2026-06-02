@@ -130,6 +130,7 @@ pub struct PlaylistAssignmentTargetSummary {
     pub status_label: String,
     pub assigned_here: bool,
     pub active_assignment_title: Option<String>,
+    pub assigned_assignment_titles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

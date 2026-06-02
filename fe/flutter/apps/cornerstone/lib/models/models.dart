@@ -272,6 +272,7 @@ class PlaylistAssignmentTarget {
     required this.recommended,
     required this.statusLabel,
     required this.assignedHere,
+    required this.assignedAssignmentTitles,
     this.activeAssignmentTitle,
   });
 
@@ -285,6 +286,11 @@ class PlaylistAssignmentTarget {
       statusLabel: json['status_label'] as String,
       assignedHere: json['assigned_here'] as bool? ?? false,
       activeAssignmentTitle: json['active_assignment_title'] as String?,
+      assignedAssignmentTitles:
+          ((json['assigned_assignment_titles'] as List<dynamic>?) ??
+                  const <dynamic>[])
+              .map((item) => item as String)
+              .toList(),
     );
   }
 
@@ -296,6 +302,7 @@ class PlaylistAssignmentTarget {
   final String statusLabel;
   final bool assignedHere;
   final String? activeAssignmentTitle;
+  final List<String> assignedAssignmentTitles;
 }
 
 class LibraryWorkspaceSession {

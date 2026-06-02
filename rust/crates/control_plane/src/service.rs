@@ -323,21 +323,46 @@ fn build_playlist_delivery_shape(
 fn build_playlist_assignment_targets(
     playlist: &catalog::Playlist,
     learners: &[LearnerRow],
-    active_assignments: &BTreeMap<String, AssignmentSummary>,
+    assignments_by_learner: &BTreeMap<String, Vec<AssignmentSummary>>,
 ) -> Vec<PlaylistAssignmentTargetSummary> {
     let recommended_age = i32::from(playlist.recommended_age);
     learners
         .iter()
         .map(|learner| {
             let current_age = calculate_age(learner.date_of_birth);
-            let active_assignment = active_assignments.get(&learner.learner_id);
-            let assigned_here = active_assignment
-                .map(|assignment| assignment.playlist_id == playlist.playlist_id)
-                .unwrap_or(false);
+            let assignments = assignments_by_learner
+                .get(&learner.learner_id)
+                .cloned()
+                .unwrap_or_default();
+            let assigned_here = assignments
+                .iter()
+                .any(|assignment| assignment.playlist_id == playlist.playlist_id);
+            let assigned_assignment_titles = assignments
+                .iter()
+                .map(|assignment| assignment.title.clone())
+                .collect::<Vec<_>>();
+            let other_assignment_count = assignments.len().saturating_sub(usize::from(assigned_here));
             let (recommended, status_label) = if assigned_here {
-                (true, "Assigned here now".to_string())
-            } else if let Some(assignment) = active_assignment {
-                (false, format!("Currently on {}", assignment.title))
+                if other_assignment_count == 0 {
+                    (true, "Assigned here now".to_string())
+                } else {
+                    (
+                        true,
+                        format!(
+                            "Assigned here and on {other_assignment_count} other playlist{}",
+                            if other_assignment_count == 1 { "" } else { "s" }
+                        ),
+                    )
+                }
+            } else if !assignments.is_empty() {
+                if assignments.len() == 1 {
+                    (false, format!("Also assigned to {}", assignments[0].title))
+                } else {
+                    (
+                        false,
+                        format!("Already has {} assigned playlists", assignments.len()),
+                    )
+                }
             } else if current_age < recommended_age - 1 {
                 (
                     false,
@@ -357,7 +382,8 @@ fn build_playlist_assignment_targets(
                 recommended,
                 status_label,
                 assigned_here,
-                active_assignment_title: active_assignment.map(|assignment| assignment.title.clone()),
+                active_assignment_title: assigned_assignment_titles.first().cloned(),
+                assigned_assignment_titles,
             }
         })
         .collect()
@@ -566,8 +592,8 @@ pub async fn fetch_library_workspace(
     .bind(&team_id)
     .fetch_all(&state.pool)
     .await?;
-    let active_assignments = fetch_active_assignments_for_learners(&state.pool, &learners).await?;
-    let pathways = build_library_workspace_pathways(&library, &documents, &learners, &active_assignments);
+    let assignments_by_learner = fetch_assignments_for_learners_map(&state.pool, &learners).await?;
+    let pathways = build_library_workspace_pathways(&library, &documents, &learners, &assignments_by_learner);
     let featured_route_path = pathways.iter().find_map(|pathway| {
         pathway.route_path.clone().or_else(|| {
             pathway
@@ -1261,7 +1287,7 @@ fn build_library_workspace_pathways(
     library: &LibraryBundle,
     documents: &[LibraryDocument],
     learners: &[LearnerRow],
-    active_assignments: &BTreeMap<String, AssignmentSummary>,
+    assignments_by_learner: &BTreeMap<String, Vec<AssignmentSummary>>,
 ) -> Vec<PathwayWorkspaceSummary> {
     let mut pathways = Vec::new();
 
@@ -1328,7 +1354,7 @@ fn build_library_workspace_pathways(
 
             let delivery_shape = build_playlist_delivery_shape(&sessions);
             let assignment_targets =
-                build_playlist_assignment_targets(playlist, learners, active_assignments);
+                build_playlist_assignment_targets(playlist, learners, assignments_by_learner);
 
             playlists.push(PlaylistWorkspaceSummary {
                 playlist_id: playlist.playlist_id.clone(),
@@ -1974,10 +2000,10 @@ async fn fetch_active_assignment_for_learner(
         .next())
 }
 
-async fn fetch_active_assignments_for_learners(
+async fn fetch_assignments_for_learners_map(
     pool: &PgPool,
     learners: &[LearnerRow],
-) -> anyhow::Result<BTreeMap<String, AssignmentSummary>> {
+) -> anyhow::Result<BTreeMap<String, Vec<AssignmentSummary>>> {
     if learners.is_empty() {
         return Ok(BTreeMap::new());
     }
@@ -1987,11 +2013,10 @@ async fn fetch_active_assignments_for_learners(
         .map(|learner| learner.learner_id.clone())
         .collect::<Vec<_>>();
     let rows = query_as::<_, AssignmentRow>(
-        "select distinct on (learner_id)
-            assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions
+        "select assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions
          from assignment
          where learner_id = any($1) and status in ('active', 'scheduled', 'completed')
-         order by learner_id, case status when 'active' then 0 when 'scheduled' then 1 else 2 end, start_date desc",
+         order by learner_id, case status when 'active' then 0 when 'scheduled' then 1 else 2 end, start_date asc, title asc",
     )
     .bind(&learner_ids)
     .fetch_all(pool)
@@ -2000,7 +2025,10 @@ async fn fetch_active_assignments_for_learners(
     let mut assignments = BTreeMap::new();
     for row in rows {
         let learner_id = row.learner_id.clone();
-        assignments.insert(learner_id, assignment_row_to_summary(row));
+        assignments
+            .entry(learner_id)
+            .or_insert_with(Vec::new)
+            .push(assignment_row_to_summary(row));
     }
     Ok(assignments)
 }
