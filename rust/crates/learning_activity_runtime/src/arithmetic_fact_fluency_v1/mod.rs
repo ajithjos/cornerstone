@@ -1,3 +1,6 @@
+mod anchor_facts_to_20;
+mod bridge_through_10_addition;
+mod bridge_through_10_subtraction;
 mod mixed_add_sub_to_10;
 mod mixed_add_sub_to_20;
 mod readiness_within_5;
@@ -13,6 +16,27 @@ pub const PROGRAMS: &[RuntimeProgramRegistration] = &[
         engine_id: ENGINE_ID,
         template_id: readiness_within_5::TEMPLATE_ID,
         generate: readiness_within_5::generate,
+        score: shared::score_integer_activity,
+    },
+    RuntimeProgramRegistration {
+        runtime_id: anchor_facts_to_20::RUNTIME_ID,
+        engine_id: ENGINE_ID,
+        template_id: anchor_facts_to_20::TEMPLATE_ID,
+        generate: anchor_facts_to_20::generate,
+        score: shared::score_integer_activity,
+    },
+    RuntimeProgramRegistration {
+        runtime_id: bridge_through_10_addition::RUNTIME_ID,
+        engine_id: ENGINE_ID,
+        template_id: bridge_through_10_addition::TEMPLATE_ID,
+        generate: bridge_through_10_addition::generate,
+        score: shared::score_integer_activity,
+    },
+    RuntimeProgramRegistration {
+        runtime_id: bridge_through_10_subtraction::RUNTIME_ID,
+        engine_id: ENGINE_ID,
+        template_id: bridge_through_10_subtraction::TEMPLATE_ID,
+        generate: bridge_through_10_subtraction::generate,
         score: shared::score_integer_activity,
     },
     RuntimeProgramRegistration {

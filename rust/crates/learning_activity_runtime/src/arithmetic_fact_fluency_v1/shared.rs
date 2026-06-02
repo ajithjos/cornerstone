@@ -98,6 +98,14 @@ pub(super) fn parameter_usize(runtime: &MaterialRuntime, key: &str) -> Option<us
     runtime.parameters.get(key)?.as_u64().map(|value| value as usize)
 }
 
+pub(super) fn parameter_bool(runtime: &MaterialRuntime, key: &str) -> Option<bool> {
+    runtime.parameters.get(key)?.as_bool()
+}
+
+pub(super) fn parameter_string(runtime: &MaterialRuntime, key: &str) -> Option<String> {
+    runtime.parameters.get(key)?.as_str().map(ToOwned::to_owned)
+}
+
 pub(super) fn parameter_string_list(runtime: &MaterialRuntime, key: &str) -> Option<Vec<String>> {
     parameter_string_list_for_keys(runtime, &[key])
 }

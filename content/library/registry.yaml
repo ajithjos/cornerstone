@@ -13,7 +13,7 @@ pathways:
   - pathway_id: arithmetic_fact_fluency
     subject_id: maths
     area_id: arithmetic
-    title: Arithmetic Fact Fluency
+    title: Addition And Subtraction Foundations
     status: active
     brief_source: docs/authoring/examples/arithmetic-fact-fluency-brief.md
     path: maths/arithmetic/arithmetic-fact-fluency/pathway.md
