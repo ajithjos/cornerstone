@@ -39,24 +39,60 @@ class _LearnerWorkspaceView extends StatelessWidget {
       );
     }
 
-    final journey = learnerWorkspace.journey;
+    final assignedJourneys = learnerWorkspace.assignedJourneys.toList(
+      growable: false,
+    );
+    final primaryAssignedJourney =
+        assignedJourneys.isNotEmpty ? assignedJourneys.first : null;
+    final journey = primaryAssignedJourney?.journey ?? learnerWorkspace.journey;
     final learnerSurface = learnerWorkspace.workspace;
     final isSupportView = learnerWorkspace.workspaceView == 'owner_support';
     final continueBlock = learnerSurface.continueBlock;
-    final orderedSessions = learnerWorkspace.sessions.toList(growable: false)
-      ..sort((left, right) {
-        final leftSequence = left.sequenceNumber ?? 1 << 30;
-        final rightSequence = right.sequenceNumber ?? 1 << 30;
-        final sequenceCompare = leftSequence.compareTo(rightSequence);
-        if (sequenceCompare != 0) return sequenceCompare;
-        final dateCompare = left.scheduledDate.compareTo(right.scheduledDate);
-        if (dateCompare != 0) return dateCompare;
-        return left.title.compareTo(right.title);
-      });
-    final nextSession = orderedSessions
-        .where((session) => session.status != 'completed')
-        .cast<SessionDetail?>()
-        .firstWhere((_) => true, orElse: () => continueBlock?.session);
+    List<SessionDetail> orderSessions(Iterable<SessionDetail> source) {
+      final ordered = source.toList(growable: false)
+        ..sort((left, right) {
+          final leftSequence = left.sequenceNumber ?? 1 << 30;
+          final rightSequence = right.sequenceNumber ?? 1 << 30;
+          final sequenceCompare = leftSequence.compareTo(rightSequence);
+          if (sequenceCompare != 0) return sequenceCompare;
+          final dateCompare = left.scheduledDate.compareTo(right.scheduledDate);
+          if (dateCompare != 0) return dateCompare;
+          return left.title.compareTo(right.title);
+        });
+      return ordered;
+    }
+
+    SessionDetail? currentSessionForJourney(
+      LearnerAssignedJourney assignedJourney,
+      List<SessionDetail> orderedJourneySessions,
+    ) {
+      final preferredSessionId =
+          assignedJourney.currentSessionId ??
+          assignedJourney.continueBlock?.session.sessionId;
+      if (preferredSessionId != null) {
+        for (final session in orderedJourneySessions) {
+          if (session.sessionId == preferredSessionId) {
+            return session;
+          }
+        }
+      }
+      for (final session in orderedJourneySessions) {
+        if (session.status != 'completed') {
+          return session;
+        }
+      }
+      return orderedJourneySessions.isEmpty ? null : orderedJourneySessions.first;
+    }
+
+    final orderedSessions = orderSessions(
+      primaryAssignedJourney?.sessions ?? learnerWorkspace.sessions,
+    );
+    final nextSession =
+        continueBlock?.session ??
+        orderedSessions
+            .where((session) => session.status != 'completed')
+            .cast<SessionDetail?>()
+            .firstWhere((_) => true, orElse: () => null);
     final currentStanding =
         nextSession?.sequenceNumber ??
         (journey != null && journey.totalSessionCount > 0 ? (journey.completedSessionCount + 1).clamp(1, journey.totalSessionCount) : null);
@@ -193,6 +229,146 @@ class _LearnerWorkspaceView extends StatelessWidget {
       );
     }
 
+    Widget buildAssignedJourneyCard(LearnerAssignedJourney assignedJourney) {
+      final assignedJourneyInfo = assignedJourney.journey;
+      final orderedJourneySessions = orderSessions(assignedJourney.sessions);
+      final currentJourneySession = currentSessionForJourney(
+        assignedJourney,
+        orderedJourneySessions,
+      );
+      final currentJourneyStanding =
+          currentJourneySession?.sequenceNumber ??
+          (assignedJourneyInfo.totalSessionCount > 0
+              ? (assignedJourneyInfo.completedSessionCount + 1).clamp(
+                  1,
+                  assignedJourneyInfo.totalSessionCount,
+                )
+              : null);
+      final journeyProgress =
+          assignedJourneyInfo.totalSessionCount == 0
+              ? null
+              : (assignedJourneyInfo.completedSessionCount /
+                      assignedJourneyInfo.totalSessionCount)
+                  .clamp(0.0, 1.0);
+
+      return _SurfaceCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              assignedJourneyInfo.pathwayTitle ?? assignedJourneyInfo.playlistTitle,
+              style: theme.textTheme.titleLarge,
+            ),
+            if ((assignedJourneyInfo.pathwayDescription ?? '').isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                assignedJourneyInfo.pathwayDescription!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Text(assignedJourneyInfo.playlistTitle, style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 6),
+            Text(
+              assignedJourneyInfo.playlistDescription,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _PillBadge(
+                  text: 'status:${assignedJourney.assignment.status}',
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  textColor: theme.colorScheme.primary,
+                ),
+                _PillBadge(
+                  text: currentJourneyStanding == null
+                      ? 'Standing not started'
+                      : 'Standing S$currentJourneyStanding/${assignedJourneyInfo.totalSessionCount}',
+                  color: theme.colorScheme.secondaryContainer,
+                  textColor: theme.colorScheme.onSecondaryContainer,
+                ),
+                _PillBadge(
+                  text: '${assignedJourneyInfo.completedSessionCount} completed',
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  textColor: theme.colorScheme.onSurfaceVariant,
+                ),
+                _PillBadge(
+                  text: '${assignedJourneyInfo.pendingSessionCount} pending',
+                  color: theme.colorScheme.tertiaryContainer,
+                  textColor: theme.colorScheme.onTertiaryContainer,
+                ),
+              ],
+            ),
+            if (journeyProgress != null) ...[
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  minHeight: 10,
+                  value: journeyProgress,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                ),
+              ),
+            ],
+            if (viewerCanReadLibrary &&
+                (assignedJourneyInfo.pathwayRoutePath != null ||
+                    assignedJourneyInfo.playlistRoutePath != null)) ...[
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  if (assignedJourneyInfo.pathwayRoutePath != null)
+                    TextButton(
+                      onPressed: () =>
+                          onOpenLibraryRoute(assignedJourneyInfo.pathwayRoutePath!),
+                      child: const Text('Open pathway brief'),
+                    ),
+                  if (assignedJourneyInfo.playlistRoutePath != null)
+                    TextButton(
+                      onPressed: () =>
+                          onOpenLibraryRoute(assignedJourneyInfo.playlistRoutePath!),
+                      child: const Text('Open playlist brief'),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 18),
+            Text('Session path', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'This playlist shows every session in order, with the current one highlighted.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (orderedJourneySessions.isEmpty)
+              Text(
+                'No sessions are available yet.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              )
+            else
+              ...orderedJourneySessions.map(
+                (session) => buildSessionSequenceCard(
+                  session,
+                  active: session.sessionId == currentJourneySession?.sessionId,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
       children: [
@@ -201,6 +377,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
           title: isSupportView ? 'Learner workspace for support' : 'My learning workspace',
           description: journey == null
               ? 'This is your learner home: start now, keep practising, and track progress in one place.'
+              : assignedJourneys.length > 1
+              ? 'You have ${assignedJourneys.length} assigned playlists. Start in Now, then open each playlist below to see where you stand in that session path.'
               : learnerSurface.attentionLabel.isNotEmpty
               ? learnerSurface.attentionLabel
               : currentStanding == null
@@ -212,6 +390,12 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 text: 'support view · role:${learnerWorkspace.viewerRole}',
                 color: theme.colorScheme.tertiaryContainer,
                 textColor: theme.colorScheme.onTertiaryContainer,
+              ),
+            if (assignedJourneys.isNotEmpty)
+              _StatChip(
+                label: 'Playlists',
+                value: '${assignedJourneys.length}',
+                icon: Icons.view_carousel_rounded,
               ),
             _StatChip(
               label: 'Standing',
@@ -256,7 +440,30 @@ class _LearnerWorkspaceView extends StatelessWidget {
             ],
           ),
         ),
-        if (journey != null) ...[
+        if (assignedJourneys.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _SurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Assigned playlists', style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 6),
+                Text(
+                  'Each playlist shows its own current session and full session path.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ...assignedJourneys.expand(
+            (assignedJourney) => [
+              const SizedBox(height: 20),
+              buildAssignedJourneyCard(assignedJourney),
+            ],
+          ),
+        ] else if (journey != null) ...[
           const SizedBox(height: 20),
           _SurfaceCard(
             child: Column(
@@ -447,25 +654,27 @@ class _LearnerWorkspaceView extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 20),
-        _SurfaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Journey lane', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 6),
-              Text(
-                'Open any session workspace below to see where you stand and what that session asks you to do.',
-                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 18),
-              if (learnerWorkspace.sessions.isEmpty)
-                Text('No sessions are available yet.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant))
-              else
-                ...orderedSessions.map((session) => buildSessionSequenceCard(session, active: session.sessionId == nextSession?.sessionId)),
-            ],
+        if (assignedJourneys.isEmpty) ...[
+          const SizedBox(height: 20),
+          _SurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Journey lane', style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 6),
+                Text(
+                  'Open any session workspace below to see where you stand and what that session asks you to do.',
+                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 18),
+                if (learnerWorkspace.sessions.isEmpty)
+                  Text('No sessions are available yet.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant))
+                else
+                  ...orderedSessions.map((session) => buildSessionSequenceCard(session, active: session.sessionId == nextSession?.sessionId)),
+              ],
+            ),
           ),
-        ),
+        ],
         const SizedBox(height: 20),
         _SurfaceCard(
           child: Column(

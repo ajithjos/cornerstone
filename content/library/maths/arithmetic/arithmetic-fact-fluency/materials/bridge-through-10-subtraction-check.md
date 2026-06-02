@@ -23,15 +23,17 @@ runtime:
 
 # Bridge Through 10 Subtraction Check
 
-1. `13 - 5 =`
-2. `15 - 8 =`
-3. `17 - 9 =`
-4. `14 - 6 =`
-5. `18 - 9 =`
-6. `16 - 7 =`
-7. `19 - 8 =`
-8. `12 - 4 =`
-9. `15 - 6 =`
-10. `17 - 8 =`
+```text
+13 - 5 =
+15 - 8 =
+17 - 9 =
+14 - 6 =
+18 - 9 =
+16 - 7 =
+19 - 8 =
+12 - 4 =
+15 - 6 =
+17 - 8 =
+```
 
 Passing guide: 8 or more quick correct answers means the learner can use bridge-through-`10` subtraction in mixed order.

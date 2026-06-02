@@ -237,6 +237,7 @@ pub struct LearnerDetailResponse {
     pub learner: LearnerSummary,
     pub active_assignment: Option<AssignmentSummary>,
     pub journey: Option<LearnerJourneySummary>,
+    pub assigned_journeys: Vec<LearnerAssignedJourneySummary>,
     pub sessions: Vec<SessionDetail>,
     pub progress: Vec<SkillProgressSummary>,
     pub review_items: Vec<ReviewItemSummary>,
@@ -252,10 +253,20 @@ pub struct LearnerWorkspaceResponse {
     pub learner: LearnerSummary,
     pub active_assignment: Option<AssignmentSummary>,
     pub journey: Option<LearnerJourneySummary>,
+    pub assigned_journeys: Vec<LearnerAssignedJourneySummary>,
     pub sessions: Vec<SessionDetail>,
     pub progress: Vec<SkillProgressSummary>,
     pub review_items: Vec<ReviewItemSummary>,
     pub workspace: LearnerWorkspaceSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnerAssignedJourneySummary {
+    pub assignment: AssignmentSummary,
+    pub journey: LearnerJourneySummary,
+    pub current_session_id: Option<String>,
+    pub continue_block: Option<LearnerContinueBlock>,
+    pub sessions: Vec<SessionDetail>,
 }
 
 #[derive(Debug, Clone, Serialize)]

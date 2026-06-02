@@ -753,6 +753,7 @@ class LearnerDashboard {
 class LearnerDetailPayload {
   LearnerDetailPayload({
     required this.learner,
+    required this.assignedJourneys,
     required this.sessions,
     required this.progress,
     required this.reviewItems,
@@ -772,6 +773,14 @@ class LearnerDetailPayload {
       journey: json['journey'] == null
           ? null
           : LearnerJourney.fromJson(json['journey'] as Map<String, dynamic>),
+      assignedJourneys: ((json['assigned_journeys'] as List<dynamic>?) ??
+              const <dynamic>[])
+          .map(
+            (item) => LearnerAssignedJourney.fromJson(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
       sessions: (json['sessions'] as List<dynamic>)
           .map((item) => SessionDetail.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -793,6 +802,7 @@ class LearnerDetailPayload {
   final LearnerSummary learner;
   final AssignmentSummary? activeAssignment;
   final LearnerJourney? journey;
+  final List<LearnerAssignedJourney> assignedJourneys;
   final List<SessionDetail> sessions;
   final List<SkillProgressSummary> progress;
   final List<ReviewItem> reviewItems;
@@ -806,6 +816,7 @@ class LearnerWorkspacePayload {
     required this.viewerRole,
     required this.includesAdultMaterials,
     required this.learner,
+    required this.assignedJourneys,
     required this.sessions,
     required this.progress,
     required this.reviewItems,
@@ -830,6 +841,14 @@ class LearnerWorkspacePayload {
       journey: json['journey'] == null
           ? null
           : LearnerJourney.fromJson(json['journey'] as Map<String, dynamic>),
+      assignedJourneys: ((json['assigned_journeys'] as List<dynamic>?) ??
+              const <dynamic>[])
+          .map(
+            (item) => LearnerAssignedJourney.fromJson(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
       sessions: (json['sessions'] as List<dynamic>)
           .map((item) => SessionDetail.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -855,6 +874,7 @@ class LearnerWorkspacePayload {
   final LearnerSummary learner;
   final AssignmentSummary? activeAssignment;
   final LearnerJourney? journey;
+  final List<LearnerAssignedJourney> assignedJourneys;
   final List<SessionDetail> sessions;
   final List<SkillProgressSummary> progress;
   final List<ReviewItem> reviewItems;
@@ -920,6 +940,40 @@ class LearnerContinueBlock {
   final String description;
   final String actionLabel;
   final SessionDetail session;
+}
+
+class LearnerAssignedJourney {
+  LearnerAssignedJourney({
+    required this.assignment,
+    required this.journey,
+    required this.sessions,
+    this.currentSessionId,
+    this.continueBlock,
+  });
+
+  factory LearnerAssignedJourney.fromJson(Map<String, dynamic> json) {
+    return LearnerAssignedJourney(
+      assignment: AssignmentSummary.fromJson(
+        json['assignment'] as Map<String, dynamic>,
+      ),
+      journey: LearnerJourney.fromJson(json['journey'] as Map<String, dynamic>),
+      currentSessionId: json['current_session_id'] as String?,
+      continueBlock: json['continue_block'] == null
+          ? null
+          : LearnerContinueBlock.fromJson(
+              json['continue_block'] as Map<String, dynamic>,
+            ),
+      sessions: (json['sessions'] as List<dynamic>)
+          .map((item) => SessionDetail.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final AssignmentSummary assignment;
+  final LearnerJourney journey;
+  final String? currentSessionId;
+  final LearnerContinueBlock? continueBlock;
+  final List<SessionDetail> sessions;
 }
 
 class LearnerProgressSnapshot {

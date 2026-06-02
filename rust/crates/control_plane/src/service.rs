@@ -755,7 +755,8 @@ pub async fn fetch_learner_detail(
     .await?
     .ok_or_else(|| anyhow!("learner '{learner_id}' not found"))?;
 
-    let active_assignment = fetch_active_assignment_for_learner(&state.pool, learner_id).await?;
+    let assignments = fetch_assignments_for_learner(&state.pool, learner_id).await?;
+    let active_assignment = assignments.first().cloned();
     let assignment_filter = active_assignment
         .as_ref()
         .map(|assignment| assignment.assignment_id.clone());
@@ -774,6 +775,14 @@ pub async fn fetch_learner_detail(
     let journey = active_assignment
         .as_ref()
         .map(|assignment| build_learner_journey(&library, &documents, assignment, &sessions));
+    let assigned_journeys = build_assigned_journeys(
+        &state.pool,
+        &library,
+        &documents,
+        learner_id,
+        &assignments,
+    )
+    .await?;
     let workspace = build_learner_workspace(
         &library,
         active_assignment.as_ref(),
@@ -781,6 +790,7 @@ pub async fn fetch_learner_detail(
         &sessions,
         &progress,
         &review_items,
+        &assigned_journeys,
     );
 
     Ok(LearnerDetailResponse {
@@ -793,6 +803,7 @@ pub async fn fetch_learner_detail(
         },
         active_assignment,
         journey,
+        assigned_journeys,
         sessions,
         progress,
         review_items,
@@ -823,6 +834,15 @@ pub async fn fetch_learner_workspace(
     } else {
         learner_safe_workspace_summary(&detail.workspace)
     };
+    let assigned_journeys = if support_workspace {
+        detail.assigned_journeys
+    } else {
+        detail
+            .assigned_journeys
+            .iter()
+            .map(learner_safe_assigned_journey)
+            .collect()
+    };
     Ok(crate::domain::LearnerWorkspaceResponse {
         status: "ok".to_string(),
         workspace_view: if support_workspace {
@@ -835,6 +855,7 @@ pub async fn fetch_learner_workspace(
         learner: detail.learner,
         active_assignment: detail.active_assignment,
         journey: detail.journey,
+        assigned_journeys,
         sessions,
         progress: detail.progress,
         review_items: detail.review_items,
@@ -1661,17 +1682,24 @@ fn build_learner_workspace(
     sessions: &[SessionDetail],
     progress: &[SkillProgressSummary],
     review_items: &[ReviewItemSummary],
+    assigned_journeys: &[crate::domain::LearnerAssignedJourneySummary],
 ) -> LearnerWorkspaceSummary {
-    let continue_session = sessions.iter().find(|session| session.status != "completed");
+    let workspace_sessions = if assigned_journeys.is_empty() {
+        sessions.to_vec()
+    } else {
+        assigned_journeys
+            .iter()
+            .flat_map(|journey| journey.sessions.iter().cloned())
+            .collect::<Vec<_>>()
+    };
 
-    let continue_block = continue_session.cloned().map(|session| LearnerContinueBlock {
-        title: continue_block_title(&session),
-        description: continue_block_description(&session),
-        action_label: session_action_label(&session),
-        session,
-    });
+    let continue_block = assigned_journeys
+        .iter()
+        .find_map(|journey| journey.continue_block.clone())
+        .or_else(|| continue_block_for_sessions(sessions));
+    let continue_session = continue_block.as_ref().map(|block| &block.session);
 
-    let practice_lane = sessions
+    let mut practice_lane = workspace_sessions
         .iter()
         .filter(|session| {
             session.status != "completed"
@@ -1684,13 +1712,32 @@ fn build_learner_workspace(
         })
         .cloned()
         .collect::<Vec<_>>();
+    practice_lane.sort_by(|left, right| {
+        left.scheduled_date
+            .cmp(&right.scheduled_date)
+            .then_with(|| left.day_offset.cmp(&right.day_offset))
+            .then_with(|| left.title.cmp(&right.title))
+    });
 
     let (progress_counts, _) = summarize_progress(library, active_assignment, progress);
-    let completed_session_count = sessions
-        .iter()
-        .filter(|session| session.status == "completed")
-        .count();
-    let pending_session_count = sessions.len().saturating_sub(completed_session_count);
+    let (completed_session_count, pending_session_count) = if assigned_journeys.is_empty() {
+        let completed = workspace_sessions
+            .iter()
+            .filter(|session| session.status == "completed")
+            .count();
+        (completed, workspace_sessions.len().saturating_sub(completed))
+    } else {
+        (
+            assigned_journeys
+                .iter()
+                .map(|journey| journey.journey.completed_session_count)
+                .sum(),
+            assigned_journeys
+                .iter()
+                .map(|journey| journey.journey.pending_session_count)
+                .sum(),
+        )
+    };
     let progress_snapshot = LearnerProgressSnapshot {
         secure_count: progress_counts.get("secure").copied().unwrap_or(0) as usize,
         developing_count: progress_counts.get("developing").copied().unwrap_or(0) as usize,
@@ -1700,7 +1747,7 @@ fn build_learner_workspace(
         pending_session_count,
     };
 
-    let mut recent_wins = sessions
+    let mut recent_wins = workspace_sessions
         .iter()
         .filter_map(|session| {
             session.latest_evidence.as_ref().map(|evidence| {
@@ -1737,8 +1784,8 @@ fn build_learner_workspace(
         }
     } else if !review_items.is_empty() {
         "Review items are waiting".to_string()
-    } else if active_assignment.is_some() {
-        "Current playlist is complete".to_string()
+    } else if !assigned_journeys.is_empty() || active_assignment.is_some() {
+        "Assigned playlists are complete".to_string()
     } else {
         "Choose the first pathway to begin".to_string()
     };
@@ -1765,10 +1812,6 @@ async fn create_assignment_internal(
         .ok_or_else(|| anyhow!("unknown playlist '{playlist_id}'"))?;
 
     let end_date = start_date + Duration::days((playlist.duration_days.saturating_sub(1)) as i64);
-    query("update assignment set status = 'replaced' where learner_id = $1 and status in ('active', 'scheduled')")
-        .bind(learner_id)
-        .execute(&state.pool)
-        .await?;
 
     let assignment_id = Uuid::new_v4().to_string();
     query(
@@ -1866,18 +1909,69 @@ fn material_skill_pairs_for_session(
     pairs.into_iter().collect()
 }
 
-async fn fetch_active_assignment_for_learner(pool: &PgPool, learner_id: &str) -> anyhow::Result<Option<AssignmentSummary>> {
-    let row = query_as::<_, AssignmentRow>(
+async fn build_assigned_journeys(
+    pool: &PgPool,
+    library: &LibraryBundle,
+    documents: &[LibraryDocument],
+    learner_id: &str,
+    assignments: &[AssignmentSummary],
+) -> anyhow::Result<Vec<crate::domain::LearnerAssignedJourneySummary>> {
+    let mut journeys = Vec::new();
+    for assignment in assignments {
+        let sessions = fetch_sessions(
+            pool,
+            library,
+            documents,
+            learner_id,
+            Some(&assignment.assignment_id),
+        )
+        .await?;
+        let journey = build_learner_journey(library, documents, assignment, &sessions);
+        let continue_block = continue_block_for_sessions(&sessions);
+        let current_session_id = continue_block
+            .as_ref()
+            .map(|block| block.session.session_id.clone())
+            .or_else(|| {
+                sessions
+                    .iter()
+                    .find(|session| session.status != "completed")
+                    .map(|session| session.session_id.clone())
+            });
+        journeys.push(crate::domain::LearnerAssignedJourneySummary {
+            assignment: assignment.clone(),
+            journey,
+            current_session_id,
+            continue_block,
+            sessions,
+        });
+    }
+    Ok(journeys)
+}
+
+async fn fetch_assignments_for_learner(
+    pool: &PgPool,
+    learner_id: &str,
+) -> anyhow::Result<Vec<AssignmentSummary>> {
+    let rows = query_as::<_, AssignmentRow>(
         "select assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions
          from assignment
          where learner_id = $1 and status in ('active', 'scheduled', 'completed')
-         order by case status when 'active' then 0 when 'scheduled' then 1 else 2 end, start_date desc
-         limit 1",
+         order by case status when 'active' then 0 when 'scheduled' then 1 else 2 end, start_date asc, title asc",
     )
     .bind(learner_id)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
-    Ok(row.map(assignment_row_to_summary))
+    Ok(rows.into_iter().map(assignment_row_to_summary).collect())
+}
+
+async fn fetch_active_assignment_for_learner(
+    pool: &PgPool,
+    learner_id: &str,
+) -> anyhow::Result<Option<AssignmentSummary>> {
+    Ok(fetch_assignments_for_learner(pool, learner_id)
+        .await?
+        .into_iter()
+        .next())
 }
 
 async fn fetch_active_assignments_for_learners(
@@ -2536,12 +2630,7 @@ fn learner_safe_workspace_summary(workspace: &LearnerWorkspaceSummary) -> Learne
         continue_block: workspace
             .continue_block
             .as_ref()
-            .map(|block| LearnerContinueBlock {
-                title: block.title.clone(),
-                description: block.description.clone(),
-                action_label: block.action_label.clone(),
-                session: learner_safe_session_detail(&block.session),
-            }),
+            .map(learner_safe_continue_block),
         practice_lane: workspace
             .practice_lane
             .iter()
@@ -2549,6 +2638,34 @@ fn learner_safe_workspace_summary(workspace: &LearnerWorkspaceSummary) -> Learne
             .collect(),
         progress_snapshot: workspace.progress_snapshot.clone(),
         recent_wins: workspace.recent_wins.clone(),
+    }
+}
+
+fn learner_safe_continue_block(block: &LearnerContinueBlock) -> LearnerContinueBlock {
+    LearnerContinueBlock {
+        title: block.title.clone(),
+        description: block.description.clone(),
+        action_label: block.action_label.clone(),
+        session: learner_safe_session_detail(&block.session),
+    }
+}
+
+fn learner_safe_assigned_journey(
+    assigned_journey: &crate::domain::LearnerAssignedJourneySummary,
+) -> crate::domain::LearnerAssignedJourneySummary {
+    crate::domain::LearnerAssignedJourneySummary {
+        assignment: assigned_journey.assignment.clone(),
+        journey: assigned_journey.journey.clone(),
+        current_session_id: assigned_journey.current_session_id.clone(),
+        continue_block: assigned_journey
+            .continue_block
+            .as_ref()
+            .map(learner_safe_continue_block),
+        sessions: assigned_journey
+            .sessions
+            .iter()
+            .map(learner_safe_session_detail)
+            .collect(),
     }
 }
 
@@ -2585,6 +2702,19 @@ fn learner_safe_session_detail(session: &SessionDetail) -> SessionDetail {
         materials_by_kind,
         ..session.clone()
     }
+}
+
+fn continue_block_for_sessions(sessions: &[SessionDetail]) -> Option<LearnerContinueBlock> {
+    sessions
+        .iter()
+        .find(|session| session.status != "completed")
+        .cloned()
+        .map(|session| LearnerContinueBlock {
+            title: continue_block_title(&session),
+            description: continue_block_description(&session),
+            action_label: session_action_label(&session),
+            session,
+        })
 }
 
 #[cfg(test)]

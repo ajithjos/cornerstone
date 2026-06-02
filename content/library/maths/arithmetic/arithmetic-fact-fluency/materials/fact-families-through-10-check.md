@@ -33,15 +33,17 @@ runtime:
 
 Keep this short and calm.
 
-1. `0 + 7 =`
-2. `5 + 3 =`
-3. `9 - 4 =`
-4. `10 - 0 =`
-5. `1 - 1 =`
-6. `6 + 0 =`
-7. `7 - 7 =`
-8. `2 + 6 =`
-9. `10 - 3 =`
-10. `4 + 4 =`
+```text
+0 + 7 =
+5 + 3 =
+9 - 4 =
+10 - 0 =
+1 - 1 =
+6 + 0 =
+7 - 7 =
+2 + 6 =
+10 - 3 =
+4 + 4 =
+```
 
 Passing guide: 8 or more quick correct answers means the learner is ready for the next anchor facts.

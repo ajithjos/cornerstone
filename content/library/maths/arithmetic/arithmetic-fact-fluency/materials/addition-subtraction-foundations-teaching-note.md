@@ -24,10 +24,12 @@ Adult guide: keep this beside the learner page. The aim is not to say more words
 
 These are the facts to memorise exactly:
 
-- the addition pairs for each whole from `1` to `10`
+```text
+- the addition pairs for each whole from 1 to 10
 - the matching subtraction facts from those same families
-- the doubles from `1 + 1` to `10 + 10`
-- the `10 + n` facts from `10 + 1` to `10 + 9`
+- the doubles from 1 + 1 to 10 + 10
+- the 10 + n facts from 10 + 1 to 10 + 9
+```
 
 Everything else in this pathway is derived from those anchors.
 
@@ -41,25 +43,31 @@ Everything else in this pathway is derived from those anchors.
 
 ## Useful adult language
 
-- `What whole are we working inside?`
-- `What part makes 10?`
-- `What is left after you make 10?`
-- `Which subtraction belongs to that addition fact?`
+```text
+What whole are we working inside?
+What part makes 10?
+What is left after you make 10?
+Which subtraction belongs to that addition fact?
+```
 
 ## Bridge-through-10 coaching pattern
 
 For addition:
 
-- say the first number
-- take enough from the second number to make `10`
-- add the leftover part
+```text
+say the first number
+take enough from the second number to make 10
+add the leftover part
+```
 
 Example: `7 + 8 = 7 + 3 + 5 = 15`
 
 For subtraction:
 
-- say how much must be removed to reach `10`
-- remove the rest after that
+```text
+say how much must be removed to reach 10
+remove the rest after that
+```
 
 Example: `15 - 8 = 15 - 5 - 3 = 7`
 

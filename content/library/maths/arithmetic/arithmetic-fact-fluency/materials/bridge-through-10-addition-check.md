@@ -23,15 +23,17 @@ runtime:
 
 # Bridge Through 10 Addition Check
 
-1. `8 + 5 =`
-2. `7 + 8 =`
-3. `9 + 4 =`
-4. `6 + 7 =`
-5. `9 + 8 =`
-6. `5 + 9 =`
-7. `8 + 7 =`
-8. `6 + 8 =`
-9. `7 + 6 =`
-10. `9 + 6 =`
+```text
+8 + 5 =
+7 + 8 =
+9 + 4 =
+6 + 7 =
+9 + 8 =
+5 + 9 =
+8 + 7 =
+6 + 8 =
+7 + 6 =
+9 + 6 =
+```
 
 Passing guide: 8 or more quick correct answers means the learner can use make-`10` for addition in mixed order.

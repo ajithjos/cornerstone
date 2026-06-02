@@ -26,15 +26,17 @@ runtime:
 
 # Doubles And Add 10 Check
 
-1. `2 + 2 =`
-2. `10 + 6 =`
-3. `8 + 8 =`
-4. `10 + 3 =`
-5. `5 + 5 =`
-6. `10 + 9 =`
-7. `7 + 7 =`
-8. `10 + 1 =`
-9. `9 + 9 =`
-10. `10 + 4 =`
+```text
+2 + 2 =
+10 + 6 =
+8 + 8 =
+10 + 3 =
+5 + 5 =
+10 + 9 =
+7 + 7 =
+10 + 1 =
+9 + 9 =
+10 + 4 =
+```
 
 Passing guide: 8 or more quick correct answers means the anchor facts are ready to support make-`10` work.
