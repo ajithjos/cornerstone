@@ -761,6 +761,7 @@ class LearnerDetailPayload {
   LearnerDetailPayload({
     required this.learner,
     required this.assignedJourneys,
+    required this.assignedPathways,
     required this.sessions,
     required this.progress,
     required this.reviewItems,
@@ -770,6 +771,27 @@ class LearnerDetailPayload {
   });
 
   factory LearnerDetailPayload.fromJson(Map<String, dynamic> json) {
+    final assignedJourneys = ((json['assigned_journeys'] as List<dynamic>?) ??
+            const <dynamic>[])
+        .map(
+          (item) => LearnerAssignedJourney.fromJson(
+            item as Map<String, dynamic>,
+          ),
+        )
+        .toList();
+    var assignedPathways = ((json['assigned_pathways'] as List<dynamic>?) ??
+            const <dynamic>[])
+        .map(
+          (item) => LearnerAssignedPathway.fromJson(
+            item as Map<String, dynamic>,
+          ),
+        )
+        .toList();
+    if (assignedPathways.isEmpty && assignedJourneys.isNotEmpty) {
+      assignedPathways = LearnerAssignedPathway.groupFromJourneys(
+        assignedJourneys,
+      );
+    }
     return LearnerDetailPayload(
       learner: LearnerSummary.fromJson(json['learner'] as Map<String, dynamic>),
       activeAssignment: json['active_assignment'] == null
@@ -780,14 +802,8 @@ class LearnerDetailPayload {
       journey: json['journey'] == null
           ? null
           : LearnerJourney.fromJson(json['journey'] as Map<String, dynamic>),
-      assignedJourneys: ((json['assigned_journeys'] as List<dynamic>?) ??
-              const <dynamic>[])
-          .map(
-            (item) => LearnerAssignedJourney.fromJson(
-              item as Map<String, dynamic>,
-            ),
-          )
-          .toList(),
+      assignedJourneys: assignedJourneys,
+      assignedPathways: assignedPathways,
       sessions: (json['sessions'] as List<dynamic>)
           .map((item) => SessionDetail.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -810,6 +826,7 @@ class LearnerDetailPayload {
   final AssignmentSummary? activeAssignment;
   final LearnerJourney? journey;
   final List<LearnerAssignedJourney> assignedJourneys;
+  final List<LearnerAssignedPathway> assignedPathways;
   final List<SessionDetail> sessions;
   final List<SkillProgressSummary> progress;
   final List<ReviewItem> reviewItems;
@@ -824,6 +841,7 @@ class LearnerWorkspacePayload {
     required this.includesAdultMaterials,
     required this.learner,
     required this.assignedJourneys,
+    required this.assignedPathways,
     required this.sessions,
     required this.progress,
     required this.reviewItems,
@@ -833,6 +851,27 @@ class LearnerWorkspacePayload {
   });
 
   factory LearnerWorkspacePayload.fromJson(Map<String, dynamic> json) {
+    final assignedJourneys = ((json['assigned_journeys'] as List<dynamic>?) ??
+            const <dynamic>[])
+        .map(
+          (item) => LearnerAssignedJourney.fromJson(
+            item as Map<String, dynamic>,
+          ),
+        )
+        .toList();
+    var assignedPathways = ((json['assigned_pathways'] as List<dynamic>?) ??
+            const <dynamic>[])
+        .map(
+          (item) => LearnerAssignedPathway.fromJson(
+            item as Map<String, dynamic>,
+          ),
+        )
+        .toList();
+    if (assignedPathways.isEmpty && assignedJourneys.isNotEmpty) {
+      assignedPathways = LearnerAssignedPathway.groupFromJourneys(
+        assignedJourneys,
+      );
+    }
     return LearnerWorkspacePayload(
       status: json['status'] as String,
       workspaceView: json['workspace_view'] as String? ?? 'learner',
@@ -848,14 +887,8 @@ class LearnerWorkspacePayload {
       journey: json['journey'] == null
           ? null
           : LearnerJourney.fromJson(json['journey'] as Map<String, dynamic>),
-      assignedJourneys: ((json['assigned_journeys'] as List<dynamic>?) ??
-              const <dynamic>[])
-          .map(
-            (item) => LearnerAssignedJourney.fromJson(
-              item as Map<String, dynamic>,
-            ),
-          )
-          .toList(),
+      assignedJourneys: assignedJourneys,
+      assignedPathways: assignedPathways,
       sessions: (json['sessions'] as List<dynamic>)
           .map((item) => SessionDetail.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -882,6 +915,7 @@ class LearnerWorkspacePayload {
   final AssignmentSummary? activeAssignment;
   final LearnerJourney? journey;
   final List<LearnerAssignedJourney> assignedJourneys;
+  final List<LearnerAssignedPathway> assignedPathways;
   final List<SessionDetail> sessions;
   final List<SkillProgressSummary> progress;
   final List<ReviewItem> reviewItems;
@@ -981,6 +1015,101 @@ class LearnerAssignedJourney {
   final String? currentSessionId;
   final LearnerContinueBlock? continueBlock;
   final List<SessionDetail> sessions;
+}
+
+class LearnerAssignedPathway {
+  LearnerAssignedPathway({
+    required this.pathwayTitle,
+    required this.pathwayDescription,
+    required this.playlistCount,
+    required this.totalSessionCount,
+    required this.completedSessionCount,
+    required this.pendingSessionCount,
+    required this.assignedPlaylists,
+    this.pathwayId,
+    this.pathwayRoutePath,
+  });
+
+  factory LearnerAssignedPathway.fromJson(Map<String, dynamic> json) {
+    return LearnerAssignedPathway(
+      pathwayId: json['pathway_id'] as String?,
+      pathwayTitle: json['pathway_title'] as String? ?? 'Assigned pathway',
+      pathwayDescription: json['pathway_description'] as String? ?? '',
+      pathwayRoutePath: json['pathway_route_path'] as String?,
+      playlistCount: (json['playlist_count'] as num?)?.toInt() ?? 0,
+      totalSessionCount: (json['total_session_count'] as num?)?.toInt() ?? 0,
+      completedSessionCount:
+          (json['completed_session_count'] as num?)?.toInt() ?? 0,
+      pendingSessionCount:
+          (json['pending_session_count'] as num?)?.toInt() ?? 0,
+      assignedPlaylists: ((json['assigned_playlists'] as List<dynamic>?) ??
+              const <dynamic>[])
+          .map(
+            (item) => LearnerAssignedJourney.fromJson(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  static List<LearnerAssignedPathway> groupFromJourneys(
+    List<LearnerAssignedJourney> journeys,
+  ) {
+    final groupedJourneys = <String, List<LearnerAssignedJourney>>{};
+    final orderedKeys = <String>[];
+    final pathwayMeta = <String, LearnerJourney>{};
+
+    for (final assignedJourney in journeys) {
+      final key = _groupKey(assignedJourney.journey);
+      if (!groupedJourneys.containsKey(key)) {
+        orderedKeys.add(key);
+      }
+      groupedJourneys.putIfAbsent(key, () => <LearnerAssignedJourney>[]).add(
+        assignedJourney,
+      );
+      pathwayMeta[key] = assignedJourney.journey;
+    }
+
+    return orderedKeys.map((key) {
+      final grouped = groupedJourneys[key] ?? const <LearnerAssignedJourney>[];
+      final meta = pathwayMeta[key]!;
+      return LearnerAssignedPathway(
+        pathwayId: meta.pathwayId,
+        pathwayTitle: meta.pathwayTitle ?? meta.playlistTitle,
+        pathwayDescription: meta.pathwayDescription ?? '',
+        pathwayRoutePath: meta.pathwayRoutePath,
+        playlistCount: grouped.length,
+        totalSessionCount: grouped.fold<int>(
+          0,
+          (count, item) => count + item.journey.totalSessionCount,
+        ),
+        completedSessionCount: grouped.fold<int>(
+          0,
+          (count, item) => count + item.journey.completedSessionCount,
+        ),
+        pendingSessionCount: grouped.fold<int>(
+          0,
+          (count, item) => count + item.journey.pendingSessionCount,
+        ),
+        assignedPlaylists: grouped,
+      );
+    }).toList(growable: false);
+  }
+
+  static String _groupKey(LearnerJourney journey) {
+    return journey.pathwayId ?? 'playlist:${journey.playlistId}';
+  }
+
+  final String? pathwayId;
+  final String pathwayTitle;
+  final String pathwayDescription;
+  final String? pathwayRoutePath;
+  final int playlistCount;
+  final int totalSessionCount;
+  final int completedSessionCount;
+  final int pendingSessionCount;
+  final List<LearnerAssignedJourney> assignedPlaylists;
 }
 
 class LearnerProgressSnapshot {

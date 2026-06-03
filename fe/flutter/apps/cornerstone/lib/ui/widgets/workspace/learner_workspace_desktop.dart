@@ -26,6 +26,12 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
   List<LearnerAssignedJourney> get _assignedJourneys =>
       widget.workspace.assignedJourneys;
 
+  List<LearnerAssignedPathway> get _assignedPathways =>
+      widget.workspace.assignedPathways;
+
+  int get _assignedPathwayCount =>
+      _assignedPathways.length;
+
   LearnerAssignedJourney? get _selectedAssignedJourney {
     final journeys = _assignedJourneys;
     if (journeys.isEmpty) {
@@ -141,6 +147,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     final snapshot = _workspace.progressSnapshot;
     final currentSession = _currentSession;
     final assignedPlaylistCount = _assignedJourneys.length;
+    final assignedPathwayCount = _assignedPathwayCount;
     final currentStanding =
         currentSession?.sequenceNumber ??
         (journey != null && journey.totalSessionCount > 0 ? (journey.completedSessionCount + 1).clamp(1, journey.totalSessionCount) : null);
@@ -167,7 +174,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
           const SizedBox(height: 8),
           Text(
             assignedPlaylistCount > 1
-                ? 'Choose one of the assigned playlists below. Each playlist shows its own current session and session path.'
+                ? assignedPathwayCount > 1
+                    ? 'Choose one of the assigned playlists below. They span $assignedPathwayCount pathways, and each playlist keeps its own current session and session path.'
+                    : 'Choose one of the assigned playlists below. Each playlist keeps its own current session and session path inside the same pathway.'
                 : _isSupportView
                 ? 'Current session is always the first non-completed session in order. Use this page to guide the learner through that step.'
                 : 'Current session is always the first non-completed session in order. Start there.',
@@ -184,6 +193,12 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                   value: '$assignedPlaylistCount',
                   icon: Icons.view_carousel_rounded,
                 ),
+              if (assignedPathwayCount > 0)
+                _StatChip(
+                  label: 'Pathways',
+                  value: '$assignedPathwayCount',
+                  icon: Icons.route_rounded,
+                ),
               _StatChip(
                 label: 'Current session',
                 value: currentStanding == null ? '--' : '$currentStanding/${journey?.totalSessionCount ?? _orderedSessions.length}',
@@ -199,112 +214,168 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     );
   }
 
-  Widget _buildAssignedPlaylistsBand(ThemeData theme) {
-    final journeys = _assignedJourneys;
-    if (journeys.isEmpty) {
+  Widget _buildAssignedPathwaysBand(ThemeData theme) {
+    final pathways = _assignedPathways;
+    if (pathways.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return _Band(
-      title: 'Assigned playlists',
+      title: 'Assigned pathways',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Choose a playlist to inspect its standing, session path, and materials.',
+            _assignedPathwayCount > 1
+                ? 'Choose a playlist inside each pathway. This keeps every route and session path separate.'
+                : 'Choose a playlist inside the assigned pathway to inspect its standing, session path, and materials.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: journeys.map((assignedJourney) {
-              final journey = assignedJourney.journey;
-              final currentSession = _currentSessionForJourney(assignedJourney);
-              final standing =
-                  currentSession?.sequenceNumber ??
-                  (journey.totalSessionCount > 0
-                      ? (journey.completedSessionCount + 1).clamp(
-                          1,
-                          journey.totalSessionCount,
-                        )
-                      : null);
-              final isSelected =
-                  assignedJourney.assignment.assignmentId == _selectedAssignmentId;
-              return InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {
-                  setState(() {
-                    _selectedAssignmentId = assignedJourney.assignment.assignmentId;
-                    _selectedSessionId = currentSession?.sessionId;
-                  });
-                },
-                child: Container(
-                  width: 300,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? theme.colorScheme.primaryContainer
-                        : theme.colorScheme.surface.withValues(alpha: 0.64),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.outlineVariant,
-                    ),
+          ...pathways.map((assignedPathway) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface.withValues(alpha: 0.64),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    assignedPathway.pathwayTitle,
+                    style: theme.textTheme.titleLarge,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  if (assignedPathway.pathwayDescription.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      assignedPathway.pathwayDescription,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Text(
-                        journey.pathwayTitle ?? journey.playlistTitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium,
+                      _PillBadge(
+                        text: '${assignedPathway.playlistCount} playlists',
+                        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                        textColor: theme.colorScheme.primary,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        journey.playlistTitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyLarge,
+                      _PillBadge(
+                        text: '${assignedPathway.totalSessionCount} sessions',
+                        color: theme.colorScheme.secondaryContainer,
+                        textColor: theme.colorScheme.onSecondaryContainer,
                       ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _PillBadge(
-                            text: 'status:${assignedJourney.assignment.status}',
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.12,
-                            ),
-                            textColor: theme.colorScheme.primary,
-                          ),
-                          _PillBadge(
-                            text: standing == null
-                                ? 'Standing not started'
-                                : 'Standing S$standing/${journey.totalSessionCount}',
-                            color: theme.colorScheme.secondaryContainer,
-                            textColor: theme.colorScheme.onSecondaryContainer,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '${journey.completedSessionCount} completed · ${journey.pendingSessionCount} pending',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                      _PillBadge(
+                        text: '${assignedPathway.pendingSessionCount} pending',
+                        color: theme.colorScheme.tertiaryContainer,
+                        textColor: theme.colorScheme.onTertiaryContainer,
                       ),
                     ],
                   ),
-                ),
-              );
-            }).toList(growable: false),
-          ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: assignedPathway.assignedPlaylists.map((assignedJourney) {
+                      final journey = assignedJourney.journey;
+                      final currentSession = _currentSessionForJourney(assignedJourney);
+                      final standing =
+                          currentSession?.sequenceNumber ??
+                          (journey.totalSessionCount > 0
+                              ? (journey.completedSessionCount + 1).clamp(
+                                  1,
+                                  journey.totalSessionCount,
+                                )
+                              : null);
+                      final isSelected =
+                          assignedJourney.assignment.assignmentId == _selectedAssignmentId;
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          setState(() {
+                            _selectedAssignmentId = assignedJourney.assignment.assignmentId;
+                            _selectedSessionId = currentSession?.sessionId;
+                          });
+                        },
+                        child: Container(
+                          width: 300,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? theme.colorScheme.primaryContainer
+                                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                journey.playlistTitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                journey.playlistDescription,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  _PillBadge(
+                                    text: 'status:${assignedJourney.assignment.status}',
+                                    color: theme.colorScheme.primary.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    textColor: theme.colorScheme.primary,
+                                  ),
+                                  _PillBadge(
+                                    text: standing == null
+                                        ? 'Standing not started'
+                                        : 'Standing S$standing/${journey.totalSessionCount}',
+                                    color: theme.colorScheme.secondaryContainer,
+                                    textColor: theme.colorScheme.onSecondaryContainer,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '${journey.completedSessionCount} completed · ${journey.pendingSessionCount} pending',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(growable: false),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -324,7 +395,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     final progress = journey.totalSessionCount == 0 ? 0.0 : (journey.completedSessionCount / journey.totalSessionCount).clamp(0.0, 1.0);
 
     return _Band(
-      title: _assignedJourneys.isNotEmpty ? 'Selected playlist' : 'Assigned pathway',
+      title: _assignedJourneys.isNotEmpty
+          ? 'Selected pathway and playlist'
+          : 'Assigned pathway',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -591,7 +664,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
         _buildHeader(theme),
         const SizedBox(height: 16),
         if (_assignedJourneys.isNotEmpty) ...[
-          _buildAssignedPlaylistsBand(theme),
+          _buildAssignedPathwaysBand(theme),
           const SizedBox(height: 16),
         ],
         _buildPathwayBand(theme),

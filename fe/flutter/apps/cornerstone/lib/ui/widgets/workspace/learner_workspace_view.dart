@@ -42,9 +42,14 @@ class _LearnerWorkspaceView extends StatelessWidget {
     final assignedJourneys = learnerWorkspace.assignedJourneys.toList(
       growable: false,
     );
-    final primaryAssignedJourney =
-        assignedJourneys.isNotEmpty ? assignedJourneys.first : null;
-    final journey = primaryAssignedJourney?.journey ?? learnerWorkspace.journey;
+    final assignedPathways = learnerWorkspace.assignedPathways.toList(
+      growable: false,
+    );
+    final assignedPathwayCount = assignedPathways.length;
+    final singleAssignedJourney =
+      assignedJourneys.length == 1 ? assignedJourneys.first : null;
+    final hasMultipleAssignedJourneys = assignedJourneys.length > 1;
+    final journey = singleAssignedJourney?.journey ?? learnerWorkspace.journey;
     final learnerSurface = learnerWorkspace.workspace;
     final isSupportView = learnerWorkspace.workspaceView == 'owner_support';
     final continueBlock = learnerSurface.continueBlock;
@@ -85,7 +90,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
     }
 
     final orderedSessions = orderSessions(
-      primaryAssignedJourney?.sessions ?? learnerWorkspace.sessions,
+      singleAssignedJourney?.sessions ?? learnerWorkspace.sessions,
     );
     final nextSession =
         continueBlock?.session ??
@@ -229,7 +234,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
       );
     }
 
-    Widget buildAssignedJourneyCard(LearnerAssignedJourney assignedJourney) {
+    Widget buildAssignedJourneyCard(
+      LearnerAssignedJourney assignedJourney, {
+      bool includePathwayContext = true,
+    }) {
       final assignedJourneyInfo = assignedJourney.journey;
       final orderedJourneySessions = orderSessions(assignedJourney.sessions);
       final currentJourneySession = currentSessionForJourney(
@@ -255,20 +263,22 @@ class _LearnerWorkspaceView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              assignedJourneyInfo.pathwayTitle ?? assignedJourneyInfo.playlistTitle,
-              style: theme.textTheme.titleLarge,
-            ),
-            if ((assignedJourneyInfo.pathwayDescription ?? '').isNotEmpty) ...[
-              const SizedBox(height: 6),
+            if (includePathwayContext) ...[
               Text(
-                assignedJourneyInfo.pathwayDescription!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                assignedJourneyInfo.pathwayTitle ?? assignedJourneyInfo.playlistTitle,
+                style: theme.textTheme.titleLarge,
               ),
+              if ((assignedJourneyInfo.pathwayDescription ?? '').isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  assignedJourneyInfo.pathwayDescription!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
             ],
-            const SizedBox(height: 12),
             Text(assignedJourneyInfo.playlistTitle, style: theme.textTheme.headlineSmall),
             const SizedBox(height: 6),
             Text(
@@ -369,16 +379,85 @@ class _LearnerWorkspaceView extends StatelessWidget {
       );
     }
 
+    Widget buildAssignedPathwayCard(LearnerAssignedPathway assignedPathway) {
+      return _SurfaceCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(assignedPathway.pathwayTitle, style: theme.textTheme.headlineSmall),
+            if (assignedPathway.pathwayDescription.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                assignedPathway.pathwayDescription,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _PillBadge(
+                  text: '${assignedPathway.playlistCount} playlist${assignedPathway.playlistCount == 1 ? '' : 's'}',
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  textColor: theme.colorScheme.primary,
+                ),
+                _PillBadge(
+                  text: '${assignedPathway.totalSessionCount} sessions',
+                  color: theme.colorScheme.secondaryContainer,
+                  textColor: theme.colorScheme.onSecondaryContainer,
+                ),
+                _PillBadge(
+                  text: '${assignedPathway.pendingSessionCount} pending',
+                  color: theme.colorScheme.tertiaryContainer,
+                  textColor: theme.colorScheme.onTertiaryContainer,
+                ),
+              ],
+            ),
+            if (viewerCanReadLibrary && assignedPathway.pathwayRoutePath != null) ...[
+              const SizedBox(height: 14),
+              TextButton(
+                onPressed: () => onOpenLibraryRoute(assignedPathway.pathwayRoutePath!),
+                child: const Text('Open pathway brief'),
+              ),
+            ],
+            const SizedBox(height: 18),
+            Text('Assigned playlists', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Each playlist below keeps its own standing and full session path inside this pathway.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            ...assignedPathway.assignedPlaylists.expand(
+              (assignedJourney) => [
+                const SizedBox(height: 18),
+                buildAssignedJourneyCard(
+                  assignedJourney,
+                  includePathwayContext: false,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
       children: [
         _PageHeroCard(
           eyebrow: isSupportView ? 'Learner preview' : 'Learner home',
           title: isSupportView ? 'Learner workspace for support' : 'My learning workspace',
-          description: journey == null
-              ? 'This is your learner home: start now, keep practising, and track progress in one place.'
-              : assignedJourneys.length > 1
-              ? 'You have ${assignedJourneys.length} assigned playlists. Start in Now, then open each playlist below to see where you stand in that session path.'
+          description: hasMultipleAssignedJourneys
+            ? assignedPathwayCount > 1
+              ? 'You have ${assignedJourneys.length} assigned playlists across $assignedPathwayCount pathways. Start in Now, then open each playlist below to see its own current session and full session path.'
+              : 'You have ${assignedJourneys.length} assigned playlists in one pathway. Start in Now, then open each playlist below to see its own current session and full session path.'
+            : journey == null
+            ? 'This is your learner home: start now, keep practising, and track progress in one place.'
               : learnerSurface.attentionLabel.isNotEmpty
               ? learnerSurface.attentionLabel
               : currentStanding == null
@@ -397,11 +476,18 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 value: '${assignedJourneys.length}',
                 icon: Icons.view_carousel_rounded,
               ),
-            _StatChip(
-              label: 'Standing',
-              value: currentStanding == null ? '--' : 'S$currentStanding/${journey?.totalSessionCount ?? learnerWorkspace.sessions.length}',
-              icon: Icons.place_rounded,
-            ),
+            if (assignedPathwayCount > 0)
+              _StatChip(
+                label: 'Pathways',
+                value: '$assignedPathwayCount',
+                icon: Icons.route_rounded,
+              ),
+            if (!hasMultipleAssignedJourneys)
+              _StatChip(
+                label: 'Standing',
+                value: currentStanding == null ? '--' : 'S$currentStanding/${journey?.totalSessionCount ?? learnerWorkspace.sessions.length}',
+                icon: Icons.place_rounded,
+              ),
             _StatChip(label: 'Completed', value: '${progressSnapshot.completedSessionCount}', icon: Icons.task_alt_rounded),
             _StatChip(label: 'Ready now', value: '${progressSnapshot.pendingSessionCount}', icon: Icons.rocket_launch_rounded),
             _StatChip(label: 'Review', value: '${progressSnapshot.reviewItemCount}', icon: Icons.pending_actions_rounded),
@@ -440,7 +526,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
             ],
           ),
         ),
-        if (assignedJourneys.isNotEmpty) ...[
+        if (assignedPathways.isNotEmpty) ...[
           const SizedBox(height: 20),
           _SurfaceCard(
             child: Column(
@@ -449,7 +535,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 Text('Assigned playlists', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 6),
                 Text(
-                  'Each playlist shows its own current session and full session path.',
+                  assignedPathwayCount > 1
+                      ? 'Your work is grouped by pathway first, then by playlist, so each session path stays separate.'
+                      : 'Your assigned work is grouped by pathway, then by playlist, so the session path stays clear.',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -457,10 +545,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
               ],
             ),
           ),
-          ...assignedJourneys.expand(
-            (assignedJourney) => [
+          ...assignedPathways.expand(
+            (assignedPathway) => [
               const SizedBox(height: 20),
-              buildAssignedJourneyCard(assignedJourney),
+              buildAssignedPathwayCard(assignedPathway),
             ],
           ),
         ] else if (journey != null) ...[

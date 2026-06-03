@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -19,7 +20,8 @@ use crate::domain::{
     AssignmentRow, AssignmentSummary, BootstrapApplyResponse, CompleteActivityRequest,
     CompleteActivityResponse,
     DashboardResponse, EvidenceRow, EvidenceSummary, TeamMemberRow, TeamMemberSummary,
-    LearnerDashboard, LearnerDetailResponse, LearnerJourneySummary, LearnerRow,
+    LearnerAssignedPathwaySummary, LearnerDashboard, LearnerDetailResponse,
+    LearnerJourneySummary, LearnerRow,
     LearnerContinueBlock, LearnerProgressSnapshot, LearnerRecentWinSummary,
     LearnerSummary, LearnerWorkspaceSummary, LibraryDocumentPayload,
     LibraryDocumentSummary,
@@ -798,9 +800,13 @@ pub async fn fetch_learner_detail(
     .await?;
     let progress = fetch_progress(&state.pool, learner_id).await?;
     let review_items = fetch_review_items(&state.pool, learner_id).await?;
-    let journey = active_assignment
-        .as_ref()
-        .map(|assignment| build_learner_journey(&library, &documents, assignment, &sessions));
+    let journey = (assignments.len() == 1)
+        .then(|| {
+            active_assignment.as_ref().map(|assignment| {
+                build_learner_journey(&library, &documents, assignment, &sessions)
+            })
+        })
+        .flatten();
     let assigned_journeys = build_assigned_journeys(
         &state.pool,
         &library,
@@ -809,6 +815,7 @@ pub async fn fetch_learner_detail(
         &assignments,
     )
     .await?;
+    let assigned_pathways = build_assigned_pathways(&assigned_journeys);
     let workspace = build_learner_workspace(
         &library,
         active_assignment.as_ref(),
@@ -817,6 +824,10 @@ pub async fn fetch_learner_detail(
         &progress,
         &review_items,
         &assigned_journeys,
+    );
+    let response_sessions = response_sessions_for_assigned_journeys(
+        &assigned_journeys,
+        &sessions,
     );
 
     Ok(LearnerDetailResponse {
@@ -830,7 +841,8 @@ pub async fn fetch_learner_detail(
         active_assignment,
         journey,
         assigned_journeys,
-        sessions,
+        assigned_pathways,
+        sessions: response_sessions,
         progress,
         review_items,
         workspace,
@@ -869,6 +881,15 @@ pub async fn fetch_learner_workspace(
             .map(learner_safe_assigned_journey)
             .collect()
     };
+    let assigned_pathways = if support_workspace {
+        detail.assigned_pathways
+    } else {
+        detail
+            .assigned_pathways
+            .iter()
+            .map(learner_safe_assigned_pathway)
+            .collect()
+    };
     Ok(crate::domain::LearnerWorkspaceResponse {
         status: "ok".to_string(),
         workspace_view: if support_workspace {
@@ -882,6 +903,7 @@ pub async fn fetch_learner_workspace(
         active_assignment: detail.active_assignment,
         journey: detail.journey,
         assigned_journeys,
+        assigned_pathways,
         sessions,
         progress: detail.progress,
         review_items: detail.review_items,
@@ -1719,9 +1741,7 @@ fn build_learner_workspace(
             .collect::<Vec<_>>()
     };
 
-    let continue_block = assigned_journeys
-        .iter()
-        .find_map(|journey| journey.continue_block.clone())
+    let continue_block = continue_block_for_assigned_journeys(assigned_journeys)
         .or_else(|| continue_block_for_sessions(sessions));
     let continue_session = continue_block.as_ref().map(|block| &block.session);
 
@@ -1972,6 +1992,48 @@ async fn build_assigned_journeys(
         });
     }
     Ok(journeys)
+}
+
+fn build_assigned_pathways(
+    assigned_journeys: &[crate::domain::LearnerAssignedJourneySummary],
+) -> Vec<LearnerAssignedPathwaySummary> {
+    let mut pathways: Vec<LearnerAssignedPathwaySummary> = Vec::new();
+
+    for assigned_journey in assigned_journeys {
+        let journey = &assigned_journey.journey;
+        let pathway_id = journey.pathway_id.clone();
+        let pathway_title = journey
+            .pathway_title
+            .clone()
+            .unwrap_or_else(|| journey.playlist_title.clone());
+        let pathway_description = journey.pathway_description.clone().unwrap_or_default();
+        let pathway_route_path = journey.pathway_route_path.clone();
+
+        if let Some(existing) = pathways.iter_mut().find(|pathway| {
+            pathway.pathway_id == pathway_id && pathway.pathway_title == pathway_title
+        }) {
+            existing.playlist_count += 1;
+            existing.total_session_count += journey.total_session_count;
+            existing.completed_session_count += journey.completed_session_count;
+            existing.pending_session_count += journey.pending_session_count;
+            existing.assigned_playlists.push(assigned_journey.clone());
+            continue;
+        }
+
+        pathways.push(LearnerAssignedPathwaySummary {
+            pathway_id,
+            pathway_title,
+            pathway_description,
+            pathway_route_path,
+            playlist_count: 1,
+            total_session_count: journey.total_session_count,
+            completed_session_count: journey.completed_session_count,
+            pending_session_count: journey.pending_session_count,
+            assigned_playlists: vec![assigned_journey.clone()],
+        });
+    }
+
+    pathways
 }
 
 async fn fetch_assignments_for_learner(
@@ -2697,6 +2759,26 @@ fn learner_safe_assigned_journey(
     }
 }
 
+fn learner_safe_assigned_pathway(
+    assigned_pathway: &crate::domain::LearnerAssignedPathwaySummary,
+) -> crate::domain::LearnerAssignedPathwaySummary {
+    crate::domain::LearnerAssignedPathwaySummary {
+        pathway_id: assigned_pathway.pathway_id.clone(),
+        pathway_title: assigned_pathway.pathway_title.clone(),
+        pathway_description: assigned_pathway.pathway_description.clone(),
+        pathway_route_path: assigned_pathway.pathway_route_path.clone(),
+        playlist_count: assigned_pathway.playlist_count,
+        total_session_count: assigned_pathway.total_session_count,
+        completed_session_count: assigned_pathway.completed_session_count,
+        pending_session_count: assigned_pathway.pending_session_count,
+        assigned_playlists: assigned_pathway
+            .assigned_playlists
+            .iter()
+            .map(learner_safe_assigned_journey)
+            .collect(),
+    }
+}
+
 fn learner_safe_session_detail(session: &SessionDetail) -> SessionDetail {
     let materials = session
         .materials
@@ -2745,20 +2827,67 @@ fn continue_block_for_sessions(sessions: &[SessionDetail]) -> Option<LearnerCont
         })
 }
 
+fn continue_block_for_assigned_journeys(
+    assigned_journeys: &[crate::domain::LearnerAssignedJourneySummary],
+) -> Option<LearnerContinueBlock> {
+    assigned_journeys
+        .iter()
+        .filter_map(|journey| journey.continue_block.clone())
+        .min_by(|left, right| session_workspace_order(&left.session, &right.session))
+}
+
+fn response_sessions_for_assigned_journeys(
+    assigned_journeys: &[crate::domain::LearnerAssignedJourneySummary],
+    fallback_sessions: &[SessionDetail],
+) -> Vec<SessionDetail> {
+    if assigned_journeys.is_empty() {
+        return fallback_sessions.to_vec();
+    }
+
+    let mut sessions = assigned_journeys
+        .iter()
+        .flat_map(|journey| journey.sessions.iter().cloned())
+        .collect::<Vec<_>>();
+    sessions.sort_by(session_workspace_order);
+    sessions
+}
+
+fn session_workspace_order(left: &SessionDetail, right: &SessionDetail) -> Ordering {
+    left.scheduled_date
+        .cmp(&right.scheduled_date)
+        .then_with(|| left.day_offset.cmp(&right.day_offset))
+        .then_with(|| left.title.cmp(&right.title))
+        .then_with(|| left.session_id.cmp(&right.session_id))
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
 
     use crate::domain::{
-        EvidenceSummary, LearnerContinueBlock, LearnerProgressSnapshot,
+        AssignmentSummary, EvidenceSummary, LearnerAssignedJourneySummary,
+        LearnerContinueBlock, LearnerJourneySummary, LearnerProgressSnapshot,
         LearnerRecentWinSummary, LearnerWorkspaceSummary, SessionDetail,
         SessionMaterialKindGroupSummary, SessionMaterialRuntimeSummary,
         SessionMaterialSummary,
     };
 
-    use super::learner_safe_workspace_summary;
+    use super::{
+        build_assigned_pathways, continue_block_for_assigned_journeys,
+        learner_safe_workspace_summary, response_sessions_for_assigned_journeys,
+    };
 
     fn sample_session() -> SessionDetail {
+        sample_session_on(2026, 1, 1, "session-1", "Session 1")
+    }
+
+    fn sample_session_on(
+        year: i32,
+        month: u32,
+        day: u32,
+        session_id: &str,
+        title: &str,
+    ) -> SessionDetail {
         let learner_material = SessionMaterialSummary {
             session_material_id: "sm-1".to_string(),
             title: "Learner note".to_string(),
@@ -2791,9 +2920,10 @@ mod tests {
             }),
         };
         SessionDetail {
-            session_id: "session-1".to_string(),
-            title: "Session 1".to_string(),
-            scheduled_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
+            session_id: session_id.to_string(),
+            title: title.to_string(),
+            scheduled_date: NaiveDate::from_ymd_opt(year, month, day)
+                .expect("valid date"),
             status: "scheduled".to_string(),
             day_offset: 0,
             sequence_number: Some(1),
@@ -2876,5 +3006,129 @@ mod tests {
             .iter()
             .all(|material| material.audience == "learner"));
         assert_eq!(safe.recent_wins.len(), 1);
+    }
+
+    #[test]
+    fn assigned_journey_continue_block_uses_earliest_session_across_playlists() {
+        let later_session = sample_session_on(2026, 1, 3, "session-later", "Later");
+        let earlier_session = sample_session_on(2026, 1, 2, "session-earlier", "Earlier");
+        let journeys = vec![
+            sample_assigned_journey("assignment-later", later_session),
+            sample_assigned_journey("assignment-earlier", earlier_session.clone()),
+        ];
+
+        let continue_block = continue_block_for_assigned_journeys(&journeys)
+            .expect("continue block should exist");
+
+        assert_eq!(continue_block.session.session_id, earlier_session.session_id);
+    }
+
+    #[test]
+    fn response_sessions_flattens_all_assigned_sessions_in_schedule_order() {
+        let later_session = sample_session_on(2026, 1, 4, "session-later", "Later");
+        let earlier_session = sample_session_on(2026, 1, 2, "session-earlier", "Earlier");
+        let sessions = response_sessions_for_assigned_journeys(
+            &[
+                sample_assigned_journey("assignment-later", later_session),
+                sample_assigned_journey("assignment-earlier", earlier_session),
+            ],
+            &[],
+        );
+
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].session_id, "session-earlier");
+        assert_eq!(sessions[1].session_id, "session-later");
+    }
+
+    #[test]
+    fn assigned_pathways_group_playlists_under_their_pathway() {
+        let grouped = build_assigned_pathways(&[
+            sample_assigned_journey_in_pathway(
+                "assignment-1",
+                "pathway-addition",
+                "Addition Foundations",
+                sample_session_on(2026, 1, 2, "session-1", "Session 1"),
+            ),
+            sample_assigned_journey_in_pathway(
+                "assignment-2",
+                "pathway-addition",
+                "Addition Foundations",
+                sample_session_on(2026, 1, 3, "session-2", "Session 2"),
+            ),
+            sample_assigned_journey_in_pathway(
+                "assignment-3",
+                "pathway-subtraction",
+                "Subtraction Foundations",
+                sample_session_on(2026, 1, 4, "session-3", "Session 3"),
+            ),
+        ]);
+
+        assert_eq!(grouped.len(), 2);
+        assert_eq!(grouped[0].pathway_title, "Addition Foundations");
+        assert_eq!(grouped[0].playlist_count, 2);
+        assert_eq!(grouped[0].assigned_playlists.len(), 2);
+        assert_eq!(grouped[1].pathway_title, "Subtraction Foundations");
+        assert_eq!(grouped[1].playlist_count, 1);
+    }
+
+    fn sample_assigned_journey(
+        assignment_id: &str,
+        session: SessionDetail,
+    ) -> LearnerAssignedJourneySummary {
+        sample_assigned_journey_in_pathway(
+            assignment_id,
+            "pathway-1",
+            "Pathway 1",
+            session,
+        )
+    }
+
+    fn sample_assigned_journey_in_pathway(
+        assignment_id: &str,
+        pathway_id: &str,
+        pathway_title: &str,
+        session: SessionDetail,
+    ) -> LearnerAssignedJourneySummary {
+        LearnerAssignedJourneySummary {
+            assignment: AssignmentSummary {
+                assignment_id: assignment_id.to_string(),
+                playlist_id: format!("playlist-{assignment_id}"),
+                title: format!("Playlist {assignment_id}"),
+                start_date: NaiveDate::from_ymd_opt(2026, 1, 1)
+                    .expect("valid date"),
+                end_date: NaiveDate::from_ymd_opt(2026, 1, 4).expect("valid date"),
+                status: "active".to_string(),
+                total_sessions: 1,
+                completed_sessions: 0,
+                completion_percent: 0,
+            },
+            journey: LearnerJourneySummary {
+                pathway_id: Some(pathway_id.to_string()),
+                pathway_title: Some(pathway_title.to_string()),
+                pathway_description: Some("Description".to_string()),
+                pathway_route_path: None,
+                playlist_id: format!("playlist-{assignment_id}"),
+                playlist_title: format!("Playlist {assignment_id}"),
+                playlist_description: "Description".to_string(),
+                playlist_route_path: None,
+                recommended_age: 7,
+                recommended_level: "Level 1".to_string(),
+                duration_days: 4,
+                total_session_count: 1,
+                completed_session_count: 0,
+                pending_session_count: 1,
+                total_material_count: 1,
+                live_material_count: 0,
+                next_session_id: Some(session.session_id.clone()),
+            },
+            current_session_id: Some(session.session_id.clone()),
+            continue_block: Some(LearnerContinueBlock {
+                title: "Continue".to_string(),
+                description: "desc".to_string(),
+                action_label: "Open practice".to_string(),
+                session: session.clone(),
+            }),
+            sessions: vec![session],
+        }
     }
 }

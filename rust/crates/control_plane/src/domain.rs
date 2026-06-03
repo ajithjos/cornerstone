@@ -239,6 +239,7 @@ pub struct LearnerDetailResponse {
     pub active_assignment: Option<AssignmentSummary>,
     pub journey: Option<LearnerJourneySummary>,
     pub assigned_journeys: Vec<LearnerAssignedJourneySummary>,
+    pub assigned_pathways: Vec<LearnerAssignedPathwaySummary>,
     pub sessions: Vec<SessionDetail>,
     pub progress: Vec<SkillProgressSummary>,
     pub review_items: Vec<ReviewItemSummary>,
@@ -255,6 +256,7 @@ pub struct LearnerWorkspaceResponse {
     pub active_assignment: Option<AssignmentSummary>,
     pub journey: Option<LearnerJourneySummary>,
     pub assigned_journeys: Vec<LearnerAssignedJourneySummary>,
+    pub assigned_pathways: Vec<LearnerAssignedPathwaySummary>,
     pub sessions: Vec<SessionDetail>,
     pub progress: Vec<SkillProgressSummary>,
     pub review_items: Vec<ReviewItemSummary>,
@@ -268,6 +270,19 @@ pub struct LearnerAssignedJourneySummary {
     pub current_session_id: Option<String>,
     pub continue_block: Option<LearnerContinueBlock>,
     pub sessions: Vec<SessionDetail>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnerAssignedPathwaySummary {
+    pub pathway_id: Option<String>,
+    pub pathway_title: String,
+    pub pathway_description: String,
+    pub pathway_route_path: Option<String>,
+    pub playlist_count: usize,
+    pub total_session_count: usize,
+    pub completed_session_count: usize,
+    pub pending_session_count: usize,
+    pub assigned_playlists: Vec<LearnerAssignedJourneySummary>,
 }
 
 #[derive(Debug, Clone, Serialize)]
