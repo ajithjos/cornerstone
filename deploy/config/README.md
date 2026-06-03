@@ -7,6 +7,6 @@ Tracked deployment config is split into:
 
 Current runtime defaults:
 
-- `identity_bootstrap.yaml`: team, users, and memberships loaded into the control plane at bootstrap time
+- `identity_bootstrap.yaml`: team, users, owner auth fields, and memberships loaded into the control plane at bootstrap time
 
 Curriculum catalogs and library content stay under `content/`. Identity bootstrap is deployment config, not curriculum content.

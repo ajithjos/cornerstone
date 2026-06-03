@@ -11,14 +11,6 @@ class CornerstoneApiClient {
 
   final http.Client _client;
   final String baseUrl;
-  String? _viewerUsername;
-
-  void setViewerUsername(String? username) {
-    final normalized = username?.trim();
-    _viewerUsername = normalized == null || normalized.isEmpty
-        ? null
-        : normalized;
-  }
 
   static String _resolveBaseUrl() {
     const configuredBaseUrl = String.fromEnvironment(
@@ -38,50 +30,54 @@ class CornerstoneApiClient {
   }
 
   Future<DashboardPayload> fetchDashboard() async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/api/v1/dashboard'),
-      headers: _viewerHeaders(),
-    );
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/dashboard'));
     return DashboardPayload.fromJson(_decode(response));
   }
 
-  Future<ViewerSessionPayload> fetchViewerSession({String? username}) async {
-    final trimmedUsername = username?.trim();
-    final uri = Uri.parse('$baseUrl/api/v1/session').replace(
-      queryParameters: trimmedUsername == null || trimmedUsername.isEmpty
-          ? null
-          : {'username': trimmedUsername},
-    );
-    final response = await _client.get(uri);
+  Future<ViewerSessionPayload> fetchViewerSession() async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/session'));
     return ViewerSessionPayload.fromJson(_decode(response));
   }
 
-  Future<ViewerSessionPayload> login(String username) async {
+  Future<ViewerSessionPayload> loginWithUsername(String username) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/api/v1/session'),
+      Uri.parse('$baseUrl/api/v1/auth/dev/signin'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({'username': username}),
     );
     return ViewerSessionPayload.fromJson(_decode(response));
   }
 
+  Uri googleStartUri({String nextPath = '/'}) {
+    return Uri.parse(
+      '$baseUrl/api/v1/auth/google/start',
+    ).replace(queryParameters: {'next': nextPath});
+  }
+
   Future<void> logout() async {
-    final response = await _client.delete(Uri.parse('$baseUrl/api/v1/session'));
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/signout'),
+    );
     _decode(response);
   }
 
-  Future<LibraryPayload> fetchLibrary() async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/api/v1/library'),
-      headers: _viewerHeaders(),
+  Future<ViewerSessionPayload> switchActiveUser(String userId) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/session/active-user'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'user_id': userId}),
     );
+    return ViewerSessionPayload.fromJson(_decode(response));
+  }
+
+  Future<LibraryPayload> fetchLibrary() async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/library'));
     return LibraryPayload.fromJson(_decode(response));
   }
 
   Future<LibraryWorkspacePayload> fetchLibraryWorkspace() async {
     final response = await _client.get(
       Uri.parse('$baseUrl/api/v1/library/workspace'),
-      headers: _viewerHeaders(),
     );
     return LibraryWorkspacePayload.fromJson(_decode(response));
   }
@@ -89,7 +85,6 @@ class CornerstoneApiClient {
   Future<LibraryDocumentsPayload> fetchLibraryDocuments() async {
     final response = await _client.get(
       Uri.parse('$baseUrl/api/v1/library/documents'),
-      headers: _viewerHeaders(),
     );
     return LibraryDocumentsPayload.fromJson(_decode(response));
   }
@@ -99,7 +94,6 @@ class CornerstoneApiClient {
       Uri.parse(
         '$baseUrl/api/v1/library/document',
       ).replace(queryParameters: {'route_path': routePath}),
-      headers: _viewerHeaders(),
     );
     return LibraryDocumentPayload.fromJson(_decode(response)).document;
   }
@@ -107,7 +101,6 @@ class CornerstoneApiClient {
   Future<LearnerDetailPayload> fetchLearnerDetail(String learnerId) async {
     final response = await _client.get(
       Uri.parse('$baseUrl/api/v1/learners/$learnerId'),
-      headers: _viewerHeaders(),
     );
     return LearnerDetailPayload.fromJson(_decode(response));
   }
@@ -117,7 +110,6 @@ class CornerstoneApiClient {
   ) async {
     final response = await _client.get(
       Uri.parse('$baseUrl/api/v1/learners/$learnerId/workspace'),
-      headers: _viewerHeaders(),
     );
     return LearnerWorkspacePayload.fromJson(_decode(response));
   }
@@ -129,7 +121,7 @@ class CornerstoneApiClient {
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/assignments'),
-      headers: _viewerHeaders(contentTypeJson: true),
+      headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
         'learner_id': learnerId,
         'playlist_id': playlistId,
@@ -148,7 +140,7 @@ class CornerstoneApiClient {
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/sessions/$sessionId/record'),
-      headers: _viewerHeaders(contentTypeJson: true),
+      headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
         'score': score,
         'max_score': maxScore,
@@ -167,7 +159,6 @@ class CornerstoneApiClient {
       Uri.parse(
         '$baseUrl/api/v1/sessions/$sessionId/materials/$sessionMaterialId/start',
       ),
-      headers: _viewerHeaders(),
     );
     return ActivityStartPayload.fromJson(_decode(response)).activity;
   }
@@ -183,7 +174,7 @@ class CornerstoneApiClient {
       Uri.parse(
         '$baseUrl/api/v1/activity-instances/$activityInstanceId/complete',
       ),
-      headers: _viewerHeaders(contentTypeJson: true),
+      headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
         'responses': List.generate(
           items.length,
@@ -194,17 +185,6 @@ class CornerstoneApiClient {
       }),
     );
     return CompleteActivityResponse.fromJson(_decode(response));
-  }
-
-  Map<String, String> _viewerHeaders({bool contentTypeJson = false}) {
-    final headers = <String, String>{};
-    if (contentTypeJson) {
-      headers['Content-Type'] = 'application/json';
-    }
-    if (_viewerUsername != null) {
-      headers['x-cornerstone-viewer'] = _viewerUsername!;
-    }
-    return headers;
   }
 
   Map<String, dynamic> _decode(http.Response response) {

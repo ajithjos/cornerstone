@@ -32,9 +32,6 @@ class CornerstoneHomePage extends StatefulWidget {
 }
 
 class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
-  static const String _viewerUsernamePreferenceKey =
-      'cornerstone.viewer.username';
-
   final CornerstoneApiClient _apiClient = CornerstoneApiClient();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _scoreController = TextEditingController(
@@ -86,11 +83,15 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   }
 
   ViewerUser? get _currentViewer => _viewerSession?.currentUser;
+  ViewerUser? get _activeViewer => _viewerSession?.activeUser ?? _currentViewer;
   bool get _viewerCanManage => _currentViewer?.canManageTeam ?? false;
   bool get _viewerCanReadLibrary => _currentViewer?.canReadLibrary ?? false;
   bool get _viewerCanOpenDeveloperDocs =>
       _currentViewer?.canOpenDeveloperDocs ?? false;
   String? get _developerDocsUrl => _viewerSession?.developerDocsUrl;
+  bool get _devUsernameSigninEnabled =>
+      _viewerSession?.auth.devUsernameSignin ?? false;
+  bool get _googleSigninEnabled => _viewerSession?.auth.googleSignin ?? false;
 
   List<_ShellDestination> get _availableDestinations {
     final viewer = _currentViewer;
@@ -136,32 +137,13 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     );
   }
 
-  Future<String?> _loadStoredViewerUsername() async {
-    final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(_viewerUsernamePreferenceKey)?.trim();
-    if (username == null || username.isEmpty) {
-      return null;
-    }
-    return username;
-  }
-
-  Future<void> _persistViewerUsername(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_viewerUsernamePreferenceKey, username.trim());
-  }
-
-  Future<void> _clearStoredViewerUsername() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_viewerUsernamePreferenceKey);
-  }
-
   String? _nextLearnerIdForViewer(
     DashboardPayload dashboard, {
     bool preserveSelection = true,
   }) {
-    final viewer = _currentViewer;
-    if (viewer != null && viewer.isLearner && viewer.learnerId != null) {
-      final learnerId = viewer.learnerId!;
+    final activeViewer = _activeViewer;
+    if (activeViewer != null && activeViewer.learnerId != null) {
+      final learnerId = activeViewer.learnerId!;
       return dashboard.learners.any((learner) => learner.learnerId == learnerId)
           ? learnerId
           : null;
@@ -177,32 +159,39 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         : null;
   }
 
+  String? _authErrorMessageFromLocation() {
+    final code = Uri.base.queryParameters['auth_error']?.trim();
+    if (code == null || code.isEmpty) {
+      return null;
+    }
+    return switch (code) {
+      'access_denied' => 'Google sign-in was cancelled or denied.',
+      'missing_state' => 'Google sign-in could not be completed.',
+      'missing_code' => 'Google sign-in did not return an authorization code.',
+      _ => 'Google sign-in failed: $code',
+    };
+  }
+
   Future<void> _restoreViewerSession() async {
     setState(() {
       _sessionLoading = true;
       _sessionErrorMessage = null;
     });
     try {
-      final storedUsername = await _loadStoredViewerUsername();
-      final viewerSession = await _apiClient.fetchViewerSession(
-        username: storedUsername,
-      );
+      final viewerSession = await _apiClient.fetchViewerSession();
       if (!mounted) return;
-      final suggestedUsername =
-          viewerSession.currentUser?.username ?? storedUsername ?? '';
+      final suggestedUsername = viewerSession.currentUser?.username ?? '';
       _setUsernameInput(suggestedUsername);
-
-      if (viewerSession.currentUser == null && storedUsername != null) {
-        await _clearStoredViewerUsername();
-      }
-
-      _apiClient.setViewerUsername(viewerSession.currentUser?.username);
+      final authErrorMessage = viewerSession.currentUser == null
+          ? _authErrorMessageFromLocation()
+          : null;
 
       if (viewerSession.currentUser == null) {
         setState(() {
           _viewerSession = viewerSession;
           _sessionLoading = false;
           _authBusy = false;
+          _sessionErrorMessage = authErrorMessage;
           _dashboard = null;
           _libraryWorkspace = null;
           _libraryDocuments = null;
@@ -219,8 +208,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         return;
       }
 
-      await _persistViewerUsername(viewerSession.currentUser!.username);
-      _apiClient.setViewerUsername(viewerSession.currentUser!.username);
+      final defaultViewer =
+          viewerSession.activeUser ?? viewerSession.currentUser!;
       setState(() {
         _viewerSession = viewerSession;
         _sessionLoading = false;
@@ -234,9 +223,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         _learnerWorkspace = null;
         _selectedLearnerId = null;
         _selectedLibraryRoutePath = null;
-        _selectedDestination = _defaultDestinationForViewer(
-          viewerSession.currentUser!,
-        );
+        _selectedDestination = _defaultDestinationForViewer(defaultViewer);
         _loading = true;
         _busy = false;
         _libraryDocumentBusy = false;
@@ -269,7 +256,9 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       _sessionErrorMessage = null;
     });
     try {
-      final viewerSession = await _apiClient.login(requestedUsername);
+      final viewerSession = await _apiClient.loginWithUsername(
+        requestedUsername,
+      );
       if (!mounted) return;
       final currentUser = viewerSession.currentUser;
       if (currentUser == null) {
@@ -281,8 +270,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       }
 
       _setUsernameInput(currentUser.username);
-      await _persistViewerUsername(currentUser.username);
-      _apiClient.setViewerUsername(currentUser.username);
+      final defaultViewer = viewerSession.activeUser ?? currentUser;
       setState(() {
         _viewerSession = viewerSession;
         _authBusy = false;
@@ -294,7 +282,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         _learnerWorkspace = null;
         _selectedLearnerId = null;
         _selectedLibraryRoutePath = null;
-        _selectedDestination = _defaultDestinationForViewer(currentUser);
+        _selectedDestination = _defaultDestinationForViewer(defaultViewer);
         _loading = true;
         _busy = false;
         _libraryDocumentBusy = false;
@@ -310,13 +298,61 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     }
   }
 
+  Future<void> _loginWithGoogle() async {
+    setState(() {
+      _authBusy = true;
+      _sessionErrorMessage = null;
+    });
+    final launched = await launchUrl(
+      _apiClient.googleStartUri(),
+      webOnlyWindowName: '_self',
+    );
+    if (!launched && mounted) {
+      setState(() {
+        _authBusy = false;
+        _sessionErrorMessage = 'Unable to start Google sign-in.';
+      });
+    }
+  }
+
+  Future<void> _switchActiveUser(
+    String userId, {
+    String? preferredLearnerId,
+    _ShellDestination? destination,
+  }) async {
+    setState(() {
+      _busy = true;
+      _errorMessage = null;
+      _sessionErrorMessage = null;
+    });
+    try {
+      final viewerSession = await _apiClient.switchActiveUser(userId);
+      if (!mounted) return;
+      final activeUser = viewerSession.activeUser ?? viewerSession.currentUser;
+      setState(() {
+        _viewerSession = viewerSession;
+        _selectedLearnerId = preferredLearnerId ?? activeUser?.learnerId;
+        if (destination != null) {
+          _selectedDestination = destination;
+        }
+      });
+      await _loadAll(preserveSelection: false);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorMessage = error.toString();
+      });
+    }
+  }
+
   Future<void> _logoutViewer() async {
     setState(() {
       _authBusy = true;
       _sessionErrorMessage = null;
     });
     try {
-      await _clearStoredViewerUsername();
+      await _apiClient.logout();
       if (!mounted) return;
       await _restoreViewerSession();
     } catch (error) {
@@ -491,6 +527,17 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     if (viewer != null && viewer.isLearner && viewer.learnerId != learnerId) {
       return;
     }
+    final activeViewer = _activeViewer;
+    if (viewer != null &&
+        viewer.canManageTeam &&
+        activeViewer?.learnerId != learnerId) {
+      await _switchActiveUser(
+        learnerId,
+        preferredLearnerId: learnerId,
+        destination: _selectedDestination,
+      );
+      return;
+    }
     setState(() {
       _selectedLearnerId = learnerId;
       _busy = true;
@@ -653,6 +700,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       setState(() => _shellNavExpanded = !_shellNavExpanded);
 
   String _shellUsername() =>
+      _activeViewer?.displayName ??
       _currentViewer?.displayName ??
       _viewerSession?.team?.displayName ??
       'Cornerstone';
@@ -660,12 +708,16 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   String _viewerRoleLabel(ViewerUser? viewer) {
     if (viewer == null) return 'Signed out';
     if (viewer.canOpenDeveloperDocs) return 'Owner';
-    return viewer.canManageTeam ? 'Parent / Teacher' : 'Student';
+    return viewer.canManageTeam ? 'Owner' : 'Learner';
   }
 
   String _shellWorkspaceLabel() {
     final viewer = _currentViewer;
     if (viewer == null) return 'Signed out';
+    final activeViewer = _activeViewer;
+    if (activeViewer != null && activeViewer.userId != viewer.userId) {
+      return 'Viewing ${activeViewer.displayName}';
+    }
     return viewer.canManageTeam ? 'Team' : 'Learner';
   }
 

@@ -187,10 +187,19 @@ pub struct DashboardResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct ViewerSessionResponse {
     pub status: String,
+    pub authenticated: bool,
+    pub auth: AuthOptionsSummary,
     pub team: Option<TeamSummary>,
     pub current_user: Option<TeamMemberSummary>,
+    pub active_user: Option<TeamMemberSummary>,
     pub available_users: Vec<TeamMemberSummary>,
     pub developer_docs_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthOptionsSummary {
+    pub dev_username_signin: bool,
+    pub google_signin: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -564,8 +573,13 @@ pub struct ReviewRebuildRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct ViewerLoginRequest {
+pub struct DevSigninRequest {
     pub username: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SwitchActiveUserRequest {
+    pub user_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

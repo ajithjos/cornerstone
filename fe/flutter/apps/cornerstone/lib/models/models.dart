@@ -25,33 +25,61 @@ class DashboardPayload {
 class ViewerSessionPayload {
   ViewerSessionPayload({
     required this.status,
+    required this.authenticated,
+    required this.auth,
     required this.availableUsers,
     this.team,
     this.currentUser,
+    this.activeUser,
     this.developerDocsUrl,
   });
 
   factory ViewerSessionPayload.fromJson(Map<String, dynamic> json) {
     return ViewerSessionPayload(
       status: json['status'] as String,
+      authenticated: json['authenticated'] as bool? ?? false,
+      auth: AuthOptions.fromJson(
+        (json['auth'] as Map<String, dynamic>?) ?? const <String, dynamic>{},
+      ),
       team: json['team'] == null
           ? null
           : TeamInfo.fromJson(json['team'] as Map<String, dynamic>),
       currentUser: json['current_user'] == null
           ? null
           : ViewerUser.fromJson(json['current_user'] as Map<String, dynamic>),
+      activeUser: json['active_user'] == null
+          ? null
+          : ViewerUser.fromJson(json['active_user'] as Map<String, dynamic>),
       developerDocsUrl: json['developer_docs_url'] as String?,
-      availableUsers: (json['available_users'] as List<dynamic>)
-          .map((item) => ViewerUser.fromJson(item as Map<String, dynamic>))
-          .toList(),
+      availableUsers:
+          ((json['available_users'] as List<dynamic>?) ?? const <dynamic>[])
+              .map((item) => ViewerUser.fromJson(item as Map<String, dynamic>))
+              .toList(),
     );
   }
 
   final String status;
+  final bool authenticated;
+  final AuthOptions auth;
   final TeamInfo? team;
   final ViewerUser? currentUser;
+  final ViewerUser? activeUser;
   final String? developerDocsUrl;
   final List<ViewerUser> availableUsers;
+}
+
+class AuthOptions {
+  AuthOptions({required this.devUsernameSignin, required this.googleSignin});
+
+  factory AuthOptions.fromJson(Map<String, dynamic> json) {
+    return AuthOptions(
+      devUsernameSignin: json['dev_username_signin'] as bool? ?? false,
+      googleSignin: json['google_signin'] as bool? ?? false,
+    );
+  }
+
+  final bool devUsernameSignin;
+  final bool googleSignin;
 }
 
 class LibraryPayload {
@@ -771,22 +799,20 @@ class LearnerDetailPayload {
   });
 
   factory LearnerDetailPayload.fromJson(Map<String, dynamic> json) {
-    final assignedJourneys = ((json['assigned_journeys'] as List<dynamic>?) ??
-            const <dynamic>[])
-        .map(
-          (item) => LearnerAssignedJourney.fromJson(
-            item as Map<String, dynamic>,
-          ),
-        )
-        .toList();
-    var assignedPathways = ((json['assigned_pathways'] as List<dynamic>?) ??
-            const <dynamic>[])
-        .map(
-          (item) => LearnerAssignedPathway.fromJson(
-            item as Map<String, dynamic>,
-          ),
-        )
-        .toList();
+    final assignedJourneys =
+        ((json['assigned_journeys'] as List<dynamic>?) ?? const <dynamic>[])
+            .map(
+              (item) =>
+                  LearnerAssignedJourney.fromJson(item as Map<String, dynamic>),
+            )
+            .toList();
+    var assignedPathways =
+        ((json['assigned_pathways'] as List<dynamic>?) ?? const <dynamic>[])
+            .map(
+              (item) =>
+                  LearnerAssignedPathway.fromJson(item as Map<String, dynamic>),
+            )
+            .toList();
     if (assignedPathways.isEmpty && assignedJourneys.isNotEmpty) {
       assignedPathways = LearnerAssignedPathway.groupFromJourneys(
         assignedJourneys,
@@ -851,22 +877,20 @@ class LearnerWorkspacePayload {
   });
 
   factory LearnerWorkspacePayload.fromJson(Map<String, dynamic> json) {
-    final assignedJourneys = ((json['assigned_journeys'] as List<dynamic>?) ??
-            const <dynamic>[])
-        .map(
-          (item) => LearnerAssignedJourney.fromJson(
-            item as Map<String, dynamic>,
-          ),
-        )
-        .toList();
-    var assignedPathways = ((json['assigned_pathways'] as List<dynamic>?) ??
-            const <dynamic>[])
-        .map(
-          (item) => LearnerAssignedPathway.fromJson(
-            item as Map<String, dynamic>,
-          ),
-        )
-        .toList();
+    final assignedJourneys =
+        ((json['assigned_journeys'] as List<dynamic>?) ?? const <dynamic>[])
+            .map(
+              (item) =>
+                  LearnerAssignedJourney.fromJson(item as Map<String, dynamic>),
+            )
+            .toList();
+    var assignedPathways =
+        ((json['assigned_pathways'] as List<dynamic>?) ?? const <dynamic>[])
+            .map(
+              (item) =>
+                  LearnerAssignedPathway.fromJson(item as Map<String, dynamic>),
+            )
+            .toList();
     if (assignedPathways.isEmpty && assignedJourneys.isNotEmpty) {
       assignedPathways = LearnerAssignedPathway.groupFromJourneys(
         assignedJourneys,
@@ -1042,14 +1066,14 @@ class LearnerAssignedPathway {
           (json['completed_session_count'] as num?)?.toInt() ?? 0,
       pendingSessionCount:
           (json['pending_session_count'] as num?)?.toInt() ?? 0,
-      assignedPlaylists: ((json['assigned_playlists'] as List<dynamic>?) ??
-              const <dynamic>[])
-          .map(
-            (item) => LearnerAssignedJourney.fromJson(
-              item as Map<String, dynamic>,
-            ),
-          )
-          .toList(),
+      assignedPlaylists:
+          ((json['assigned_playlists'] as List<dynamic>?) ?? const <dynamic>[])
+              .map(
+                (item) => LearnerAssignedJourney.fromJson(
+                  item as Map<String, dynamic>,
+                ),
+              )
+              .toList(),
     );
   }
 
@@ -1065,36 +1089,39 @@ class LearnerAssignedPathway {
       if (!groupedJourneys.containsKey(key)) {
         orderedKeys.add(key);
       }
-      groupedJourneys.putIfAbsent(key, () => <LearnerAssignedJourney>[]).add(
-        assignedJourney,
-      );
+      groupedJourneys
+          .putIfAbsent(key, () => <LearnerAssignedJourney>[])
+          .add(assignedJourney);
       pathwayMeta[key] = assignedJourney.journey;
     }
 
-    return orderedKeys.map((key) {
-      final grouped = groupedJourneys[key] ?? const <LearnerAssignedJourney>[];
-      final meta = pathwayMeta[key]!;
-      return LearnerAssignedPathway(
-        pathwayId: meta.pathwayId,
-        pathwayTitle: meta.pathwayTitle ?? meta.playlistTitle,
-        pathwayDescription: meta.pathwayDescription ?? '',
-        pathwayRoutePath: meta.pathwayRoutePath,
-        playlistCount: grouped.length,
-        totalSessionCount: grouped.fold<int>(
-          0,
-          (count, item) => count + item.journey.totalSessionCount,
-        ),
-        completedSessionCount: grouped.fold<int>(
-          0,
-          (count, item) => count + item.journey.completedSessionCount,
-        ),
-        pendingSessionCount: grouped.fold<int>(
-          0,
-          (count, item) => count + item.journey.pendingSessionCount,
-        ),
-        assignedPlaylists: grouped,
-      );
-    }).toList(growable: false);
+    return orderedKeys
+        .map((key) {
+          final grouped =
+              groupedJourneys[key] ?? const <LearnerAssignedJourney>[];
+          final meta = pathwayMeta[key]!;
+          return LearnerAssignedPathway(
+            pathwayId: meta.pathwayId,
+            pathwayTitle: meta.pathwayTitle ?? meta.playlistTitle,
+            pathwayDescription: meta.pathwayDescription ?? '',
+            pathwayRoutePath: meta.pathwayRoutePath,
+            playlistCount: grouped.length,
+            totalSessionCount: grouped.fold<int>(
+              0,
+              (count, item) => count + item.journey.totalSessionCount,
+            ),
+            completedSessionCount: grouped.fold<int>(
+              0,
+              (count, item) => count + item.journey.completedSessionCount,
+            ),
+            pendingSessionCount: grouped.fold<int>(
+              0,
+              (count, item) => count + item.journey.pendingSessionCount,
+            ),
+            assignedPlaylists: grouped,
+          );
+        })
+        .toList(growable: false);
   }
 
   static String _groupKey(LearnerJourney journey) {

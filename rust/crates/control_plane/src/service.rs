@@ -3,10 +3,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use anyhow::{Context, anyhow, bail};
-use catalog::{LibraryBundle, LibraryDocument, LibraryValidationReport, PlaylistSession, load_bootstrap, load_library_content};
-use chrono::{Datelike, Duration, NaiveDate, Utc};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use catalog::{
+    LibraryBundle, LibraryDocument, LibraryValidationReport, PlaylistSession, load_bootstrap, load_library_content,
+};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use learning_activity_runtime::{self as runtime, GeneratedActivity, ScoredActivity};
+use reqwest::Url;
 use serde_json::{Value as JsonValue, json};
+use sha2::{Digest, Sha256};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, query, query_as, query_scalar};
 use tokio::fs;
@@ -15,25 +20,18 @@ use uuid::Uuid;
 
 use crate::config::AppConfig;
 use crate::domain::{
-    ActivityInstance, ActivityItem, ActivityScoringSummary, ActivityStartResponse,
-    ActivitySummary, AssignmentRequest, AssignmentResponse,
-    AssignmentRow, AssignmentSummary, BootstrapApplyResponse, CompleteActivityRequest,
-    CompleteActivityResponse,
-    DashboardResponse, EvidenceRow, EvidenceSummary, TeamMemberRow, TeamMemberSummary,
-    LearnerAssignedPathwaySummary, LearnerDashboard, LearnerDetailResponse,
-    LearnerJourneySummary, LearnerRow,
-    LearnerContinueBlock, LearnerProgressSnapshot, LearnerRecentWinSummary,
-    LearnerSummary, LearnerWorkspaceSummary, LibraryDocumentPayload,
-    LibraryDocumentSummary,
-    LibraryReloadResponse, LibraryWorkspaceResponse, MaterialWorkspaceSummary,
-    PathwayEntryPointSummary, PathwayWorkspaceSummary, PlaylistSessionWorkspaceSummary,
-    PlaylistWorkspaceSummary, PlaylistAssignmentTargetSummary, PlaylistDeliveryShapeSummary,
-    RecordSessionRequest, RecordSessionResponse,
-    ReviewItemRow, ReviewItemSummary, ReviewRebuildResponse, SessionDetail,
-    SessionMaterialKindGroupSummary,
-    SessionMaterialRow, SessionMaterialRuntimeSummary, SessionMaterialSummary,
-    SessionRow, SessionSummary, SkillProgressRow, SkillProgressSummary,
-    StageProgress, TeamRow, TeamSummary, ViewerSessionResponse,
+    ActivityInstance, ActivityItem, ActivityScoringSummary, ActivityStartResponse, ActivitySummary, AssignmentRequest,
+    AssignmentResponse, AssignmentRow, AssignmentSummary, AuthOptionsSummary, BootstrapApplyResponse,
+    CompleteActivityRequest, CompleteActivityResponse, DashboardResponse, EvidenceRow, EvidenceSummary,
+    LearnerAssignedPathwaySummary, LearnerContinueBlock, LearnerDashboard, LearnerDetailResponse,
+    LearnerJourneySummary, LearnerProgressSnapshot, LearnerRecentWinSummary, LearnerRow, LearnerSummary,
+    LearnerWorkspaceSummary, LibraryDocumentPayload, LibraryDocumentSummary, LibraryReloadResponse,
+    LibraryWorkspaceResponse, MaterialWorkspaceSummary, PathwayEntryPointSummary, PathwayWorkspaceSummary,
+    PlaylistAssignmentTargetSummary, PlaylistDeliveryShapeSummary, PlaylistSessionWorkspaceSummary,
+    PlaylistWorkspaceSummary, RecordSessionRequest, RecordSessionResponse, ReviewItemRow, ReviewItemSummary,
+    ReviewRebuildResponse, SessionDetail, SessionMaterialKindGroupSummary, SessionMaterialRow,
+    SessionMaterialRuntimeSummary, SessionMaterialSummary, SessionRow, SessionSummary, SkillProgressRow,
+    SkillProgressSummary, StageProgress, TeamMemberRow, TeamMemberSummary, TeamRow, TeamSummary, ViewerSessionResponse,
     WorkspaceMaterialKindGroupSummary,
 };
 
@@ -60,22 +58,117 @@ const DOMINANT_KIND_ORDER: [&str; 5] = [
     LESSON_NOTE_KIND,
     TEACHING_NOTE_KIND,
 ];
+const GOOGLE_OAUTH_AUTHORIZE_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_OAUTH_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_ENDPOINT: &str = "https://openidconnect.googleapis.com/v1/userinfo";
+const GOOGLE_OAUTH_CALLBACK_PATH: &str = "/api/v1/auth/google/callback";
+const GOOGLE_OAUTH_FLOW_TTL_MINUTES: i64 = 15;
+const WEB_SESSION_TTL_DAYS: i64 = 30;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: AppConfig,
     pub pool: PgPool,
+    pub http_client: reqwest::Client,
     pub library: Arc<RwLock<LibraryBundle>>,
     pub library_documents: Arc<RwLock<Vec<LibraryDocument>>>,
     pub library_report: Arc<RwLock<LibraryValidationReport>>,
 }
 
 fn role_can_manage_team(role: &str) -> bool {
-    matches!(role, "owner" | "parent" | "teacher")
+    role == "owner"
 }
 
 fn role_can_open_developer_docs(role: &str) -> bool {
     role == "owner"
+}
+
+fn auth_options(config: &AppConfig) -> AuthOptionsSummary {
+    AuthOptionsSummary {
+        dev_username_signin: config.dev_username_signin_enabled,
+        google_signin: google_signin_configured(config),
+    }
+}
+
+fn google_signin_configured(config: &AppConfig) -> bool {
+    config
+        .google_oauth_client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+        && config
+            .google_oauth_client_secret
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some()
+}
+
+fn sanitize_next_path(next_path: Option<&str>) -> String {
+    let value = next_path.unwrap_or("/").trim();
+    if value.is_empty() || !value.starts_with('/') || value.starts_with("//") {
+        "/".to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn google_code_challenge(code_verifier: &str) -> String {
+    let digest = Sha256::digest(code_verifier.as_bytes());
+    URL_SAFE_NO_PAD.encode(digest)
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionContext {
+    pub team_id: String,
+    pub authenticated_user: TeamMemberSummary,
+    pub active_user: TeamMemberSummary,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct WebSessionRow {
+    session_id: Uuid,
+    team_id: String,
+    authenticated_user_id: String,
+    active_user_id: String,
+    expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct GoogleOAuthFlowRow {
+    state: String,
+    code_verifier: String,
+    next_path: String,
+    redirect_uri: String,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct GoogleOAuthUserInfo {
+    sub: String,
+    email: String,
+    #[serde(default)]
+    email_verified: bool,
+    #[serde(default)]
+    given_name: String,
+    #[serde(default)]
+    family_name: String,
+    #[serde(default)]
+    name: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct GoogleOwnerCandidateRow {
+    user_id: String,
+    email: Option<String>,
+    google_subject: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedGoogleOwner {
+    team_id: String,
+    authenticated_user: TeamMemberSummary,
 }
 
 fn ensure_viewer_can_manage_team(viewer: &TeamMemberSummary) -> anyhow::Result<()> {
@@ -92,21 +185,14 @@ fn ensure_viewer_can_read_library(viewer: &TeamMemberSummary) -> anyhow::Result<
     bail!("viewer '{}' cannot read the planning library", viewer.username)
 }
 
-fn ensure_viewer_can_access_learner(
-    viewer: &TeamMemberSummary,
-    learner_id: &str,
-) -> anyhow::Result<()> {
+fn ensure_viewer_can_access_learner(viewer: &TeamMemberSummary, learner_id: &str) -> anyhow::Result<()> {
     if viewer.can_view_all_learners {
         return Ok(());
     }
     if viewer.learner_id.as_deref() == Some(learner_id) {
         return Ok(());
     }
-    bail!(
-        "viewer '{}' cannot access learner '{}'",
-        viewer.username,
-        learner_id
-    )
+    bail!("viewer '{}' cannot access learner '{}'", viewer.username, learner_id)
 }
 
 fn material_audience(kind: &str) -> &'static str {
@@ -124,12 +210,7 @@ fn dominant_kind_for_materials<'a>(kinds: impl IntoIterator<Item = &'a str>) -> 
             return kind.to_string();
         }
     }
-    kind_set
-        .iter()
-        .next()
-        .copied()
-        .unwrap_or(LESSON_NOTE_KIND)
-        .to_string()
+    kind_set.iter().next().copied().unwrap_or(LESSON_NOTE_KIND).to_string()
 }
 
 fn build_workspace_material_kind_groups(
@@ -155,9 +236,7 @@ fn build_workspace_material_kind_groups(
     groups
 }
 
-fn build_session_material_kind_groups(
-    materials: &[SessionMaterialSummary],
-) -> Vec<SessionMaterialKindGroupSummary> {
+fn build_session_material_kind_groups(materials: &[SessionMaterialSummary]) -> Vec<SessionMaterialKindGroupSummary> {
     let mut groups = Vec::new();
     for kind in MATERIAL_KIND_ORDER {
         let grouped_materials = materials
@@ -198,10 +277,7 @@ fn session_live_material_count(materials: &[SessionMaterialSummary]) -> usize {
         .count()
 }
 
-fn session_material_count_for_audience(
-    materials: &[SessionMaterialSummary],
-    audience: &str,
-) -> usize {
+fn session_material_count_for_audience(materials: &[SessionMaterialSummary], audience: &str) -> usize {
     materials
         .iter()
         .filter(|material| material.audience == audience)
@@ -289,9 +365,7 @@ fn dashboard_attention_summary(
     )
 }
 
-fn build_playlist_delivery_shape(
-    sessions: &[PlaylistSessionWorkspaceSummary],
-) -> PlaylistDeliveryShapeSummary {
+fn build_playlist_delivery_shape(sessions: &[PlaylistSessionWorkspaceSummary]) -> PlaylistDeliveryShapeSummary {
     let mut lesson_note_count = 0usize;
     let mut teaching_note_count = 0usize;
     let mut worksheet_count = 0usize;
@@ -360,10 +434,7 @@ fn build_playlist_assignment_targets(
                 if assignments.len() == 1 {
                     (false, format!("Also assigned to {}", assignments[0].title))
                 } else {
-                    (
-                        false,
-                        format!("Already has {} assigned playlists", assignments.len()),
-                    )
+                    (false, format!("Already has {} assigned playlists", assignments.len()))
                 }
             } else if current_age < recommended_age - 1 {
                 (
@@ -391,17 +462,17 @@ fn build_playlist_assignment_targets(
         .collect()
 }
 
-async fn resolve_viewer_member(
-    state: &Arc<AppState>,
+async fn fetch_team_member_row_by_username(
+    pool: &PgPool,
+    team_id: &str,
     username: &str,
-) -> anyhow::Result<TeamMemberSummary> {
-    let team_id = resolve_primary_team_id(state).await?;
+) -> anyhow::Result<Option<TeamMemberRow>> {
     let normalized = username.trim();
     if normalized.is_empty() {
-        bail!("viewer username is required")
+        bail!("username is required");
     }
 
-    let member = query_as::<_, TeamMemberRow>(
+    query_as::<_, TeamMemberRow>(
         "select
             ua.user_id,
             ua.username,
@@ -417,12 +488,49 @@ async fn resolve_viewer_member(
          order by tm.team_id
          limit 1",
     )
-    .bind(&team_id)
+    .bind(team_id)
     .bind(normalized)
+    .fetch_optional(pool)
+    .await
+    .map_err(Into::into)
+}
+
+async fn resolve_team_member_by_username(
+    state: &Arc<AppState>,
+    team_id: &str,
+    username: &str,
+) -> anyhow::Result<TeamMemberSummary> {
+    let member = fetch_team_member_row_by_username(&state.pool, team_id, username)
+        .await?
+        .ok_or_else(|| anyhow!("username '{}' not found", username.trim()))?;
+    Ok(member_row_to_summary(member))
+}
+
+async fn resolve_team_member_by_id(
+    state: &Arc<AppState>,
+    team_id: &str,
+    user_id: &str,
+) -> anyhow::Result<TeamMemberSummary> {
+    let member = query_as::<_, TeamMemberRow>(
+        "select
+            ua.user_id,
+            ua.username,
+            ua.display_name,
+            tm.role,
+            ua.current_level,
+            coalesce(ua.notes, '') as notes,
+            lp.learner_id
+         from team_membership tm
+         join user_account ua on ua.user_id = tm.user_id
+         left join learner_profile lp on lp.user_id = ua.user_id and lp.team_id = tm.team_id
+         where tm.team_id = $1 and ua.user_id = $2
+         limit 1",
+    )
+    .bind(team_id)
+    .bind(user_id)
     .fetch_optional(&state.pool)
     .await?
-    .ok_or_else(|| anyhow!("viewer '{}' not found", normalized))?;
-
+    .ok_or_else(|| anyhow!("user '{}' is not a member of team '{}'", user_id, team_id))?;
     Ok(member_row_to_summary(member))
 }
 
@@ -445,6 +553,7 @@ pub async fn initialize_state(config: AppConfig, run_startup_bootstrap: bool) ->
     let state = Arc::new(AppState {
         config,
         pool,
+        http_client: reqwest::Client::new(),
         library: Arc::new(RwLock::new(library_content.bundle)),
         library_documents: Arc::new(RwLock::new(library_content.documents)),
         library_report: Arc::new(RwLock::new(library_content.report)),
@@ -466,12 +575,283 @@ pub async fn migrate_database(database_url: &str) -> anyhow::Result<()> {
     MIGRATOR.run(&pool).await.context("failed to run database migrations")
 }
 
-pub async fn reload_library(
+async fn create_web_session(
     state: &Arc<AppState>,
-    viewer_username: &str,
-) -> anyhow::Result<LibraryReloadResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_manage_team(&viewer)?;
+    team_id: &str,
+    authenticated_user_id: &str,
+    active_user_id: &str,
+) -> anyhow::Result<Uuid> {
+    let session_id = Uuid::new_v4();
+    let now = Utc::now();
+    let expires_at = now + Duration::days(WEB_SESSION_TTL_DAYS);
+    query(
+        "insert into web_session (
+            session_id,
+            team_id,
+            authenticated_user_id,
+            active_user_id,
+            created_at,
+            updated_at,
+            expires_at
+         ) values ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(session_id)
+    .bind(team_id)
+    .bind(authenticated_user_id)
+    .bind(active_user_id)
+    .bind(now)
+    .bind(now)
+    .bind(expires_at)
+    .execute(&state.pool)
+    .await?;
+    Ok(session_id)
+}
+
+pub async fn resolve_session_context(state: &Arc<AppState>, session_id: Uuid) -> anyhow::Result<SessionContext> {
+    let row = query_as::<_, WebSessionRow>(
+        "select session_id, team_id, authenticated_user_id, active_user_id, expires_at
+         from web_session
+         where session_id = $1",
+    )
+    .bind(session_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| anyhow!("session not found"))?;
+
+    if row.expires_at <= Utc::now() {
+        query("delete from web_session where session_id = $1")
+            .bind(row.session_id)
+            .execute(&state.pool)
+            .await?;
+        bail!("session expired");
+    }
+
+    query("update web_session set updated_at = $2 where session_id = $1")
+        .bind(row.session_id)
+        .bind(Utc::now())
+        .execute(&state.pool)
+        .await?;
+
+    let authenticated_user = resolve_team_member_by_id(state, &row.team_id, &row.authenticated_user_id).await?;
+    let active_user = resolve_team_member_by_id(state, &row.team_id, &row.active_user_id).await?;
+
+    Ok(SessionContext {
+        team_id: row.team_id,
+        authenticated_user,
+        active_user,
+    })
+}
+
+async fn build_session_response(
+    state: &Arc<AppState>,
+    context: Option<&SessionContext>,
+) -> anyhow::Result<ViewerSessionResponse> {
+    let team = match context {
+        Some(context) => fetch_team_summary_by_id(state, &context.team_id).await?,
+        None => fetch_team_summary(state).await?,
+    };
+    let available_users = match context {
+        Some(context) if context.authenticated_user.can_manage_team => {
+            list_team_members_for_team(state, &context.team_id).await?
+        }
+        Some(context) => vec![context.active_user.clone()],
+        None => Vec::new(),
+    };
+
+    Ok(ViewerSessionResponse {
+        status: "ok".to_string(),
+        authenticated: context.is_some(),
+        auth: auth_options(&state.config),
+        team,
+        current_user: context.map(|context| context.authenticated_user.clone()),
+        active_user: context.map(|context| context.active_user.clone()),
+        available_users,
+        developer_docs_url: state.config.developer_docs_public_url.clone(),
+    })
+}
+
+async fn take_google_oauth_flow(state: &Arc<AppState>, state_value: &str) -> anyhow::Result<GoogleOAuthFlowRow> {
+    let flow = query_as::<_, GoogleOAuthFlowRow>(
+        "select state, code_verifier, next_path, redirect_uri, created_at
+         from google_oauth_flow
+         where state = $1",
+    )
+    .bind(state_value)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| anyhow!("google sign-in flow was not found"))?;
+
+    query("delete from google_oauth_flow where state = $1")
+        .bind(&flow.state)
+        .execute(&state.pool)
+        .await?;
+
+    if flow.created_at + Duration::minutes(GOOGLE_OAUTH_FLOW_TTL_MINUTES) <= Utc::now() {
+        bail!("google sign-in flow expired");
+    }
+
+    Ok(flow)
+}
+
+async fn exchange_google_authorization_code(
+    state: &Arc<AppState>,
+    code: &str,
+    flow: &GoogleOAuthFlowRow,
+) -> anyhow::Result<GoogleOAuthUserInfo> {
+    let response = state
+        .http_client
+        .post(GOOGLE_OAUTH_TOKEN_ENDPOINT)
+        .form(&[
+            (
+                "client_id",
+                state.config.google_oauth_client_id.as_deref().unwrap_or_default(),
+            ),
+            (
+                "client_secret",
+                state.config.google_oauth_client_secret.as_deref().unwrap_or_default(),
+            ),
+            ("code", code),
+            ("code_verifier", flow.code_verifier.as_str()),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", flow.redirect_uri.as_str()),
+        ])
+        .send()
+        .await
+        .context("failed to exchange Google authorization code")?;
+
+    let status = response.status();
+    let payload: JsonValue = response
+        .json()
+        .await
+        .context("failed to decode Google token response")?;
+    if !status.is_success() {
+        bail!(
+            "{}",
+            payload
+                .get("error_description")
+                .and_then(|value| value.as_str())
+                .unwrap_or("Google token exchange failed")
+        );
+    }
+
+    let access_token = payload
+        .get("access_token")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("Google token exchange did not return an access token"))?;
+
+    let userinfo_response = state
+        .http_client
+        .get(GOOGLE_USERINFO_ENDPOINT)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .context("failed to fetch Google user profile")?;
+    let userinfo_status = userinfo_response.status();
+    let userinfo_payload: GoogleOAuthUserInfo = userinfo_response
+        .json()
+        .await
+        .context("failed to decode Google user profile")?;
+    if !userinfo_status.is_success() {
+        bail!("Google user profile lookup failed");
+    }
+
+    if !userinfo_payload.email_verified {
+        bail!("Google email must be verified before sign-in is allowed");
+    }
+    if userinfo_payload.email.trim().is_empty() || userinfo_payload.sub.trim().is_empty() {
+        bail!("Google identity is incomplete");
+    }
+
+    Ok(userinfo_payload)
+}
+
+async fn resolve_owner_for_google_identity(
+    state: &Arc<AppState>,
+    google_user: &GoogleOAuthUserInfo,
+) -> anyhow::Result<ResolvedGoogleOwner> {
+    let team_id = resolve_primary_team_id(state).await?;
+    let normalized_email = google_user.email.trim().to_ascii_lowercase();
+    let normalized_subject = google_user.sub.trim();
+
+    let owner = query_as::<_, GoogleOwnerCandidateRow>(
+        "select
+            ua.user_id,
+            ua.email,
+            ua.google_subject
+         from team_membership tm
+         join user_account ua on ua.user_id = tm.user_id
+         where tm.team_id = $1
+           and tm.role = 'owner'
+           and (
+               ua.google_subject = $2
+               or lower(coalesce(ua.email, '')) = lower($3)
+           )
+         order by case when ua.google_subject = $2 then 0 else 1 end
+         limit 1",
+    )
+    .bind(&team_id)
+    .bind(normalized_subject)
+    .bind(&normalized_email)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| anyhow!("Google account is not provisioned as an owner in bootstrap"))?;
+
+    if let Some(existing_subject) = owner.google_subject.as_deref() {
+        if !existing_subject.trim().is_empty() && existing_subject != normalized_subject {
+            bail!("Google account does not match the configured owner identity");
+        }
+    }
+
+    if let Some(existing_email) = owner.email.as_deref() {
+        if !existing_email.trim().is_empty()
+            && !existing_email.eq_ignore_ascii_case(&normalized_email)
+            && owner.google_subject.is_none()
+        {
+            bail!("Google account email does not match the configured owner email");
+        }
+    }
+
+    let resolved_display_name = if !google_user.name.trim().is_empty() {
+        google_user.name.trim().to_string()
+    } else {
+        format!("{} {}", google_user.given_name.trim(), google_user.family_name.trim())
+            .trim()
+            .to_string()
+    };
+
+    query(
+        "update user_account
+         set first_name = coalesce(nullif($2, ''), first_name),
+             last_name = coalesce(nullif($3, ''), last_name),
+             email = $4,
+             google_subject = $5,
+             google_email = $4,
+             display_name = case
+                 when nullif($6, '') is not null then $6
+                 else display_name
+             end
+         where user_id = $1",
+    )
+    .bind(&owner.user_id)
+    .bind(google_user.given_name.trim())
+    .bind(google_user.family_name.trim())
+    .bind(&normalized_email)
+    .bind(normalized_subject)
+    .bind(resolved_display_name)
+    .execute(&state.pool)
+    .await?;
+
+    let authenticated_user = resolve_team_member_by_id(state, &team_id, &owner.user_id).await?;
+    Ok(ResolvedGoogleOwner {
+        team_id,
+        authenticated_user,
+    })
+}
+
+pub async fn reload_library(state: &Arc<AppState>, context: &SessionContext) -> anyhow::Result<LibraryReloadResponse> {
+    ensure_viewer_can_manage_team(&context.authenticated_user)?;
 
     let library_content = load_library_content(&state.config.content_root)?;
     {
@@ -491,6 +871,12 @@ pub async fn reload_library(
 
 pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapApplyResponse> {
     let bootstrap = load_bootstrap(&state.config.bootstrap_path)?;
+    let owner_memberships: BTreeSet<&str> = bootstrap
+        .memberships
+        .iter()
+        .filter(|membership| membership.role == "owner")
+        .map(|membership| membership.user_id.as_str())
+        .collect();
     let learner_memberships: BTreeSet<&str> = bootstrap
         .memberships
         .iter()
@@ -498,7 +884,45 @@ pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapA
         .map(|membership| membership.user_id.as_str())
         .collect();
 
+    if owner_memberships.is_empty() {
+        bail!("identity bootstrap must include at least one owner membership");
+    }
+
+    for membership in &bootstrap.memberships {
+        if !matches!(membership.role.as_str(), "owner" | "learner") {
+            bail!(
+                "membership role '{}' is not supported; use only 'owner' or 'learner'",
+                membership.role
+            );
+        }
+    }
+
     for user in &bootstrap.users {
+        if owner_memberships.contains(user.user_id.as_str())
+            && (user
+                .first_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .is_none()
+                || user
+                    .last_name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_none()
+                || user
+                    .email
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .is_none())
+        {
+            bail!(
+                "owner user '{}' must set first_name, last_name, and email in identity bootstrap",
+                user.user_id
+            );
+        }
         if learner_memberships.contains(user.user_id.as_str())
             && (user.date_of_birth.is_none() || user.sex.is_none() || user.current_level.is_none())
         {
@@ -521,11 +945,29 @@ pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapA
 
     for user in &bootstrap.users {
         query(
-            "insert into user_account (user_id, username, display_name, date_of_birth, sex, current_level, notes)
-             values ($1, $2, $3, $4, $5, $6, $7)
+            "insert into user_account (
+                user_id,
+                username,
+                display_name,
+                first_name,
+                last_name,
+                email,
+                google_subject,
+                google_email,
+                date_of_birth,
+                sex,
+                current_level,
+                notes
+             )
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              on conflict (user_id) do update
              set username = excluded.username,
                  display_name = excluded.display_name,
+                 first_name = excluded.first_name,
+                 last_name = excluded.last_name,
+                 email = excluded.email,
+                 google_subject = excluded.google_subject,
+                 google_email = excluded.google_email,
                  date_of_birth = excluded.date_of_birth,
                  sex = excluded.sex,
                  current_level = excluded.current_level,
@@ -534,6 +976,15 @@ pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapA
         .bind(&user.user_id)
         .bind(&user.username)
         .bind(&user.display_name)
+        .bind(&user.first_name)
+        .bind(&user.last_name)
+        .bind(user.email.as_ref().map(|value| value.trim().to_ascii_lowercase()))
+        .bind(&user.google_subject)
+        .bind(
+            user.google_email
+                .as_ref()
+                .map(|value| value.trim().to_ascii_lowercase()),
+        )
         .bind(user.date_of_birth)
         .bind(&user.sex)
         .bind(&user.current_level)
@@ -565,10 +1016,9 @@ pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapA
 
 pub async fn fetch_library(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
 ) -> anyhow::Result<(LibraryBundle, LibraryReloadResponse)> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_read_library(&viewer)?;
+    ensure_viewer_can_read_library(&context.authenticated_user)?;
 
     let bundle = state.library.read().await.clone();
     let report = library_report_response(&*state.library_report.read().await);
@@ -577,11 +1027,10 @@ pub async fn fetch_library(
 
 pub async fn fetch_library_workspace(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
 ) -> anyhow::Result<LibraryWorkspaceResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_manage_team(&viewer)?;
-    let team_id = resolve_primary_team_id(state).await?;
+    ensure_viewer_can_manage_team(&context.authenticated_user)?;
+    let team_id = context.team_id.clone();
 
     let library = state.library.read().await.clone();
     let documents = state.library_documents.read().await.clone();
@@ -614,10 +1063,9 @@ pub async fn fetch_library_workspace(
 
 pub async fn list_library_documents(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
 ) -> anyhow::Result<Vec<LibraryDocumentSummary>> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_read_library(&viewer)?;
+    ensure_viewer_can_read_library(&context.authenticated_user)?;
 
     Ok(state
         .library_documents
@@ -630,11 +1078,10 @@ pub async fn list_library_documents(
 
 pub async fn fetch_library_document(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
     route_path: &str,
 ) -> anyhow::Result<LibraryDocumentPayload> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_read_library(&viewer)?;
+    ensure_viewer_can_read_library(&context.authenticated_user)?;
 
     let normalized = route_path.trim().trim_matches('/');
     if normalized.is_empty() {
@@ -649,56 +1096,165 @@ pub async fn fetch_library_document(
     Ok(library_document_payload(document))
 }
 
+pub async fn fetch_auth_options(state: &Arc<AppState>) -> anyhow::Result<AuthOptionsSummary> {
+    Ok(auth_options(&state.config))
+}
+
 pub async fn fetch_viewer_session(
     state: &Arc<AppState>,
-    username: Option<&str>,
+    session_id: Option<Uuid>,
 ) -> anyhow::Result<ViewerSessionResponse> {
-    let team = fetch_team_summary(state).await?;
-    let available_users = list_team_members(state).await?;
-    let current_user = username.and_then(|value| {
-        let normalized = value.trim();
-        if normalized.is_empty() {
-            return None;
-        }
-        available_users
-            .iter()
-            .find(|member| member.username.eq_ignore_ascii_case(normalized))
-            .cloned()
-    });
-
-    Ok(ViewerSessionResponse {
-        status: "ok".to_string(),
-        team,
-        current_user,
-        available_users,
-        developer_docs_url: state.config.developer_docs_public_url.clone(),
-    })
+    let context = match session_id {
+        Some(session_id) => resolve_session_context(state, session_id).await.ok(),
+        None => None,
+    };
+    build_session_response(state, context.as_ref()).await
 }
 
-pub async fn login_viewer_session(
+pub async fn login_dev_viewer_session(
     state: &Arc<AppState>,
     username: &str,
-) -> anyhow::Result<ViewerSessionResponse> {
-    let normalized = username.trim();
-    if normalized.is_empty() {
-        bail!("username is required");
+) -> anyhow::Result<(Uuid, ViewerSessionResponse)> {
+    if !state.config.dev_username_signin_enabled {
+        bail!("development username sign-in is disabled");
     }
 
-    let session = fetch_viewer_session(state, Some(normalized)).await?;
-    if session.current_user.is_none() {
-        bail!("username '{}' not found", normalized);
-    }
-
-    Ok(session)
+    let team_id = resolve_primary_team_id(state).await?;
+    let authenticated_user = resolve_team_member_by_username(state, &team_id, username).await?;
+    let session_id = create_web_session(
+        state,
+        &team_id,
+        &authenticated_user.user_id,
+        &authenticated_user.user_id,
+    )
+    .await?;
+    let context = resolve_session_context(state, session_id).await?;
+    let response = build_session_response(state, Some(&context)).await?;
+    Ok((session_id, response))
 }
 
-pub async fn fetch_dashboard(
+pub async fn switch_active_user(
     state: &Arc<AppState>,
-    viewer_username: &str,
-) -> anyhow::Result<DashboardResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
+    session_id: Uuid,
+    user_id: &str,
+) -> anyhow::Result<ViewerSessionResponse> {
+    let context = resolve_session_context(state, session_id).await?;
+    let requested_user = resolve_team_member_by_id(state, &context.team_id, user_id).await?;
+    if !context.authenticated_user.can_manage_team && requested_user.user_id != context.authenticated_user.user_id {
+        bail!("current session cannot switch into that user");
+    }
+
+    query(
+        "update web_session
+         set active_user_id = $2, updated_at = $3
+         where session_id = $1",
+    )
+    .bind(session_id)
+    .bind(&requested_user.user_id)
+    .bind(Utc::now())
+    .execute(&state.pool)
+    .await?;
+
+    let updated = resolve_session_context(state, session_id).await?;
+    build_session_response(state, Some(&updated)).await
+}
+
+pub async fn delete_viewer_session(state: &Arc<AppState>, session_id: Uuid) -> anyhow::Result<()> {
+    query("delete from web_session where session_id = $1")
+        .bind(session_id)
+        .execute(&state.pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn start_google_oauth_flow(state: &Arc<AppState>, next_path: Option<&str>) -> anyhow::Result<Url> {
+    if !google_signin_configured(&state.config) {
+        bail!("Google sign-in is not configured");
+    }
+
+    let state_value = Uuid::new_v4().simple().to_string();
+    let code_verifier = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let next_path = sanitize_next_path(next_path);
+    let redirect_uri = Url::parse(&state.config.frontend_public_url)?
+        .join(GOOGLE_OAUTH_CALLBACK_PATH)?
+        .to_string();
+
+    query(
+        "insert into google_oauth_flow (state, code_verifier, next_path, redirect_uri, created_at)
+         values ($1, $2, $3, $4, $5)
+         on conflict (state) do update
+         set code_verifier = excluded.code_verifier,
+             next_path = excluded.next_path,
+             redirect_uri = excluded.redirect_uri,
+             created_at = excluded.created_at",
+    )
+    .bind(&state_value)
+    .bind(&code_verifier)
+    .bind(&next_path)
+    .bind(&redirect_uri)
+    .bind(Utc::now())
+    .execute(&state.pool)
+    .await?;
+
+    let mut url = Url::parse(GOOGLE_OAUTH_AUTHORIZE_ENDPOINT)?;
+    url.query_pairs_mut()
+        .append_pair(
+            "client_id",
+            state.config.google_oauth_client_id.as_deref().unwrap_or_default(),
+        )
+        .append_pair("redirect_uri", &redirect_uri)
+        .append_pair("response_type", "code")
+        .append_pair("scope", "openid email profile")
+        .append_pair("state", &state_value)
+        .append_pair("code_challenge", &google_code_challenge(&code_verifier))
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("include_granted_scopes", "true")
+        .append_pair("access_type", "online");
+    Ok(url)
+}
+
+pub async fn finish_google_oauth_flow(
+    state: &Arc<AppState>,
+    returned_state: Option<&str>,
+    code: Option<&str>,
+    provider_error: Option<&str>,
+) -> anyhow::Result<(Option<Uuid>, Url)> {
+    let default_redirect = Url::parse(&state.config.frontend_public_url)?.join("/")?;
+
+    let Some(state_value) = returned_state.map(str::trim).filter(|value| !value.is_empty()) else {
+        let mut redirect = default_redirect;
+        redirect.query_pairs_mut().append_pair("auth_error", "missing_state");
+        return Ok((None, redirect));
+    };
+
+    let flow = take_google_oauth_flow(state, state_value).await?;
+    let mut redirect = Url::parse(&state.config.frontend_public_url)?.join(&flow.next_path)?;
+
+    if let Some(error_code) = provider_error.map(str::trim).filter(|value| !value.is_empty()) {
+        redirect.query_pairs_mut().append_pair("auth_error", error_code);
+        return Ok((None, redirect));
+    }
+
+    let Some(code) = code.map(str::trim).filter(|value| !value.is_empty()) else {
+        redirect.query_pairs_mut().append_pair("auth_error", "missing_code");
+        return Ok((None, redirect));
+    };
+
+    let google_user = exchange_google_authorization_code(state, code, &flow).await?;
+    let session_owner = resolve_owner_for_google_identity(state, &google_user).await?;
+    let session_id = create_web_session(
+        state,
+        &session_owner.team_id,
+        &session_owner.authenticated_user.user_id,
+        &session_owner.authenticated_user.user_id,
+    )
+    .await?;
+    Ok((Some(session_id), redirect))
+}
+
+pub async fn fetch_dashboard(state: &Arc<AppState>, context: &SessionContext) -> anyhow::Result<DashboardResponse> {
     let team = fetch_team_summary(state).await?;
-    let team_id = resolve_primary_team_id(state).await?;
+    let team_id = context.team_id.clone();
     let learners = query_as::<_, LearnerRow>(
         "select learner_id, team_id, user_id, display_name, date_of_birth, sex, current_level, notes
          from learner_profile
@@ -710,9 +1266,9 @@ pub async fn fetch_dashboard(
     .await?;
 
     let library = state.library.read().await.clone();
-    let visible_learners = if viewer.can_view_all_learners {
+    let visible_learners = if context.authenticated_user.can_view_all_learners {
         learners
-    } else if let Some(learner_id) = viewer.learner_id.as_deref() {
+    } else if let Some(learner_id) = context.authenticated_user.learner_id.as_deref() {
         learners
             .into_iter()
             .filter(|learner| learner.learner_id == learner_id)
@@ -721,7 +1277,7 @@ pub async fn fetch_dashboard(
         Vec::new()
     };
     let learner_dashboards = build_dashboard_cards(state, &library, &visible_learners).await?;
-    let library_report = if viewer.can_read_library {
+    let library_report = if context.authenticated_user.can_read_library {
         Some(library_report_response(&*state.library_report.read().await))
     } else {
         None
@@ -734,12 +1290,8 @@ pub async fn fetch_dashboard(
     })
 }
 
-pub async fn list_learners(
-    state: &Arc<AppState>,
-    viewer_username: &str,
-) -> anyhow::Result<Vec<LearnerSummary>> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    let team_id = resolve_primary_team_id(state).await?;
+pub async fn list_learners(state: &Arc<AppState>, context: &SessionContext) -> anyhow::Result<Vec<LearnerSummary>> {
+    let team_id = context.team_id.clone();
     let learners = query_as::<_, LearnerRow>(
         "select learner_id, team_id, user_id, display_name, date_of_birth, sex, current_level, notes
          from learner_profile
@@ -752,7 +1304,10 @@ pub async fn list_learners(
 
     Ok(learners
         .into_iter()
-        .filter(|learner| viewer.can_view_all_learners || viewer.learner_id.as_deref() == Some(learner.learner_id.as_str()))
+        .filter(|learner| {
+            context.authenticated_user.can_view_all_learners
+                || context.authenticated_user.learner_id.as_deref() == Some(learner.learner_id.as_str())
+        })
         .map(|learner| LearnerSummary {
             learner_id: learner.learner_id,
             display_name: learner.display_name,
@@ -765,12 +1320,11 @@ pub async fn list_learners(
 
 pub async fn fetch_learner_detail(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
     learner_id: &str,
 ) -> anyhow::Result<LearnerDetailResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_access_learner(&viewer, learner_id)?;
-    let team_id = resolve_primary_team_id(state).await?;
+    ensure_viewer_can_access_learner(&context.authenticated_user, learner_id)?;
+    let team_id = context.team_id.clone();
 
     let learner = query_as::<_, LearnerRow>(
         "select learner_id, team_id, user_id, display_name, date_of_birth, sex, current_level, notes
@@ -802,19 +1356,13 @@ pub async fn fetch_learner_detail(
     let review_items = fetch_review_items(&state.pool, learner_id).await?;
     let journey = (assignments.len() == 1)
         .then(|| {
-            active_assignment.as_ref().map(|assignment| {
-                build_learner_journey(&library, &documents, assignment, &sessions)
-            })
+            active_assignment
+                .as_ref()
+                .map(|assignment| build_learner_journey(&library, &documents, assignment, &sessions))
         })
         .flatten();
-    let assigned_journeys = build_assigned_journeys(
-        &state.pool,
-        &library,
-        &documents,
-        learner_id,
-        &assignments,
-    )
-    .await?;
+    let assigned_journeys =
+        build_assigned_journeys(&state.pool, &library, &documents, learner_id, &assignments).await?;
     let assigned_pathways = build_assigned_pathways(&assigned_journeys);
     let workspace = build_learner_workspace(
         &library,
@@ -825,10 +1373,7 @@ pub async fn fetch_learner_detail(
         &review_items,
         &assigned_journeys,
     );
-    let response_sessions = response_sessions_for_assigned_journeys(
-        &assigned_journeys,
-        &sessions,
-    );
+    let response_sessions = response_sessions_for_assigned_journeys(&assigned_journeys, &sessions);
 
     Ok(LearnerDetailResponse {
         learner: LearnerSummary {
@@ -851,13 +1396,12 @@ pub async fn fetch_learner_detail(
 
 pub async fn fetch_learner_workspace(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
     learner_id: &str,
 ) -> anyhow::Result<crate::domain::LearnerWorkspaceResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_access_learner(&viewer, learner_id)?;
-    let detail = fetch_learner_detail(state, viewer_username, learner_id).await?;
-    let support_workspace = viewer.can_manage_team;
+    ensure_viewer_can_access_learner(&context.authenticated_user, learner_id)?;
+    let detail = fetch_learner_detail(state, context, learner_id).await?;
+    let support_workspace = context.authenticated_user.can_manage_team;
     let sessions = if support_workspace {
         detail.sessions.clone()
     } else {
@@ -897,7 +1441,7 @@ pub async fn fetch_learner_workspace(
         } else {
             "learner".to_string()
         },
-        viewer_role: viewer.role,
+        viewer_role: context.active_user.role.clone(),
         includes_adult_materials: support_workspace,
         learner: detail.learner,
         active_assignment: detail.active_assignment,
@@ -913,11 +1457,10 @@ pub async fn fetch_learner_workspace(
 
 pub async fn create_assignment(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
     request: AssignmentRequest,
 ) -> anyhow::Result<AssignmentResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_manage_team(&viewer)?;
+    ensure_viewer_can_manage_team(&context.authenticated_user)?;
 
     let library = state.library.read().await.clone();
     let assignment = create_assignment_internal(
@@ -936,12 +1479,11 @@ pub async fn create_assignment(
 
 pub async fn record_session(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
     session_id: &str,
     request: RecordSessionRequest,
 ) -> anyhow::Result<RecordSessionResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_manage_team(&viewer)?;
+    ensure_viewer_can_manage_team(&context.authenticated_user)?;
 
     if request.max_score <= 0.0 {
         bail!("max_score must be greater than zero");
@@ -980,13 +1522,12 @@ pub async fn record_session(
 
 pub async fn start_session_material_activity(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
     session_id: &str,
     session_material_id: &str,
 ) -> anyhow::Result<ActivityStartResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
     let (session, materials) = load_session_and_material_rows(&state.pool, session_id).await?;
-    ensure_viewer_can_access_learner(&viewer, &session.learner_id)?;
+    ensure_viewer_can_access_learner(&context.authenticated_user, &session.learner_id)?;
 
     let session_material = materials
         .iter()
@@ -997,8 +1538,8 @@ pub async fn start_session_material_activity(
     let material = library
         .material(&session_material.material_id)
         .ok_or_else(|| anyhow!("material '{}' not found in library", session_material.material_id))?;
-    let generated = runtime::generate_activity(material, runtime::activity_seed())
-        .context("failed to generate activity")?;
+    let generated =
+        runtime::generate_activity(material, runtime::activity_seed()).context("failed to generate activity")?;
 
     query("update session set status = 'active' where session_id = $1 and status = 'scheduled'")
         .bind(&session.session_id)
@@ -1047,22 +1588,20 @@ pub async fn start_session_material_activity(
 
 pub async fn complete_activity_instance(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
     activity_instance_id: &str,
     request: CompleteActivityRequest,
 ) -> anyhow::Result<CompleteActivityResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
     let (session_material_id, seed) = runtime::parse_activity_instance_id(activity_instance_id)?;
     let session_material = load_session_material_row(&state.pool, &session_material_id).await?;
     let session = load_session_row(&state.pool, &session_material.session_id).await?;
-    ensure_viewer_can_access_learner(&viewer, &session.learner_id)?;
+    ensure_viewer_can_access_learner(&context.authenticated_user, &session.learner_id)?;
 
     let library = state.library.read().await.clone();
     let material = library
         .material(&session_material.material_id)
         .ok_or_else(|| anyhow!("material '{}' not found in library", session_material.material_id))?;
-    let generated = runtime::generate_activity(material, seed)
-        .context("failed to regenerate activity for scoring")?;
+    let generated = runtime::generate_activity(material, seed).context("failed to regenerate activity for scoring")?;
     let runtime_responses = request
         .responses
         .iter()
@@ -1071,8 +1610,8 @@ pub async fn complete_activity_instance(
             value: response.value.clone(),
         })
         .collect::<Vec<_>>();
-    let scored = runtime::score_activity(material, &generated, &runtime_responses)
-        .context("failed to score activity")?;
+    let scored =
+        runtime::score_activity(material, &generated, &runtime_responses).context("failed to score activity")?;
     let (_, materials) = load_session_and_material_rows(&state.pool, &session.session_id).await?;
 
     let notes = build_activity_notes(&material.title, &scored, &request.notes);
@@ -1159,11 +1698,7 @@ async fn persist_session_result(
     if let Some(parent) = evidence_full_path.parent() {
         fs::create_dir_all(parent).await?;
     }
-    fs::write(
-        &evidence_full_path,
-        serde_json::to_vec_pretty(&artifact_payload)?,
-    )
-    .await?;
+    fs::write(&evidence_full_path, serde_json::to_vec_pretty(&artifact_payload)?).await?;
 
     query(
         "insert into evidence_artifact (evidence_artifact_id, evidence_id, learner_id, kind, storage_path, summary)
@@ -1191,21 +1726,11 @@ async fn persist_session_result(
         .execute(&state.pool)
         .await?;
 
-    let skill_ids: BTreeSet<_> = materials
-        .iter()
-        .map(|material| material.skill_id.as_str())
-        .collect();
+    let skill_ids: BTreeSet<_> = materials.iter().map(|material| material.skill_id.as_str()).collect();
     let mut updated_progress = Vec::new();
     for skill_id in skill_ids {
-        let progress_row = upsert_skill_progress(
-            &state.pool,
-            &session.learner_id,
-            skill_id,
-            progress_status,
-            ratio,
-            now,
-        )
-        .await?;
+        let progress_row =
+            upsert_skill_progress(&state.pool, &session.learner_id, skill_id, progress_status, ratio, now).await?;
         updated_progress.push(progress_row_to_summary(progress_row));
     }
 
@@ -1228,11 +1753,10 @@ async fn persist_session_result(
 
 pub async fn rebuild_review_items(
     state: &Arc<AppState>,
-    viewer_username: &str,
+    context: &SessionContext,
     learner_id: Option<String>,
 ) -> anyhow::Result<ReviewRebuildResponse> {
-    let viewer = resolve_viewer_member(state, viewer_username).await?;
-    ensure_viewer_can_manage_team(&viewer)?;
+    ensure_viewer_can_manage_team(&context.authenticated_user)?;
 
     let learner_ids = if let Some(learner_id) = learner_id {
         vec![learner_id]
@@ -1246,12 +1770,11 @@ pub async fn rebuild_review_items(
     for learner_id in &learner_ids {
         rebuild_review_items_for_learner(&state.pool, learner_id).await?;
         refresh_assignment_progress(&state.pool, learner_id).await?;
-        let count = query_scalar::<_, i64>(
-            "select count(*) from review_item where learner_id = $1 and status = 'pending'",
-        )
-        .bind(learner_id)
-        .fetch_one(&state.pool)
-        .await?;
+        let count =
+            query_scalar::<_, i64>("select count(*) from review_item where learner_id = $1 and status = 'pending'")
+                .bind(learner_id)
+                .fetch_one(&state.pool)
+                .await?;
         review_item_count += count as usize;
     }
 
@@ -1354,9 +1877,7 @@ fn build_library_workspace_pathways(
 
                 let dominant_kind =
                     dominant_kind_for_materials(materials.iter().map(|material| material.kind.as_str()));
-                let requires_adult_support = materials
-                    .iter()
-                    .any(|material| material.audience == AUDIENCE_ADULT);
+                let requires_adult_support = materials.iter().any(|material| material.audience == AUDIENCE_ADULT);
                 let materials_by_kind = build_workspace_material_kind_groups(&materials);
 
                 sessions.push(PlaylistSessionWorkspaceSummary {
@@ -1375,8 +1896,7 @@ fn build_library_workspace_pathways(
             }
 
             let delivery_shape = build_playlist_delivery_shape(&sessions);
-            let assignment_targets =
-                build_playlist_assignment_targets(playlist, learners, assignments_by_learner);
+            let assignment_targets = build_playlist_assignment_targets(playlist, learners, assignments_by_learner);
 
             playlists.push(PlaylistWorkspaceSummary {
                 playlist_id: playlist.playlist_id.clone(),
@@ -1452,10 +1972,7 @@ fn build_learner_journey(
 ) -> LearnerJourneySummary {
     let playlist = library.playlist(&assignment.playlist_id);
     let pathway = find_pathway_for_playlist(library, &assignment.playlist_id);
-    let completed_session_count = sessions
-        .iter()
-        .filter(|session| session.status == "completed")
-        .count();
+    let completed_session_count = sessions.iter().filter(|session| session.status == "completed").count();
     let pending_session_count = sessions.len().saturating_sub(completed_session_count);
     let total_material_count = sessions.iter().map(|session| session.materials.len()).sum();
     let live_material_count = sessions
@@ -1478,28 +1995,16 @@ fn build_learner_journey(
         pathway_id: pathway.map(|item| item.pathway_id.clone()),
         pathway_title: pathway.map(|item| item.title.clone()),
         pathway_description: pathway.map(|item| item.description.clone()),
-        pathway_route_path: pathway
-            .and_then(|item| document_route_path_for_source(documents, &item.source_path)),
+        pathway_route_path: pathway.and_then(|item| document_route_path_for_source(documents, &item.source_path)),
         playlist_id: assignment.playlist_id.clone(),
         playlist_title: playlist
             .map(|item| item.title.clone())
             .unwrap_or_else(|| assignment.title.clone()),
-        playlist_description: document_description_for_kind(
-            documents,
-            "playlist",
-            &assignment.playlist_id,
-        )
-        .unwrap_or_else(|| {
-            format!(
-                "{} sessions are queued in this learning path.",
-                sessions.len()
-            )
-        }),
+        playlist_description: document_description_for_kind(documents, "playlist", &assignment.playlist_id)
+            .unwrap_or_else(|| format!("{} sessions are queued in this learning path.", sessions.len())),
         playlist_route_path: document_route_path_for_kind(documents, "playlist", &assignment.playlist_id),
         recommended_age: playlist.map(|item| item.recommended_age).unwrap_or(0),
-        recommended_level: playlist
-            .map(|item| item.recommended_level.clone())
-            .unwrap_or_default(),
+        recommended_level: playlist.map(|item| item.recommended_level.clone()).unwrap_or_default(),
         duration_days: playlist
             .map(|item| item.duration_days)
             .unwrap_or(assignment.total_sessions),
@@ -1512,42 +2017,28 @@ fn build_learner_journey(
     }
 }
 
-fn find_pathway_for_playlist<'a>(
-    library: &'a LibraryBundle,
-    playlist_id: &str,
-) -> Option<&'a catalog::Pathway> {
+fn find_pathway_for_playlist<'a>(library: &'a LibraryBundle, playlist_id: &str) -> Option<&'a catalog::Pathway> {
     library
         .pathways
         .iter()
         .find(|pathway| pathway.playlist_ids.iter().any(|item| item == playlist_id))
 }
 
-fn document_route_path_for_source(
-    documents: &[LibraryDocument],
-    source_path: &str,
-) -> Option<String> {
+fn document_route_path_for_source(documents: &[LibraryDocument], source_path: &str) -> Option<String> {
     documents
         .iter()
         .find(|document| document.source_path == source_path)
         .map(|document| document.route_path.clone())
 }
 
-fn document_route_path_for_kind(
-    documents: &[LibraryDocument],
-    kind: &str,
-    document_id: &str,
-) -> Option<String> {
+fn document_route_path_for_kind(documents: &[LibraryDocument], kind: &str, document_id: &str) -> Option<String> {
     documents
         .iter()
         .find(|document| document.kind == kind && document.document_id == document_id)
         .map(|document| document.route_path.clone())
 }
 
-fn document_description_for_kind(
-    documents: &[LibraryDocument],
-    kind: &str,
-    document_id: &str,
-) -> Option<String> {
+fn document_description_for_kind(documents: &[LibraryDocument], kind: &str, document_id: &str) -> Option<String> {
     documents
         .iter()
         .find(|document| document.kind == kind && document.document_id == document_id)
@@ -1567,6 +2058,24 @@ async fn fetch_team_summary(state: &Arc<AppState>) -> anyhow::Result<Option<Team
     }))
 }
 
+async fn fetch_team_summary_by_id(state: &Arc<AppState>, team_id: &str) -> anyhow::Result<Option<TeamSummary>> {
+    let team = query_as::<_, TeamRow>(
+        "select team_id, display_name, description
+         from team
+         where team_id = $1
+         limit 1",
+    )
+    .bind(team_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    Ok(team.map(|row| TeamSummary {
+        team_id: row.team_id,
+        display_name: row.display_name,
+        description: row.description,
+    }))
+}
+
 async fn resolve_primary_team_id(state: &Arc<AppState>) -> anyhow::Result<String> {
     fetch_team_summary(state)
         .await?
@@ -1574,8 +2083,7 @@ async fn resolve_primary_team_id(state: &Arc<AppState>) -> anyhow::Result<String
         .ok_or_else(|| anyhow!("no team is configured"))
 }
 
-async fn list_team_members(state: &Arc<AppState>) -> anyhow::Result<Vec<TeamMemberSummary>> {
-    let team_id = resolve_primary_team_id(state).await?;
+async fn list_team_members_for_team(state: &Arc<AppState>, team_id: &str) -> anyhow::Result<Vec<TeamMemberSummary>> {
     let members = query_as::<_, TeamMemberRow>(
         "select
             ua.user_id,
@@ -1591,7 +2099,7 @@ async fn list_team_members(state: &Arc<AppState>) -> anyhow::Result<Vec<TeamMemb
          where tm.team_id = $1
          order by case when tm.role = 'owner' then 0 else 1 end, ua.display_name",
     )
-    .bind(&team_id)
+    .bind(team_id)
     .fetch_all(&state.pool)
     .await?;
 
@@ -1629,21 +2137,17 @@ async fn build_dashboard_cards(
         } else {
             None
         };
-        let review_item_count = query_scalar::<_, i64>(
-            "select count(*) from review_item where learner_id = $1 and status = 'pending'",
-        )
-        .bind(&learner.learner_id)
-        .fetch_one(&state.pool)
-        .await?;
+        let review_item_count =
+            query_scalar::<_, i64>("select count(*) from review_item where learner_id = $1 and status = 'pending'")
+                .bind(&learner.learner_id)
+                .fetch_one(&state.pool)
+                .await?;
         let progress = fetch_progress(&state.pool, &learner.learner_id).await?;
         let latest_evidence = fetch_latest_evidence_for_learner(&state.pool, &learner.learner_id).await?;
         let (progress_status_counts, stage_progress) =
             summarize_progress(library, active_assignment.as_ref(), &progress);
-        let (attention_state, attention_label, next_action_label) = dashboard_attention_summary(
-            active_assignment.as_ref(),
-            today_session.as_ref(),
-            review_item_count,
-        );
+        let (attention_state, attention_label, next_action_label) =
+            dashboard_attention_summary(active_assignment.as_ref(), today_session.as_ref(), review_item_count);
 
         dashboards.push(LearnerDashboard {
             learner_id: learner.learner_id.clone(),
@@ -1682,10 +2186,7 @@ fn summarize_progress(
         return (counts, Vec::new());
     };
 
-    let known_skills: BTreeSet<_> = progress
-        .iter()
-        .map(|state| state.skill_id.as_str())
-        .collect();
+    let known_skills: BTreeSet<_> = progress.iter().map(|state| state.skill_id.as_str()).collect();
     let not_started = playlist
         .skill_ids
         .iter()
@@ -1741,20 +2242,18 @@ fn build_learner_workspace(
             .collect::<Vec<_>>()
     };
 
-    let continue_block = continue_block_for_assigned_journeys(assigned_journeys)
-        .or_else(|| continue_block_for_sessions(sessions));
+    let continue_block =
+        continue_block_for_assigned_journeys(assigned_journeys).or_else(|| continue_block_for_sessions(sessions));
     let continue_session = continue_block.as_ref().map(|block| &block.session);
 
     let mut practice_lane = workspace_sessions
         .iter()
         .filter(|session| {
             session.status != "completed"
-                && session.materials_by_kind.iter().any(|group| {
-                    matches!(
-                        group.kind.as_str(),
-                        WORKSHEET_KIND | DRILL_KIND | QUICK_CHECK_KIND
-                    )
-                })
+                && session
+                    .materials_by_kind
+                    .iter()
+                    .any(|group| matches!(group.kind.as_str(), WORKSHEET_KIND | DRILL_KIND | QUICK_CHECK_KIND))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -1805,12 +2304,7 @@ fn build_learner_workspace(
                 LearnerRecentWinSummary {
                     session_id: session.session_id.clone(),
                     session_title: session.title.clone(),
-                    score_label: format!(
-                        "{:.0}/{:.0} ({:.0}%)",
-                        evidence.score,
-                        evidence.max_score,
-                        accuracy
-                    ),
+                    score_label: format!("{:.0}/{:.0} ({:.0}%)", evidence.score, evidence.max_score, accuracy),
                     notes: evidence.notes.clone(),
                     recorded_at: evidence.recorded_at,
                 }
@@ -1927,10 +2421,7 @@ async fn create_assignment_internal(
     })
 }
 
-fn material_skill_pairs_for_session(
-    library: &LibraryBundle,
-    session: &PlaylistSession,
-) -> Vec<(String, String)> {
+fn material_skill_pairs_for_session(library: &LibraryBundle, session: &PlaylistSession) -> Vec<(String, String)> {
     let mut pairs = BTreeSet::new();
     for material_id in &session.material_ids {
         let Some(material) = library.material(material_id) else {
@@ -1964,14 +2455,7 @@ async fn build_assigned_journeys(
 ) -> anyhow::Result<Vec<crate::domain::LearnerAssignedJourneySummary>> {
     let mut journeys = Vec::new();
     for assignment in assignments {
-        let sessions = fetch_sessions(
-            pool,
-            library,
-            documents,
-            learner_id,
-            Some(&assignment.assignment_id),
-        )
-        .await?;
+        let sessions = fetch_sessions(pool, library, documents, learner_id, Some(&assignment.assignment_id)).await?;
         let journey = build_learner_journey(library, documents, assignment, &sessions);
         let continue_block = continue_block_for_sessions(&sessions);
         let current_session_id = continue_block
@@ -2009,9 +2493,10 @@ fn build_assigned_pathways(
         let pathway_description = journey.pathway_description.clone().unwrap_or_default();
         let pathway_route_path = journey.pathway_route_path.clone();
 
-        if let Some(existing) = pathways.iter_mut().find(|pathway| {
-            pathway.pathway_id == pathway_id && pathway.pathway_title == pathway_title
-        }) {
+        if let Some(existing) = pathways
+            .iter_mut()
+            .find(|pathway| pathway.pathway_id == pathway_id && pathway.pathway_title == pathway_title)
+        {
             existing.playlist_count += 1;
             existing.total_session_count += journey.total_session_count;
             existing.completed_session_count += journey.completed_session_count;
@@ -2036,10 +2521,7 @@ fn build_assigned_pathways(
     pathways
 }
 
-async fn fetch_assignments_for_learner(
-    pool: &PgPool,
-    learner_id: &str,
-) -> anyhow::Result<Vec<AssignmentSummary>> {
+async fn fetch_assignments_for_learner(pool: &PgPool, learner_id: &str) -> anyhow::Result<Vec<AssignmentSummary>> {
     let rows = query_as::<_, AssignmentRow>(
         "select assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions
          from assignment
@@ -2095,7 +2577,10 @@ async fn fetch_assignments_for_learners_map(
     Ok(assignments)
 }
 
-async fn fetch_next_session_for_assignment(pool: &PgPool, assignment_id: &str) -> anyhow::Result<Option<SessionSummary>> {
+async fn fetch_next_session_for_assignment(
+    pool: &PgPool,
+    assignment_id: &str,
+) -> anyhow::Result<Option<SessionSummary>> {
     let row = query_as::<_, SessionRow>(
         "select session_id, assignment_id, learner_id, title, scheduled_date, status, day_offset, notes, completed_at
          from session
@@ -2152,27 +2637,16 @@ async fn fetch_sessions(
         .bind(&row.session_id)
         .fetch_all(pool)
         .await?;
-        material_rows = ensure_session_material_rows(
-            pool,
-            library,
-            &row,
-            material_rows,
-        )
-        .await?;
+        material_rows = ensure_session_material_rows(pool, library, &row, material_rows).await?;
         let latest_evidence = fetch_latest_evidence_for_session(pool, &row.session_id).await?;
         let materials = build_session_material_summaries(library, documents, material_rows);
-        let dominant_kind =
-            dominant_kind_for_materials(materials.iter().map(|material| material.kind.as_str()));
-        let requires_adult_support = materials
-            .iter()
-            .any(|material| material.audience == AUDIENCE_ADULT);
+        let dominant_kind = dominant_kind_for_materials(materials.iter().map(|material| material.kind.as_str()));
+        let requires_adult_support = materials.iter().any(|material| material.audience == AUDIENCE_ADULT);
         let materials_by_kind = build_session_material_kind_groups(&materials);
         let estimated_minutes = session_estimated_minutes(&materials);
         let live_material_count = session_live_material_count(&materials);
-        let learner_material_count =
-            session_material_count_for_audience(&materials, AUDIENCE_LEARNER);
-        let adult_material_count =
-            session_material_count_for_audience(&materials, AUDIENCE_ADULT);
+        let learner_material_count = session_material_count_for_audience(&materials, AUDIENCE_LEARNER);
+        let adult_material_count = session_material_count_for_audience(&materials, AUDIENCE_ADULT);
         sessions.push(SessionDetail {
             session_id: row.session_id,
             title: row.title,
@@ -2205,12 +2679,10 @@ async fn ensure_session_material_rows(
         return Ok(existing_rows);
     }
 
-    let playlist_id = query_scalar::<_, String>(
-        "select playlist_id from assignment where assignment_id = $1",
-    )
-    .bind(&session_row.assignment_id)
-    .fetch_optional(pool)
-    .await?;
+    let playlist_id = query_scalar::<_, String>("select playlist_id from assignment where assignment_id = $1")
+        .bind(&session_row.assignment_id)
+        .fetch_optional(pool)
+        .await?;
     let Some(playlist_id) = playlist_id else {
         return Ok(existing_rows);
     };
@@ -2222,9 +2694,7 @@ async fn ensure_session_material_rows(
         .session_pattern
         .sessions
         .iter()
-        .find(|session| {
-            session.day_offset == session_row.day_offset && session.title == session_row.title
-        })
+        .find(|session| session.day_offset == session_row.day_offset && session.title == session_row.title)
         .or_else(|| {
             playlist
                 .session_pattern
@@ -2246,10 +2716,7 @@ async fn ensure_session_material_rows(
         .iter()
         .map(|row| (row.material_id.clone(), row.skill_id.clone()))
         .collect::<BTreeSet<_>>();
-    let missing_pairs = expected_pairs
-        .difference(&existing_pairs)
-        .cloned()
-        .collect::<Vec<_>>();
+    let missing_pairs = expected_pairs.difference(&existing_pairs).cloned().collect::<Vec<_>>();
     if missing_pairs.is_empty() {
         return Ok(existing_rows);
     }
@@ -2363,10 +2830,7 @@ async fn load_session_row(pool: &PgPool, session_id: &str) -> anyhow::Result<Ses
     .ok_or_else(|| anyhow!("session '{session_id}' not found"))
 }
 
-async fn load_session_material_row(
-    pool: &PgPool,
-    session_material_id: &str,
-) -> anyhow::Result<SessionMaterialRow> {
+async fn load_session_material_row(pool: &PgPool, session_material_id: &str) -> anyhow::Result<SessionMaterialRow> {
     query_as::<_, SessionMaterialRow>(
         "select session_material_id, session_id, title, skill_id, material_id, status
          from session_material
@@ -2608,12 +3072,11 @@ async fn refresh_assignment_progress(pool: &PgPool, learner_id: &str) -> anyhow:
     .fetch_all(pool)
     .await?;
     for assignment in assignments {
-        let completed_sessions = query_scalar::<_, i64>(
-            "select count(*) from session where assignment_id = $1 and status = 'completed'",
-        )
-        .bind(&assignment.assignment_id)
-        .fetch_one(pool)
-        .await? as i32;
+        let completed_sessions =
+            query_scalar::<_, i64>("select count(*) from session where assignment_id = $1 and status = 'completed'")
+                .bind(&assignment.assignment_id)
+                .fetch_one(pool)
+                .await? as i32;
         let next_status = if assignment.status == "replaced" {
             "replaced"
         } else if assignment.total_sessions > 0 && completed_sessions >= assignment.total_sessions {
@@ -2717,10 +3180,7 @@ fn progress_row_to_summary(row: SkillProgressRow) -> SkillProgressSummary {
 fn learner_safe_workspace_summary(workspace: &LearnerWorkspaceSummary) -> LearnerWorkspaceSummary {
     LearnerWorkspaceSummary {
         attention_label: workspace.attention_label.clone(),
-        continue_block: workspace
-            .continue_block
-            .as_ref()
-            .map(learner_safe_continue_block),
+        continue_block: workspace.continue_block.as_ref().map(learner_safe_continue_block),
         practice_lane: workspace
             .practice_lane
             .iter()
@@ -2793,7 +3253,11 @@ fn learner_safe_session_detail(session: &SessionDetail) -> SessionDetail {
         .map(|group| SessionMaterialKindGroupSummary {
             kind: group.kind.clone(),
             audience: group.audience.clone(),
-            material_count: group.materials.iter().filter(|material| material.audience == AUDIENCE_LEARNER).count(),
+            material_count: group
+                .materials
+                .iter()
+                .filter(|material| material.audience == AUDIENCE_LEARNER)
+                .count(),
             materials: group
                 .materials
                 .iter()
@@ -2805,7 +3269,16 @@ fn learner_safe_session_detail(session: &SessionDetail) -> SessionDetail {
         .collect::<Vec<_>>();
 
     SessionDetail {
-        live_material_count: materials.iter().filter(|material| material.runtime.as_ref().map(|runtime| runtime.executable).unwrap_or(false)).count(),
+        live_material_count: materials
+            .iter()
+            .filter(|material| {
+                material
+                    .runtime
+                    .as_ref()
+                    .map(|runtime| runtime.executable)
+                    .unwrap_or(false)
+            })
+            .count(),
         learner_material_count: materials.len(),
         adult_material_count: 0,
         materials,
@@ -2865,29 +3338,21 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::domain::{
-        AssignmentSummary, EvidenceSummary, LearnerAssignedJourneySummary,
-        LearnerContinueBlock, LearnerJourneySummary, LearnerProgressSnapshot,
-        LearnerRecentWinSummary, LearnerWorkspaceSummary, SessionDetail,
-        SessionMaterialKindGroupSummary, SessionMaterialRuntimeSummary,
-        SessionMaterialSummary,
+        AssignmentSummary, EvidenceSummary, LearnerAssignedJourneySummary, LearnerContinueBlock, LearnerJourneySummary,
+        LearnerProgressSnapshot, LearnerRecentWinSummary, LearnerWorkspaceSummary, SessionDetail,
+        SessionMaterialKindGroupSummary, SessionMaterialRuntimeSummary, SessionMaterialSummary,
     };
 
     use super::{
-        build_assigned_pathways, continue_block_for_assigned_journeys,
-        learner_safe_workspace_summary, response_sessions_for_assigned_journeys,
+        build_assigned_pathways, continue_block_for_assigned_journeys, learner_safe_workspace_summary,
+        response_sessions_for_assigned_journeys,
     };
 
     fn sample_session() -> SessionDetail {
         sample_session_on(2026, 1, 1, "session-1", "Session 1")
     }
 
-    fn sample_session_on(
-        year: i32,
-        month: u32,
-        day: u32,
-        session_id: &str,
-        title: &str,
-    ) -> SessionDetail {
+    fn sample_session_on(year: i32, month: u32, day: u32, session_id: &str, title: &str) -> SessionDetail {
         let learner_material = SessionMaterialSummary {
             session_material_id: "sm-1".to_string(),
             title: "Learner note".to_string(),
@@ -2922,8 +3387,7 @@ mod tests {
         SessionDetail {
             session_id: session_id.to_string(),
             title: title.to_string(),
-            scheduled_date: NaiveDate::from_ymd_opt(year, month, day)
-                .expect("valid date"),
+            scheduled_date: NaiveDate::from_ymd_opt(year, month, day).expect("valid date"),
             status: "scheduled".to_string(),
             day_offset: 0,
             sequence_number: Some(1),
@@ -2991,20 +3455,21 @@ mod tests {
         let safe = learner_safe_workspace_summary(&workspace);
         let session = safe.continue_block.expect("continue block").session;
 
-        assert!(session
-            .materials
-            .iter()
-            .all(|material| material.audience == "learner"));
-        assert!(session
-            .materials_by_kind
-            .iter()
-            .all(|group| group.audience == "learner"));
+        assert!(session.materials.iter().all(|material| material.audience == "learner"));
+        assert!(
+            session
+                .materials_by_kind
+                .iter()
+                .all(|group| group.audience == "learner")
+        );
         assert_eq!(session.adult_material_count, 0);
         assert_eq!(safe.practice_lane[0].materials.len(), 1);
-        assert!(safe.practice_lane[0]
-            .materials
-            .iter()
-            .all(|material| material.audience == "learner"));
+        assert!(
+            safe.practice_lane[0]
+                .materials
+                .iter()
+                .all(|material| material.audience == "learner")
+        );
         assert_eq!(safe.recent_wins.len(), 1);
     }
 
@@ -3017,8 +3482,7 @@ mod tests {
             sample_assigned_journey("assignment-earlier", earlier_session.clone()),
         ];
 
-        let continue_block = continue_block_for_assigned_journeys(&journeys)
-            .expect("continue block should exist");
+        let continue_block = continue_block_for_assigned_journeys(&journeys).expect("continue block should exist");
 
         assert_eq!(continue_block.session.session_id, earlier_session.session_id);
     }
@@ -3071,16 +3535,8 @@ mod tests {
         assert_eq!(grouped[1].playlist_count, 1);
     }
 
-    fn sample_assigned_journey(
-        assignment_id: &str,
-        session: SessionDetail,
-    ) -> LearnerAssignedJourneySummary {
-        sample_assigned_journey_in_pathway(
-            assignment_id,
-            "pathway-1",
-            "Pathway 1",
-            session,
-        )
+    fn sample_assigned_journey(assignment_id: &str, session: SessionDetail) -> LearnerAssignedJourneySummary {
+        sample_assigned_journey_in_pathway(assignment_id, "pathway-1", "Pathway 1", session)
     }
 
     fn sample_assigned_journey_in_pathway(
@@ -3094,8 +3550,7 @@ mod tests {
                 assignment_id: assignment_id.to_string(),
                 playlist_id: format!("playlist-{assignment_id}"),
                 title: format!("Playlist {assignment_id}"),
-                start_date: NaiveDate::from_ymd_opt(2026, 1, 1)
-                    .expect("valid date"),
+                start_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
                 end_date: NaiveDate::from_ymd_opt(2026, 1, 4).expect("valid date"),
                 status: "active".to_string(),
                 total_sessions: 1,

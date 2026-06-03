@@ -7,6 +7,9 @@ users:
   - user_id: user_ajith
     username: ajith
     display_name: Ajith Jose
+    first_name: Ajith
+    last_name: Jose
+    email: ajith.jose@dhenara.com
     date_of_birth: 2004-10-15
     sex: Male
     notes: Owner
@@ -14,6 +17,9 @@ users:
   - user_id: user_chelsy
     username: chelsy
     display_name: Chelsy Jacob
+    first_name: Chelsy
+    last_name: Jacob
+    email: chelsy.jacob@dhenara.com
     date_of_birth: 2008-11-14
     sex: Female
     notes: Owner

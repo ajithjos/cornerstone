@@ -11,8 +11,25 @@ create table user_account (
     date_of_birth date null,
     sex text null,
     current_level text null,
-    notes text null
+    notes text null,
+    first_name text null,
+    last_name text null,
+    email text null,
+    google_subject text null,
+    google_email text null
 );
+
+create unique index user_account_email_unique_idx
+    on user_account ((lower(email)))
+    where email is not null;
+
+create unique index user_account_google_subject_unique_idx
+    on user_account (google_subject)
+    where google_subject is not null;
+
+create unique index user_account_google_email_unique_idx
+    on user_account ((lower(google_email)))
+    where google_email is not null;
 
 create table team_membership (
     team_id text not null references team(team_id) on delete cascade,
@@ -121,4 +138,27 @@ create table review_item (
 );
 
 create index review_item_learner_idx on review_item (learner_id, due_date);
+
+create table web_session (
+    session_id uuid primary key,
+    team_id text not null references team(team_id) on delete cascade,
+    authenticated_user_id text not null references user_account(user_id) on delete cascade,
+    active_user_id text not null references user_account(user_id) on delete cascade,
+    created_at timestamptz not null,
+    updated_at timestamptz not null,
+    expires_at timestamptz not null
+);
+
+create index web_session_expires_at_idx on web_session (expires_at);
+create index web_session_authenticated_user_idx on web_session (authenticated_user_id, expires_at desc);
+
+create table google_oauth_flow (
+    state text primary key,
+    code_verifier text not null,
+    next_path text not null,
+    redirect_uri text not null,
+    created_at timestamptz not null
+);
+
+create index google_oauth_flow_created_at_idx on google_oauth_flow (created_at);
 

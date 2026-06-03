@@ -24,7 +24,13 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Enter username to continue.',
+                      _googleSigninEnabled && _devUsernameSigninEnabled
+                          ? 'Use Google for hosted owner access, or use a bootstrap username in development.'
+                          : _googleSigninEnabled
+                          ? 'Continue with Google to open the team workspace.'
+                          : _devUsernameSigninEnabled
+                          ? 'Enter a bootstrap username to continue.'
+                          : 'No sign-in methods are configured for this environment yet.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -38,37 +44,75 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _usernameController,
-                      textInputAction: TextInputAction.go,
-                      onSubmitted: _authBusy
-                          ? null
-                          : (_) => _loginWithUsername(),
-                      decoration: const InputDecoration(
-                        labelText: 'Username',
-                        prefixIcon: Icon(Icons.alternate_email_rounded),
+                    if (_googleSigninEnabled) ...[
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _authBusy ? null : _loginWithGoogle,
+                          icon: _authBusy
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.open_in_new_rounded, size: 18),
+                          label: const Text('Continue with Google'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _authBusy
+                    ],
+                    if (_googleSigninEnabled && _devUsernameSigninEnabled) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Divider(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text('or'),
+                          ),
+                          Expanded(
+                            child: Divider(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (_devUsernameSigninEnabled) ...[
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _usernameController,
+                        textInputAction: TextInputAction.go,
+                        onSubmitted: _authBusy
                             ? null
-                            : () => _loginWithUsername(),
-                        icon: _authBusy
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.login_rounded, size: 18),
-                        label: const Text('Sign in'),
+                            : (_) => _loginWithUsername(),
+                        decoration: const InputDecoration(
+                          labelText: 'Development username',
+                          prefixIcon: Icon(Icons.alternate_email_rounded),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonalIcon(
+                          onPressed: _authBusy
+                              ? null
+                              : () => _loginWithUsername(),
+                          icon: const Icon(Icons.login_rounded, size: 18),
+                          label: const Text('Use bootstrap username'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -121,6 +165,9 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
     final theme = Theme.of(context);
     final username = _shellUsername();
     final viewer = _currentViewer;
+    final activeViewer = _activeViewer;
+    final switchableUsers =
+        _viewerSession?.availableUsers ?? const <ViewerUser>[];
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
       children: [
@@ -131,7 +178,9 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
               ? (dashboard.team?.description ??
                     'Manage your profile and theme in one place.')
               : viewer.canManageTeam
-              ? 'Manage your profile, theme, and team learning space in one place.'
+              ? activeViewer != null && activeViewer.userId != viewer.userId
+                    ? 'Manage your profile, theme, and team learning space while viewing ${activeViewer.displayName}.'
+                    : 'Manage your profile, theme, and team learning space in one place.'
               : 'Keep your profile, theme, and learner space settings in one place.',
           trailing: Container(
             padding: const EdgeInsets.all(18),
@@ -192,7 +241,10 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                 const SizedBox(height: 8),
                 Text(
                   viewer.canManageTeam
-                      ? 'This account can manage every learner, assignments, and progress updates.'
+                      ? activeViewer != null &&
+                                activeViewer.userId != viewer.userId
+                            ? 'This owner session can manage the team and is currently acting as ${activeViewer.displayName}.'
+                            : 'This owner session can manage every learner, assignments, and progress updates.'
                       : 'This account stays focused on the learner view, progress, and pending work.',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -228,6 +280,33 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                         : theme.colorScheme.primary,
                   ),
                 ),
+                if (activeViewer != null &&
+                    activeViewer.userId != viewer.userId) ...[
+                  const SizedBox(height: 10),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: theme.colorScheme.tertiaryContainer,
+                      foregroundColor: theme.colorScheme.onTertiaryContainer,
+                      child: Text(
+                        _identityInitials(activeViewer.displayName),
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    title: Text('Active profile: ${activeViewer.displayName}'),
+                    subtitle: Text(
+                      '@${activeViewer.username}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    trailing: _PillBadge(
+                      text: activeViewer.role,
+                      color: theme.colorScheme.tertiaryContainer,
+                      textColor: theme.colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+                ],
                 if (viewer.currentLevel != null) ...[
                   const SizedBox(height: 10),
                   Text(
@@ -242,6 +321,48 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
+                  ),
+                ],
+                if (switchableUsers.length > 1) ...[
+                  const SizedBox(height: 18),
+                  Text(
+                    'Switch active profile',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Keep one owner sign-in, then switch the active team member for this browser session.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: switchableUsers
+                        .map(
+                          (user) => OutlinedButton.icon(
+                            onPressed:
+                                _authBusy || user.userId == activeViewer?.userId
+                                ? null
+                                : () => _switchActiveUser(
+                                    user.userId,
+                                    preferredLearnerId: user.learnerId,
+                                    destination: user.learnerId != null
+                                        ? _ShellDestination.learner
+                                        : _ShellDestination.account,
+                                  ),
+                            icon: Icon(
+                              user.learnerId != null
+                                  ? Icons.school_rounded
+                                  : Icons.person_rounded,
+                              size: 18,
+                            ),
+                            label: Text(user.displayName),
+                          ),
+                        )
+                        .toList(growable: false),
                   ),
                 ],
                 const SizedBox(height: 18),
@@ -320,6 +441,12 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                       color: theme.colorScheme.surfaceContainerHighest,
                       textColor: theme.colorScheme.onSurfaceVariant,
                     ),
+                    if (activeViewer != null)
+                      _PillBadge(
+                        text: 'Active: ${activeViewer.displayName}',
+                        color: theme.colorScheme.tertiaryContainer,
+                        textColor: theme.colorScheme.onTertiaryContainer,
+                      ),
                   ],
                 ),
               ],
