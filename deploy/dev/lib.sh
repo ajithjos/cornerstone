@@ -20,22 +20,34 @@ deploy_dev_init() {
 	DEPLOY_DEV_REPO_ROOT="$(deploy_repo_root)"
 	DEPLOY_DEV_DIR="$DEPLOY_DEV_REPO_ROOT/deploy/dev"
 	DEPLOY_DEV_COMPOSE_FILE="$DEPLOY_DEV_DIR/docker-compose.yml"
-	DEPLOY_DEV_LOCAL_DIR="$DEPLOY_DEV_DIR/local"
-	DEPLOY_DEV_CONTROL_DIR="$DEPLOY_DEV_LOCAL_DIR/control"
-	DEPLOY_DEV_SECRETS_DIR="$DEPLOY_DEV_LOCAL_DIR/secrets"
+	DEPLOY_DEV_LOCAL_DIR="${DEPLOY_DEV_LOCAL_DIR:-}"
+	DEPLOY_DEV_CONTROL_DIR="${DEPLOY_DEV_CONTROL_DIR:-}"
+	DEPLOY_DEV_SECRETS_DIR="${DEPLOY_DEV_SECRETS_DIR:-}"
 	DEPLOY_DEV_SETUP_ENV_FILE="${DEPLOY_DEV_SETUP_ENV_FILE:-$DEPLOY_DEV_REPO_ROOT/deploy/config/environments/dev.env}"
-	DEPLOY_DEV_LOCAL_SETUP_ENV_FILE="${DEPLOY_DEV_LOCAL_SETUP_ENV_FILE:-$DEPLOY_DEV_CONTROL_DIR/dev.env}"
-	DEPLOY_DEV_RUNTIME_ENV_FILE="${DEPLOY_DEV_RUNTIME_ENV_FILE:-$DEPLOY_DEV_SECRETS_DIR/runtime-env.json}"
+	DEPLOY_DEV_LOCAL_SETUP_ENV_FILE="${DEPLOY_DEV_LOCAL_SETUP_ENV_FILE:-}"
+	DEPLOY_DEV_RUNTIME_ENV_FILE="${DEPLOY_DEV_RUNTIME_ENV_FILE:-}"
 	deploy_load_image_catalog "$DEPLOY_DEV_REPO_ROOT"
 }
 
 deploy_dev_load_config() {
 	[[ -f "$DEPLOY_DEV_SETUP_ENV_FILE" ]] || deploy_fail "deploy/dev" "setup env file not found: $DEPLOY_DEV_SETUP_ENV_FILE"
-	[[ -f "$DEPLOY_DEV_RUNTIME_ENV_FILE" ]] || deploy_fail "deploy/dev" "runtime env secret file not found: $DEPLOY_DEV_RUNTIME_ENV_FILE. Copy $DEPLOY_DEV_REPO_ROOT/deploy/templates/secrets/runtime-env.example.json to that path and edit it"
 
 	setup_env_get() {
 		deploy_env_merged_get "$1" "$DEPLOY_DEV_SETUP_ENV_FILE" "$DEPLOY_DEV_LOCAL_SETUP_ENV_FILE"
 	}
+
+	if [[ -z "$DEPLOY_DEV_LOCAL_DIR" ]]; then
+		DEPLOY_DEV_LOCAL_DIR="$(deploy_resolve_path "$DEPLOY_DEV_REPO_ROOT" "$(deploy_trim "$(setup_env_get CORNERSTONE_DEV_LOCAL_ROOT)")")"
+	fi
+	if [[ -z "$DEPLOY_DEV_LOCAL_DIR" ]]; then
+		DEPLOY_DEV_LOCAL_DIR="$DEPLOY_DEV_REPO_ROOT/scratchpad/dev/local"
+	fi
+	DEPLOY_DEV_CONTROL_DIR="${DEPLOY_DEV_CONTROL_DIR:-$DEPLOY_DEV_LOCAL_DIR/control}"
+	DEPLOY_DEV_SECRETS_DIR="${DEPLOY_DEV_SECRETS_DIR:-$DEPLOY_DEV_LOCAL_DIR/secrets}"
+	DEPLOY_DEV_LOCAL_SETUP_ENV_FILE="${DEPLOY_DEV_LOCAL_SETUP_ENV_FILE:-$DEPLOY_DEV_CONTROL_DIR/dev.env}"
+	DEPLOY_DEV_RUNTIME_ENV_FILE="${DEPLOY_DEV_RUNTIME_ENV_FILE:-$DEPLOY_DEV_SECRETS_DIR/runtime-env.json}"
+
+	[[ -f "$DEPLOY_DEV_RUNTIME_ENV_FILE" ]] || deploy_fail "deploy/dev" "runtime env secret file not found: $DEPLOY_DEV_RUNTIME_ENV_FILE. Copy $DEPLOY_DEV_REPO_ROOT/deploy/templates/secrets/runtime-env.example.json to that path and edit it"
 
 	export CORNERSTONE_DEV_COMPOSE_PROJECT_NAME="$(deploy_trim "$(setup_env_get CORNERSTONE_DEV_COMPOSE_PROJECT_NAME)")"
 	export CORNERSTONE_DEV_LIVE_FE_COMPOSE_PROJECT_NAME="$(deploy_trim "$(setup_env_get CORNERSTONE_DEV_LIVE_FE_COMPOSE_PROJECT_NAME)")"

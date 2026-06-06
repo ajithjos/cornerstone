@@ -15,6 +15,11 @@ services:
     volumes:
       - ${CORNERSTONE_POSTGRES_DATA_DIR}:/var/lib/postgresql/data
       - ../dev/templates/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CORNERSTONE_POSTGRES_ADMIN_USER} -d ${CORNERSTONE_POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   control-plane:
     build:
@@ -24,7 +29,8 @@ services:
         RUST_IMAGE: ${CORNERSTONE_RUST_IMAGE}
         RUNTIME_IMAGE: ${CORNERSTONE_RUNTIME_IMAGE}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
       CORNERSTONE_BIND_ADDRESS: 0.0.0.0:${CORNERSTONE_CONTROL_PLANE_PORT}
       CORNERSTONE_DATABASE_URL: ${CORNERSTONE_DATABASE_URL}
@@ -44,13 +50,25 @@ services:
       - ${CORNERSTONE_WORKSPACE_HOST}:/workspace:ro
       - ${CORNERSTONE_ARTIFACTS_DIR}:/data/artifacts:rw
       - ${CORNERSTONE_EXPORTS_DIR}:/data/exports:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${CORNERSTONE_CONTROL_PLANE_PORT}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
 
   frontend:
     image: ${CORNERSTONE_NGINX_IMAGE}
     depends_on:
-      - control-plane
+      control-plane:
+        condition: service_healthy
     ports:
       - "${CORNERSTONE_HTTP_PORT}:80"
     volumes:
       - ${CORNERSTONE_FRONTEND_BUILD_HOST}:/srv/cornerstone/frontend:ro
       - ../dev/templates/control/frontend.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12

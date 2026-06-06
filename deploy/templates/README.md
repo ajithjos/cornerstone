@@ -17,8 +17,8 @@ Current model:
 Practical rule:
 
 - dev setup env comes from the tracked `deploy/config/environments/dev.env`
-- dev can optionally override non-secret setup with `deploy/dev/local/control/dev.env`
-- dev runtime secrets come from `deploy/dev/local/secrets/runtime-env.json`
+- dev can optionally override non-secret setup with `scratchpad/dev/local/control/dev.env`
+- dev runtime secrets come from `scratchpad/dev/local/secrets/runtime-env.json`
 - prod setup wiring comes from the tracked `deploy/config/environments/prod.gcp.env`
 - prod can optionally override non-secret setup with `deploy/vm/local/control/prod.gcp.env`
 - prod maintained runtime secret input comes from `deploy/vm/local/secrets/runtime-env.json` and publishes to `GCP_RUNTIME_ENV_SECRET_NAME`

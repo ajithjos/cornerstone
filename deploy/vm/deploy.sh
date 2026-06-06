@@ -115,10 +115,46 @@ load_contract() {
 	: "${CORNERSTONE_FRONTEND_PUBLIC_URL:?CORNERSTONE_FRONTEND_PUBLIC_URL is required}"
 	: "${GCP_RUNTIME_ENV_SECRET_NAME:?GCP_RUNTIME_ENV_SECRET_NAME is required}"
 
+	GCP_BACKEND_SERVICE_NAME="${GCP_BACKEND_SERVICE_NAME:-}"
+	GCP_BACKEND_TIMEOUT_SEC="${GCP_BACKEND_TIMEOUT_SEC:-}"
+
 	if [[ -n "${VM_SSH_USER:-}" ]]; then
 		TARGET_INSTANCE="${VM_SSH_USER}@${GCP_INSTANCE_NAME}"
 	else
 		TARGET_INSTANCE="$GCP_INSTANCE_NAME"
+	fi
+}
+
+check_backend_timeout_contract() {
+	local configured_timeout
+	local current_timeout
+
+	if [[ -z "$GCP_BACKEND_SERVICE_NAME" || -z "$GCP_BACKEND_TIMEOUT_SEC" ]]; then
+		return 0
+	fi
+
+	configured_timeout="$GCP_BACKEND_TIMEOUT_SEC"
+	if [[ ! "$configured_timeout" =~ ^[0-9]+$ ]]; then
+		deploy_fail "deploy/vm" "GCP_BACKEND_TIMEOUT_SEC must be an integer number of seconds"
+	fi
+
+	if ! current_timeout="$(gcloud compute backend-services describe "$GCP_BACKEND_SERVICE_NAME" --global --project "$GCP_PROJECT_ID" --format='value(timeoutSec)' 2>/dev/null | tr -d '\n')"; then
+		deploy_log "deploy/vm" "WARNING: could not describe backend service '$GCP_BACKEND_SERVICE_NAME'; skipping load balancer timeout verification."
+		return 0
+	fi
+
+	if [[ -z "$current_timeout" ]]; then
+		deploy_log "deploy/vm" "WARNING: backend service '$GCP_BACKEND_SERVICE_NAME' returned no timeoutSec; skipping load balancer timeout verification."
+		return 0
+	fi
+
+	if [[ ! "$current_timeout" =~ ^[0-9]+$ ]]; then
+		deploy_log "deploy/vm" "WARNING: backend service '$GCP_BACKEND_SERVICE_NAME' returned non-numeric timeoutSec '$current_timeout'; skipping load balancer timeout verification."
+		return 0
+	fi
+
+	if (( current_timeout < configured_timeout )); then
+		deploy_fail "deploy/vm" "backend service '$GCP_BACKEND_SERVICE_NAME' timeoutSec is '$current_timeout', expected at least '$configured_timeout'. Fix with: gcloud compute backend-services update $GCP_BACKEND_SERVICE_NAME --global --project $GCP_PROJECT_ID --timeout=$configured_timeout"
 	fi
 }
 
@@ -145,6 +181,7 @@ check_preflight() {
 	fi
 
 	gcloud compute instances describe "$GCP_INSTANCE_NAME" --zone "$GCP_ZONE" --project "$GCP_PROJECT_ID" >/dev/null
+	check_backend_timeout_contract
 	gcloud secrets describe "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" >/dev/null
 }
 
@@ -227,6 +264,7 @@ print_plan() {
   app root          : $VM_APP_ROOT
   release dir       : $RELEASE_DIR
   frontend origin   : $CORNERSTONE_FRONTEND_PUBLIC_URL
+  lb backend        : ${GCP_BACKEND_SERVICE_NAME:-<not set>}
   runtime env secret: $GCP_RUNTIME_ENV_SECRET_NAME
   postgres data dir : $CORNERSTONE_POSTGRES_DATA_DIR
   artifacts dir     : $CORNERSTONE_ARTIFACTS_DIR

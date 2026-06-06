@@ -19,6 +19,11 @@ docs_site/docs/materials/
 docs_site/docs/library/
 docs_site/docs/developer/
 scratchpad/
+deploy/dev/local/control/
+deploy/dev/local/secrets/
+deploy/vm/.env
+deploy/vm/local/control/
+deploy/vm/local/secrets/
 dist/
 coverage/
 *.iml

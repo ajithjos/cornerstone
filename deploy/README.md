@@ -3,7 +3,8 @@
 Cornerstone uses the same deployment split in both dev and the VM flow:
 
 - tracked non-secret setup env in `deploy/config/environments/`
-- local machine secret JSON in `deploy/dev/local/secrets/` or `deploy/vm/local/secrets/`
+- local development secret JSON in `scratchpad/dev/local/secrets/`
+- local hosted-deploy secret JSON in `deploy/vm/local/secrets/`
 - tracked runtime defaults in `deploy/config/runtime_defaults/`
 
 Primary entrypoints:
