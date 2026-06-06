@@ -6,7 +6,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/lib.sh"
 
 deploy_dev_init
 deploy_dev_load_config
-deploy_check_docker_prereqs
+deploy_dev_check_docker_prereqs
 
 echo "WARNING: this will stop the Cornerstone compose stack and delete local Postgres data under $CORNERSTONE_POSTGRES_DATA_HOST."
 printf "Type RESET-CORNERSTONE to continue: "

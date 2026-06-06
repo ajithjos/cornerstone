@@ -4,16 +4,19 @@
 
 ```bash
 source sourceme_dev
+mkdir -p deploy/dev/local/secrets deploy/dev/local/control
+cp deploy/templates/secrets/runtime-env.example.json deploy/dev/local/secrets/runtime-env.json
+# edit deploy/dev/local/secrets/runtime-env.json once with real local secrets
 make install-dev
 make control-plane-compose-up
 ```
 
-`deploy/dev/.env.dev` already carries the tracked local defaults.
-Create `deploy/dev/.env` only if you need machine-specific overrides.
+Tracked non-secret local defaults now live in `deploy/config/environments/dev.env`.
+Create `deploy/dev/local/control/dev.env` only if you need machine-specific non-secret overrides.
+Keep real secrets only in `deploy/dev/local/secrets/runtime-env.json`.
 
-If tracked Postgres defaults change incompatibly across commits, the repo rotates
-`CORNERSTONE_DEV_DATA_REVISION` to start a fresh local data window. Your older
-data under prior revisions stays on disk until you delete it manually.
+The local runtime secret JSON is the only place where Postgres passwords and Google OAuth secrets belong in development.
+Those values are no longer tracked in repo-owned env files.
 
 ## URLs
 

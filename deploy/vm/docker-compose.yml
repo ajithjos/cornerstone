@@ -14,11 +14,11 @@ services:
       - "${CORNERSTONE_POSTGRES_PORT}:5432"
     volumes:
       - ${CORNERSTONE_POSTGRES_DATA_DIR}:/var/lib/postgresql/data
-      - ../../dev/templates/postgres-init:/docker-entrypoint-initdb.d:ro
+      - ../dev/templates/postgres-init:/docker-entrypoint-initdb.d:ro
 
   control-plane:
     build:
-      context: ../../..
+      context: ../..
       dockerfile: deploy/dev/Dockerfile.control_plane
       args:
         RUST_IMAGE: ${CORNERSTONE_RUST_IMAGE}
@@ -53,4 +53,4 @@ services:
       - "${CORNERSTONE_HTTP_PORT}:80"
     volumes:
       - ${CORNERSTONE_FRONTEND_BUILD_HOST}:/srv/cornerstone/frontend:ro
-      - ../../dev/templates/control/frontend.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../dev/templates/control/frontend.nginx.conf:/etc/nginx/conf.d/default.conf:ro

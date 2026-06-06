@@ -19,9 +19,9 @@ esac
 
 deploy_dev_init
 deploy_dev_load_config
-deploy_require_cmd uv
-deploy_require_cmd flutter
-deploy_check_docker_prereqs
+deploy_require_cmd "deploy/dev" uv
+deploy_require_cmd "deploy/dev" flutter
+deploy_dev_check_docker_prereqs
 deploy_dev_ensure_dirs
 
 if [[ "$mode" != "postgres-only" ]]; then

@@ -3,6 +3,7 @@
 Tracked deployment config is split into:
 
 - `build/`: immutable image and build inputs committed with the repo
+- `environments/`: non-secret deploy wiring for dev and hosted VM flows
 - `runtime_defaults/`: editable runtime defaults mounted by local or production deployment flows
 
 Current runtime defaults:

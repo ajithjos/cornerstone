@@ -1,4 +1,4 @@
-.PHONY: help install-dev fmt fmt-check lint test rust-fmt rust-lint rust-test rust-run rust-migrate rust-bootstrap-apply rust-library-validate content-validate frontend-pub-get flutter-version-check flutter-analyze flutter-test frontend-sanity docs-site-install docs-site-prepare docs-site-build docs-site-dev control-plane-db-up control-plane-db-migrate control-plane-bootstrap-apply control-plane-library-reload control-plane-compose-up control-plane-compose-down control-plane-compose-reset control-plane-live-frontend-up control-plane-live-frontend-down frontend-live-run daily-local daily
+.PHONY: help install-dev fmt fmt-check lint test rust-fmt rust-lint rust-test rust-run rust-migrate rust-bootstrap-apply rust-library-validate content-validate frontend-pub-get flutter-version-check flutter-analyze flutter-test frontend-sanity docs-site-install docs-site-prepare docs-site-build docs-site-dev control-plane-db-up control-plane-db-migrate control-plane-bootstrap-apply control-plane-library-reload control-plane-compose-up control-plane-compose-down control-plane-compose-reset control-plane-live-frontend-up control-plane-live-frontend-down frontend-live-run vm-setup vm-runtime-secret-push vm-deploy-plan vm-deploy daily-local daily
 
 PYTHON_RUN ?= uv run
 FLUTTER_APP_DIR ?= $(CURDIR)/fe/flutter/apps/cornerstone
@@ -14,6 +14,7 @@ help:
 	@echo "Validation targets: fmt-check, lint, test, rust-library-validate, content-validate, frontend-sanity, docs-site-build"
 	@echo "Control-plane targets: control-plane-db-up, control-plane-db-migrate, control-plane-bootstrap-apply, control-plane-library-reload, control-plane-compose-up, control-plane-compose-down, control-plane-compose-reset"
 	@echo "Live frontend targets: control-plane-live-frontend-up, control-plane-live-frontend-down, frontend-live-run"
+	@echo "VM deploy targets: vm-setup, vm-runtime-secret-push, vm-deploy-plan, vm-deploy"
 
 install-dev:
 	uv sync --all-extras
@@ -120,6 +121,18 @@ control-plane-live-frontend-down:
 
 frontend-live-run: frontend-pub-get
 	@bash -lc 'cd "$(FLUTTER_APP_DIR)" && flutter run -d chrome --web-port $(LIVE_FRONTEND_PORT) --dart-define=CORNERSTONE_API_BASE_URL=$(LIVE_FRONTEND_API_BASE_URL)'
+
+vm-setup:
+	bash deploy/vm/prepare_host.sh
+
+vm-runtime-secret-push:
+	bash deploy/vm/update_gcp_runtime_env_secret.sh
+
+vm-deploy-plan:
+	bash deploy/vm/deploy.sh --plan
+
+vm-deploy:
+	bash deploy/vm/deploy.sh
 
 daily-local: fmt-check lint rust-test frontend-sanity content-validate docs-site-build
 

@@ -2,4 +2,7 @@
 
 Cornerstone keeps curriculum source of truth under `content/` and deployment-owned identity bootstrap under `deploy/config/runtime_defaults/`.
 
-This folder exists only to mirror the structure of the reference repository and to leave room for future machine-local overrides if you need them later.
+Tracked non-secret dev wiring now lives in `deploy/config/environments/dev.env`.
+Machine-local secrets live in `deploy/dev/local/secrets/runtime-env.json`.
+
+This folder remains intentionally small because the early-stage app only needs the tracked bootstrap defaults plus the local runtime secret JSON.
