@@ -16,7 +16,9 @@ create table user_account (
     last_name text null,
     email text null,
     google_subject text null,
-    google_email text null
+    google_email text null,
+    google_display_name text null,
+    google_picture_url text null
 );
 
 create unique index user_account_email_unique_idx

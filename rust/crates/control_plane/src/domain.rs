@@ -218,6 +218,10 @@ pub struct TeamMemberSummary {
     pub current_level: Option<String>,
     pub notes: String,
     pub learner_id: Option<String>,
+    pub google_signed_in: bool,
+    pub google_display_name: Option<String>,
+    pub google_picture_url: Option<String>,
+    pub google_email: Option<String>,
     pub can_manage_team: bool,
     pub can_read_library: bool,
     pub can_view_all_learners: bool,
@@ -607,6 +611,10 @@ pub struct TeamMemberRow {
     pub current_level: Option<String>,
     pub notes: String,
     pub learner_id: Option<String>,
+    pub google_subject: Option<String>,
+    pub google_display_name: Option<String>,
+    pub google_picture_url: Option<String>,
+    pub google_email: Option<String>,
 }
 
 #[allow(dead_code)]

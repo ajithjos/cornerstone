@@ -733,6 +733,108 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     return (parts.first[0] + parts.last[0]).toUpperCase();
   }
 
+  Widget _buildViewerAvatar(
+    ViewerUser? viewer, {
+    required double size,
+    bool selected = false,
+    bool useGoogleProfile = true,
+    TextStyle? initialsStyle,
+    bool brandedInitials = false,
+  }) {
+    final theme = Theme.of(context);
+    final label = viewer == null
+        ? 'Cornerstone'
+        : useGoogleProfile
+        ? viewer.profileLabel
+        : viewer.displayName;
+    final pictureUrl = useGoogleProfile ? viewer?.profilePictureUrl : null;
+    final initials = _identityInitials(label);
+    final borderColor = selected
+        ? theme.colorScheme.primary.withValues(alpha: 0.30)
+        : theme.colorScheme.outlineVariant.withValues(alpha: 0.50);
+
+    if (pictureUrl != null) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: borderColor,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          pictureUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildViewerInitialsAvatar(
+              size: size,
+              selected: selected,
+              brandedInitials: brandedInitials,
+              initialsStyle: initialsStyle,
+              initials: initials,
+            );
+          },
+        ),
+      );
+    }
+
+    return _buildViewerInitialsAvatar(
+      size: size,
+      selected: selected,
+      brandedInitials: brandedInitials,
+      initialsStyle: initialsStyle,
+      initials: initials,
+    );
+  }
+
+  Widget _buildViewerInitialsAvatar({
+    required double size,
+    required bool selected,
+    required bool brandedInitials,
+    required String initials,
+    TextStyle? initialsStyle,
+  }) {
+    final theme = Theme.of(context);
+    final defaultStyle = theme.textTheme.labelMedium?.copyWith(
+      fontWeight: FontWeight.w800,
+      color: selected
+          ? theme.colorScheme.onPrimary
+          : brandedInitials
+          ? _BrandPalette.navy
+          : theme.colorScheme.onSurfaceVariant,
+    );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: selected || brandedInitials
+            ? const LinearGradient(
+                colors: [_BrandPalette.goldBright, _BrandPalette.goldDeep],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        color: selected || brandedInitials
+            ? null
+            : theme.colorScheme.surfaceContainerHigh,
+        border: Border.all(
+          color: selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.30)
+              : theme.colorScheme.outlineVariant.withValues(alpha: 0.50),
+          width: selected ? 1.5 : 1,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(initials, style: initialsStyle ?? defaultStyle),
+    );
+  }
+
   Future<void> _openDeveloperDocs() async {
     final rawUrl = _developerDocsUrl;
     final docsUri = rawUrl == null ? null : Uri.tryParse(rawUrl);
@@ -806,38 +908,13 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     final theme = Theme.of(context);
     final selected = _selectedDestination == _ShellDestination.account;
     final username = _shellUsername();
-
-    final avatar = AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      width: compact ? 40 : 36,
-      height: compact ? 40 : 36,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: selected
-            ? const LinearGradient(
-                colors: [_BrandPalette.goldBright, _BrandPalette.goldDeep],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-            : null,
-        color: selected ? null : theme.colorScheme.surfaceContainerHigh,
-        border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary.withValues(alpha: 0.30)
-              : theme.colorScheme.outlineVariant.withValues(alpha: 0.50),
-          width: selected ? 1.5 : 1,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        _identityInitials(username),
-        style: theme.textTheme.labelMedium?.copyWith(
-          fontWeight: FontWeight.w800,
-          color: selected
-              ? theme.colorScheme.onPrimary
-              : theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
+    final authenticatedViewer = _currentViewer;
+    final avatarSize = compact ? 40.0 : 36.0;
+    final avatar = _buildViewerAvatar(
+      authenticatedViewer,
+      size: avatarSize,
+      selected: selected && authenticatedViewer?.profilePictureUrl == null,
+      useGoogleProfile: true,
     );
 
     return MenuAnchor(
@@ -1235,27 +1312,13 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
               ),
               child: Row(
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          _BrandPalette.goldBright,
-                          _BrandPalette.goldDeep,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      _identityInitials(username),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: _BrandPalette.navy,
-                      ),
+                  _buildViewerAvatar(
+                    _currentViewer,
+                    size: 48,
+                    brandedInitials: _currentViewer?.profilePictureUrl == null,
+                    initialsStyle: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: _BrandPalette.navy,
                     ),
                   ),
                   const SizedBox(width: 14),

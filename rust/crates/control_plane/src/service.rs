@@ -172,6 +172,10 @@ struct GoogleOAuthUserInfo {
     email: String,
     #[serde(default)]
     email_verified: bool,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    picture: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -729,7 +733,11 @@ async fn resolve_team_member_by_id(
             tm.role,
             ua.current_level,
             coalesce(ua.notes, '') as notes,
-            lp.learner_id
+            lp.learner_id,
+            ua.google_subject,
+            ua.google_display_name,
+            ua.google_picture_url,
+            ua.google_email
          from team_membership tm
          join user_account ua on ua.user_id = tm.user_id
          left join learner_profile lp on lp.user_id = ua.user_id and lp.team_id = tm.team_id
@@ -1000,11 +1008,11 @@ async fn resolve_owner_for_google_identity(
          join user_account ua on ua.user_id = tm.user_id
          where tm.role = 'owner'
            and (
-               ua.google_subject = $2
-               or lower(coalesce(ua.email, '')) = lower($3)
+               ua.google_subject = $1
+               or lower(coalesce(ua.email, '')) = lower($2)
            )
          group by ua.user_id, ua.email, ua.google_subject
-         order by case when ua.google_subject = $2 then 0 else 1 end, ua.user_id",
+         order by case when ua.google_subject = $1 then 0 else 1 end, ua.user_id",
     )
     .bind(normalized_subject)
     .bind(&normalized_email)
@@ -1038,15 +1046,22 @@ async fn resolve_owner_for_google_identity(
         }
     }
 
+    let google_display_name = normalize_optional_string(google_user.name.as_deref());
+    let google_picture_url = normalize_optional_string(google_user.picture.as_deref());
+
     query(
         "update user_account
          set google_subject = $2,
-             google_email = $3
+             google_email = $3,
+             google_display_name = $4,
+             google_picture_url = $5
          where user_id = $1",
     )
     .bind(&owner.user_id)
     .bind(normalized_subject)
     .bind(&normalized_email)
+    .bind(&google_display_name)
+    .bind(&google_picture_url)
     .execute(&state.pool)
     .await?;
 
@@ -2307,7 +2322,11 @@ async fn list_team_members_for_team(state: &Arc<AppState>, team_id: &str) -> any
             tm.role,
             ua.current_level,
             coalesce(ua.notes, '') as notes,
-            lp.learner_id
+            lp.learner_id,
+            ua.google_subject,
+            ua.google_display_name,
+            ua.google_picture_url,
+            ua.google_email
          from team_membership tm
          join user_account ua on ua.user_id = tm.user_id
          left join learner_profile lp on lp.user_id = ua.user_id and lp.team_id = tm.team_id
@@ -2324,6 +2343,11 @@ async fn list_team_members_for_team(state: &Arc<AppState>, team_id: &str) -> any
 fn member_row_to_summary(row: TeamMemberRow) -> TeamMemberSummary {
     let role = row.role.clone();
     let can_manage_team = role_can_manage_team(&role);
+    let google_signed_in = row
+        .google_subject
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
     TeamMemberSummary {
         user_id: row.user_id,
         username: row.username,
@@ -2332,6 +2356,10 @@ fn member_row_to_summary(row: TeamMemberRow) -> TeamMemberSummary {
         current_level: row.current_level,
         notes: row.notes,
         learner_id: row.learner_id,
+        google_signed_in,
+        google_display_name: row.google_display_name,
+        google_picture_url: row.google_picture_url,
+        google_email: row.google_email,
         can_manage_team,
         can_read_library: can_manage_team,
         can_view_all_learners: can_manage_team,

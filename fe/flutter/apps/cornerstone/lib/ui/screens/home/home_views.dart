@@ -147,27 +147,13 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        _BrandPalette.goldBright,
-                        _BrandPalette.goldDeep,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    _identityInitials(username),
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: _BrandPalette.navy,
-                    ),
+                _buildViewerAvatar(
+                  viewer,
+                  size: 60,
+                  brandedInitials: viewer?.profilePictureUrl == null,
+                  initialsStyle: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: _BrandPalette.navy,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -180,6 +166,14 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                   viewer == null ? 'Signed out' : '@${viewer.username}',
                   style: theme.textTheme.bodySmall,
                 ),
+                if (viewer?.googleSignedIn ?? false) ...[
+                  const SizedBox(height: 8),
+                  _PillBadge(
+                    text: 'Google sign-in',
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    textColor: theme.colorScheme.primary,
+                  ),
+                ],
               ],
             ),
           ),
@@ -206,21 +200,21 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                 const SizedBox(height: 18),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: theme.colorScheme.primary.withValues(
-                      alpha: 0.14,
-                    ),
-                    foregroundColor: theme.colorScheme.primary,
-                    child: Text(
-                      _identityInitials(viewer.displayName),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                  leading: _buildViewerAvatar(
+                    viewer,
+                    size: 40,
+                    useGoogleProfile: true,
                   ),
-                  title: Text('Signed in owner: ${viewer.displayName}'),
+                  title: Text(
+                    viewer.googleSignedIn
+                        ? 'Signed in owner: ${viewer.profileLabel}'
+                        : 'Signed in owner: ${viewer.displayName}',
+                  ),
                   subtitle: Text(
-                    '@${viewer.username}',
+                    viewer.googleSignedIn &&
+                            (viewer.googleEmail?.trim().isNotEmpty ?? false)
+                        ? viewer.googleEmail!.trim()
+                        : '@${viewer.username}',
                     style: theme.textTheme.bodySmall,
                   ),
                   trailing: _PillBadge(
@@ -238,15 +232,10 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                   const SizedBox(height: 10),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      backgroundColor: theme.colorScheme.tertiaryContainer,
-                      foregroundColor: theme.colorScheme.onTertiaryContainer,
-                      child: Text(
-                        _identityInitials(activeViewer.displayName),
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                    leading: _buildViewerAvatar(
+                      activeViewer,
+                      size: 40,
+                      useGoogleProfile: false,
                     ),
                     title: Text('Active profile: ${activeViewer.displayName}'),
                     subtitle: Text(

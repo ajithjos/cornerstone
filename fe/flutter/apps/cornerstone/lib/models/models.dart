@@ -680,6 +680,10 @@ class ViewerUser {
       currentLevel: json['current_level'] as String?,
       notes: json['notes'] as String? ?? '',
       learnerId: json['learner_id'] as String?,
+      googleSignedIn: json['google_signed_in'] as bool? ?? false,
+      googleDisplayName: json['google_display_name'] as String?,
+      googlePictureUrl: json['google_picture_url'] as String?,
+      googleEmail: json['google_email'] as String?,
       canManageTeam: canManageTeam,
       canReadLibrary: json['can_read_library'] as bool? ?? canManageTeam,
       canViewAllLearners:
@@ -701,6 +705,10 @@ class ViewerUser {
     required this.canOpenDeveloperDocs,
     this.currentLevel,
     this.learnerId,
+    this.googleSignedIn = false,
+    this.googleDisplayName,
+    this.googlePictureUrl,
+    this.googleEmail,
   });
 
   final String userId;
@@ -710,6 +718,10 @@ class ViewerUser {
   final String notes;
   final String? currentLevel;
   final String? learnerId;
+  final bool googleSignedIn;
+  final String? googleDisplayName;
+  final String? googlePictureUrl;
+  final String? googleEmail;
   final bool canManageTeam;
   final bool canReadLibrary;
   final bool canViewAllLearners;
@@ -717,6 +729,21 @@ class ViewerUser {
 
   bool get isLearner => role == 'learner';
   bool get isOwner => role == 'owner';
+
+  String get profileLabel {
+    final googleName = googleDisplayName?.trim();
+    if (googleSignedIn && googleName != null && googleName.isNotEmpty) {
+      return googleName;
+    }
+    return displayName;
+  }
+
+  String? get profilePictureUrl {
+    if (!googleSignedIn) return null;
+    final pictureUrl = googlePictureUrl?.trim();
+    if (pictureUrl == null || pictureUrl.isEmpty) return null;
+    return pictureUrl;
+  }
 }
 
 class LearnerDashboard {
