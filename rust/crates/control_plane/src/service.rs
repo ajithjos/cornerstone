@@ -5,7 +5,8 @@ use std::sync::Arc;
 use anyhow::{Context, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use catalog::{
-    LibraryBundle, LibraryDocument, LibraryValidationReport, PlaylistSession, load_bootstrap, load_library_content,
+    BootstrapMembership, BootstrapUser, IdentityBootstrap, LibraryBundle, LibraryDocument, LibraryValidationReport,
+    PlaylistSession, load_bootstrap, load_library_content,
 };
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use learning_activity_runtime::{self as runtime, GeneratedActivity, ScoredActivity};
@@ -85,7 +86,6 @@ fn role_can_open_developer_docs(role: &str) -> bool {
 
 fn auth_options(config: &AppConfig) -> AuthOptionsSummary {
     AuthOptionsSummary {
-        dev_username_signin: config.dev_username_signin_enabled,
         google_signin: google_signin_configured(config),
     }
 }
@@ -120,6 +120,28 @@ fn google_code_challenge(code_verifier: &str) -> String {
 }
 
 #[derive(Debug, Clone)]
+struct BootstrapTeamRecord {
+    team_id: String,
+    display_name: String,
+    description: String,
+}
+
+#[derive(Debug, Clone)]
+struct BootstrapMembershipRecord {
+    team_id: String,
+    user_id: String,
+    role: String,
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedBootstrap {
+    teams: Vec<BootstrapTeamRecord>,
+    users: Vec<BootstrapUser>,
+    memberships: Vec<BootstrapMembershipRecord>,
+    learner_count: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct SessionContext {
     pub team_id: String,
     pub authenticated_user: TeamMemberSummary,
@@ -150,12 +172,6 @@ struct GoogleOAuthUserInfo {
     email: String,
     #[serde(default)]
     email_verified: bool,
-    #[serde(default)]
-    given_name: String,
-    #[serde(default)]
-    family_name: String,
-    #[serde(default)]
-    name: String,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -167,8 +183,246 @@ struct GoogleOwnerCandidateRow {
 
 #[derive(Debug, Clone)]
 struct ResolvedGoogleOwner {
-    team_id: String,
-    authenticated_user: TeamMemberSummary,
+    authenticated_user_id: String,
+    default_team_id: String,
+}
+
+fn normalize_required_string(value: &str, field: &str) -> anyhow::Result<String> {
+    let normalized = value.trim();
+    if normalized.is_empty() {
+        bail!("{field} cannot be empty");
+    }
+    Ok(normalized.to_string())
+}
+
+fn normalize_optional_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn normalize_optional_email(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+fn normalized_bootstrap_user(user: &BootstrapUser) -> anyhow::Result<BootstrapUser> {
+    Ok(BootstrapUser {
+        user_id: normalize_required_string(&user.user_id, "user_id")?,
+        username: normalize_required_string(&user.username, "username")?,
+        display_name: normalize_required_string(&user.display_name, "display_name")?,
+        first_name: normalize_optional_string(user.first_name.as_deref()),
+        last_name: normalize_optional_string(user.last_name.as_deref()),
+        email: normalize_optional_email(user.email.as_deref()),
+        google_subject: normalize_optional_string(user.google_subject.as_deref()),
+        google_email: normalize_optional_email(user.google_email.as_deref()),
+        date_of_birth: user.date_of_birth,
+        sex: normalize_optional_string(user.sex.as_deref()),
+        current_level: normalize_optional_string(user.current_level.as_deref()),
+        notes: normalize_optional_string(user.notes.as_deref()),
+    })
+}
+
+fn normalized_bootstrap_membership(membership: &BootstrapMembership) -> anyhow::Result<BootstrapMembership> {
+    Ok(BootstrapMembership {
+        user_id: normalize_required_string(&membership.user_id, "membership.user_id")?,
+        role: normalize_required_string(&membership.role, "membership.role")?,
+    })
+}
+
+fn record_unique_identity_value(
+    seen_values: &mut BTreeMap<String, String>,
+    field: &str,
+    value: Option<&str>,
+    user_id: &str,
+) -> anyhow::Result<()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if let Some(existing_user_id) = seen_values.get(value) {
+        if existing_user_id != user_id {
+            bail!(
+                "{field} '{value}' is assigned to multiple users in identity bootstrap: '{existing_user_id}' and '{user_id}'"
+            );
+        }
+        return Ok(());
+    }
+    seen_values.insert(value.to_string(), user_id.to_string());
+    Ok(())
+}
+
+fn compile_bootstrap(bootstrap: &IdentityBootstrap) -> anyhow::Result<NormalizedBootstrap> {
+    if bootstrap.teams.is_empty() {
+        bail!("identity bootstrap must include at least one team");
+    }
+
+    let mut teams = Vec::new();
+    let mut users_by_id = BTreeMap::<String, BootstrapUser>::new();
+    let mut memberships = Vec::new();
+    let mut learner_count = 0usize;
+    let mut seen_team_ids = BTreeSet::new();
+    let mut seen_usernames = BTreeMap::<String, String>::new();
+    let mut seen_emails = BTreeMap::<String, String>::new();
+    let mut seen_google_subjects = BTreeMap::<String, String>::new();
+    let mut seen_google_emails = BTreeMap::<String, String>::new();
+
+    for team in &bootstrap.teams {
+        let team_id = normalize_required_string(&team.team_id, "team_id")?;
+        if !seen_team_ids.insert(team_id.clone()) {
+            bail!("team_id '{}' is defined more than once in identity bootstrap", team_id);
+        }
+
+        let display_name = normalize_required_string(&team.display_name, "display_name")?;
+        let description = normalize_required_string(&team.description, "description")?;
+        if team.users.is_empty() {
+            bail!("team '{}' must include at least one user", team_id);
+        }
+        if team.memberships.is_empty() {
+            bail!("team '{}' must include at least one membership", team_id);
+        }
+
+        let mut team_users = BTreeMap::<String, BootstrapUser>::new();
+        for user in &team.users {
+            let normalized_user = normalized_bootstrap_user(user)?;
+            if team_users
+                .insert(normalized_user.user_id.clone(), normalized_user.clone())
+                .is_some()
+            {
+                bail!(
+                    "user '{}' is defined more than once inside team '{}'",
+                    normalized_user.user_id,
+                    team_id
+                );
+            }
+
+            match users_by_id.get(&normalized_user.user_id) {
+                Some(existing) if existing != &normalized_user => {
+                    bail!(
+                        "user '{}' is defined differently across teams; keep one canonical user definition for shared owners or learners",
+                        normalized_user.user_id
+                    );
+                }
+                Some(_) => {}
+                None => {
+                    record_unique_identity_value(
+                        &mut seen_usernames,
+                        "username",
+                        Some(&normalized_user.username),
+                        &normalized_user.user_id,
+                    )?;
+                    record_unique_identity_value(
+                        &mut seen_emails,
+                        "email",
+                        normalized_user.email.as_deref(),
+                        &normalized_user.user_id,
+                    )?;
+                    record_unique_identity_value(
+                        &mut seen_google_subjects,
+                        "google_subject",
+                        normalized_user.google_subject.as_deref(),
+                        &normalized_user.user_id,
+                    )?;
+                    record_unique_identity_value(
+                        &mut seen_google_emails,
+                        "google_email",
+                        normalized_user.google_email.as_deref(),
+                        &normalized_user.user_id,
+                    )?;
+                    users_by_id.insert(normalized_user.user_id.clone(), normalized_user);
+                }
+            }
+        }
+
+        let mut team_member_ids = BTreeSet::new();
+        let mut owner_count = 0usize;
+        for membership in &team.memberships {
+            let normalized_membership = normalized_bootstrap_membership(membership)?;
+            if !team_member_ids.insert(normalized_membership.user_id.clone()) {
+                bail!(
+                    "user '{}' appears more than once in team '{}' memberships",
+                    normalized_membership.user_id,
+                    team_id
+                );
+            }
+
+            let user = team_users.get(&normalized_membership.user_id).ok_or_else(|| {
+                anyhow!(
+                    "team '{}' membership references unknown user '{}'",
+                    team_id,
+                    normalized_membership.user_id
+                )
+            })?;
+
+            if !matches!(normalized_membership.role.as_str(), "owner" | "learner") {
+                bail!(
+                    "membership role '{}' is not supported in team '{}'; use only 'owner' or 'learner'",
+                    normalized_membership.role,
+                    team_id
+                );
+            }
+
+            if normalized_membership.role == "owner" {
+                owner_count += 1;
+                if user.first_name.is_none() || user.last_name.is_none() || user.email.is_none() {
+                    bail!(
+                        "owner user '{}' in team '{}' must set first_name, last_name, and email in identity bootstrap",
+                        user.user_id,
+                        team_id
+                    );
+                }
+            }
+
+            if normalized_membership.role == "learner" {
+                learner_count += 1;
+                if user.date_of_birth.is_none() || user.sex.is_none() || user.current_level.is_none() {
+                    bail!(
+                        "learner user '{}' in team '{}' must set date_of_birth, sex, and current_level in identity bootstrap",
+                        user.user_id,
+                        team_id
+                    );
+                }
+            }
+
+            memberships.push(BootstrapMembershipRecord {
+                team_id: team_id.clone(),
+                user_id: normalized_membership.user_id,
+                role: normalized_membership.role,
+            });
+        }
+
+        if owner_count == 0 {
+            bail!("team '{}' must include at least one owner membership", team_id);
+        }
+
+        if team_users.len() != team_member_ids.len() {
+            let missing_users = team_users
+                .keys()
+                .filter(|user_id| !team_member_ids.contains(user_id.as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            bail!(
+                "team '{}' includes users without memberships: {}",
+                team_id,
+                missing_users.join(", ")
+            );
+        }
+
+        teams.push(BootstrapTeamRecord {
+            team_id,
+            display_name,
+            description,
+        });
+    }
+
+    Ok(NormalizedBootstrap {
+        teams,
+        users: users_by_id.into_values().collect(),
+        memberships,
+        learner_count,
+    })
 }
 
 fn ensure_viewer_can_manage_team(viewer: &TeamMemberSummary) -> anyhow::Result<()> {
@@ -462,50 +716,6 @@ fn build_playlist_assignment_targets(
         .collect()
 }
 
-async fn fetch_team_member_row_by_username(
-    pool: &PgPool,
-    team_id: &str,
-    username: &str,
-) -> anyhow::Result<Option<TeamMemberRow>> {
-    let normalized = username.trim();
-    if normalized.is_empty() {
-        bail!("username is required");
-    }
-
-    query_as::<_, TeamMemberRow>(
-        "select
-            ua.user_id,
-            ua.username,
-            ua.display_name,
-            tm.role,
-            ua.current_level,
-            coalesce(ua.notes, '') as notes,
-            lp.learner_id
-         from team_membership tm
-         join user_account ua on ua.user_id = tm.user_id
-         left join learner_profile lp on lp.user_id = ua.user_id and lp.team_id = tm.team_id
-         where tm.team_id = $1 and lower(ua.username) = lower($2)
-         order by tm.team_id
-         limit 1",
-    )
-    .bind(team_id)
-    .bind(normalized)
-    .fetch_optional(pool)
-    .await
-    .map_err(Into::into)
-}
-
-async fn resolve_team_member_by_username(
-    state: &Arc<AppState>,
-    team_id: &str,
-    username: &str,
-) -> anyhow::Result<TeamMemberSummary> {
-    let member = fetch_team_member_row_by_username(&state.pool, team_id, username)
-        .await?
-        .ok_or_else(|| anyhow!("username '{}' not found", username.trim()))?;
-    Ok(member_row_to_summary(member))
-}
-
 async fn resolve_team_member_by_id(
     state: &Arc<AppState>,
     team_id: &str,
@@ -648,7 +858,13 @@ async fn build_session_response(
 ) -> anyhow::Result<ViewerSessionResponse> {
     let team = match context {
         Some(context) => fetch_team_summary_by_id(state, &context.team_id).await?,
-        None => fetch_team_summary(state).await?,
+        None => None,
+    };
+    let available_teams = match context {
+        Some(context) if context.authenticated_user.can_manage_team => {
+            list_owner_team_summaries_for_user(state, &context.authenticated_user.user_id).await?
+        }
+        _ => Vec::new(),
     };
     let available_users = match context {
         Some(context) if context.authenticated_user.can_manage_team => {
@@ -663,7 +879,8 @@ async fn build_session_response(
         authenticated: context.is_some(),
         auth: auth_options(&state.config),
         team,
-        current_user: context.map(|context| context.authenticated_user.clone()),
+        available_teams,
+        authenticated_user: context.map(|context| context.authenticated_user.clone()),
         active_user: context.map(|context| context.active_user.clone()),
         available_users,
         developer_docs_url: state.config.developer_docs_public_url.clone(),
@@ -771,32 +988,40 @@ async fn resolve_owner_for_google_identity(
     state: &Arc<AppState>,
     google_user: &GoogleOAuthUserInfo,
 ) -> anyhow::Result<ResolvedGoogleOwner> {
-    let team_id = resolve_primary_team_id(state).await?;
     let normalized_email = google_user.email.trim().to_ascii_lowercase();
     let normalized_subject = google_user.sub.trim();
 
-    let owner = query_as::<_, GoogleOwnerCandidateRow>(
+    let owners = query_as::<_, GoogleOwnerCandidateRow>(
         "select
             ua.user_id,
             ua.email,
             ua.google_subject
          from team_membership tm
          join user_account ua on ua.user_id = tm.user_id
-         where tm.team_id = $1
-           and tm.role = 'owner'
+         where tm.role = 'owner'
            and (
                ua.google_subject = $2
                or lower(coalesce(ua.email, '')) = lower($3)
            )
-         order by case when ua.google_subject = $2 then 0 else 1 end
-         limit 1",
+         group by ua.user_id, ua.email, ua.google_subject
+         order by case when ua.google_subject = $2 then 0 else 1 end, ua.user_id",
     )
-    .bind(&team_id)
     .bind(normalized_subject)
     .bind(&normalized_email)
-    .fetch_optional(&state.pool)
+    .fetch_all(&state.pool)
     .await?
-    .ok_or_else(|| anyhow!("Google account is not provisioned as an owner in bootstrap"))?;
+    .into_iter()
+    .collect::<Vec<_>>();
+
+    let owner = match owners.as_slice() {
+        [] => bail!("Google account is not provisioned as an owner in identity bootstrap"),
+        [owner] => owner.clone(),
+        _ => {
+            bail!(
+                "Google account matches multiple owner users. Reuse one shared user_id across teams for the same owner."
+            )
+        }
+    };
 
     if let Some(existing_subject) = owner.google_subject.as_deref() {
         if !existing_subject.trim().is_empty() && existing_subject != normalized_subject {
@@ -813,40 +1038,27 @@ async fn resolve_owner_for_google_identity(
         }
     }
 
-    let resolved_display_name = if !google_user.name.trim().is_empty() {
-        google_user.name.trim().to_string()
-    } else {
-        format!("{} {}", google_user.given_name.trim(), google_user.family_name.trim())
-            .trim()
-            .to_string()
-    };
-
     query(
         "update user_account
-         set first_name = coalesce(nullif($2, ''), first_name),
-             last_name = coalesce(nullif($3, ''), last_name),
-             email = $4,
-             google_subject = $5,
-             google_email = $4,
-             display_name = case
-                 when nullif($6, '') is not null then $6
-                 else display_name
-             end
+         set google_subject = $2,
+             google_email = $3
          where user_id = $1",
     )
     .bind(&owner.user_id)
-    .bind(google_user.given_name.trim())
-    .bind(google_user.family_name.trim())
-    .bind(&normalized_email)
     .bind(normalized_subject)
-    .bind(resolved_display_name)
+    .bind(&normalized_email)
     .execute(&state.pool)
     .await?;
 
-    let authenticated_user = resolve_team_member_by_id(state, &team_id, &owner.user_id).await?;
+    let owner_teams = list_owner_team_summaries_for_user(state, &owner.user_id).await?;
+    let default_team_id = owner_teams
+        .first()
+        .map(|team| team.team_id.clone())
+        .ok_or_else(|| anyhow!("Google account is not provisioned as an owner in identity bootstrap"))?;
+
     Ok(ResolvedGoogleOwner {
-        team_id,
-        authenticated_user,
+        authenticated_user_id: owner.user_id,
+        default_team_id,
     })
 }
 
@@ -871,79 +1083,30 @@ pub async fn reload_library(state: &Arc<AppState>, context: &SessionContext) -> 
 
 pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapApplyResponse> {
     let bootstrap = load_bootstrap(&state.config.bootstrap_path)?;
-    let owner_memberships: BTreeSet<&str> = bootstrap
-        .memberships
+    let normalized = compile_bootstrap(&bootstrap)?;
+    let team_ids = normalized
+        .teams
         .iter()
-        .filter(|membership| membership.role == "owner")
-        .map(|membership| membership.user_id.as_str())
-        .collect();
-    let learner_memberships: BTreeSet<&str> = bootstrap
-        .memberships
-        .iter()
-        .filter(|membership| membership.role == "learner")
-        .map(|membership| membership.user_id.as_str())
-        .collect();
+        .map(|team| team.team_id.clone())
+        .collect::<Vec<_>>();
 
-    if owner_memberships.is_empty() {
-        bail!("identity bootstrap must include at least one owner membership");
+    let mut tx = state.pool.begin().await?;
+
+    for team in &normalized.teams {
+        query(
+            "insert into team (team_id, display_name, description) values ($1, $2, $3)
+             on conflict (team_id) do update
+             set display_name = excluded.display_name,
+                 description = excluded.description",
+        )
+        .bind(&team.team_id)
+        .bind(&team.display_name)
+        .bind(&team.description)
+        .execute(&mut *tx)
+        .await?;
     }
 
-    for membership in &bootstrap.memberships {
-        if !matches!(membership.role.as_str(), "owner" | "learner") {
-            bail!(
-                "membership role '{}' is not supported; use only 'owner' or 'learner'",
-                membership.role
-            );
-        }
-    }
-
-    for user in &bootstrap.users {
-        if owner_memberships.contains(user.user_id.as_str())
-            && (user
-                .first_name
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .is_none()
-                || user
-                    .last_name
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .is_none()
-                || user
-                    .email
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .is_none())
-        {
-            bail!(
-                "owner user '{}' must set first_name, last_name, and email in identity bootstrap",
-                user.user_id
-            );
-        }
-        if learner_memberships.contains(user.user_id.as_str())
-            && (user.date_of_birth.is_none() || user.sex.is_none() || user.current_level.is_none())
-        {
-            bail!(
-                "learner user '{}' must set date_of_birth, sex, and current_level in identity bootstrap",
-                user.user_id
-            );
-        }
-    }
-
-    query(
-        "insert into team (team_id, display_name, description) values ($1, $2, $3)
-         on conflict (team_id) do update set display_name = excluded.display_name, description = excluded.description",
-    )
-    .bind(&bootstrap.team.team_id)
-    .bind(&bootstrap.team.display_name)
-    .bind(&bootstrap.team.description)
-    .execute(&state.pool)
-    .await?;
-
-    for user in &bootstrap.users {
+    for user in &normalized.users {
         query(
             "insert into user_account (
                 user_id,
@@ -966,8 +1129,8 @@ pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapA
                  first_name = excluded.first_name,
                  last_name = excluded.last_name,
                  email = excluded.email,
-                 google_subject = excluded.google_subject,
-                 google_email = excluded.google_email,
+                 google_subject = coalesce(excluded.google_subject, user_account.google_subject),
+                 google_email = coalesce(excluded.google_email, user_account.google_email),
                  date_of_birth = excluded.date_of_birth,
                  sex = excluded.sex,
                  current_level = excluded.current_level,
@@ -978,39 +1141,64 @@ pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapA
         .bind(&user.display_name)
         .bind(&user.first_name)
         .bind(&user.last_name)
-        .bind(user.email.as_ref().map(|value| value.trim().to_ascii_lowercase()))
+        .bind(&user.email)
         .bind(&user.google_subject)
-        .bind(
-            user.google_email
-                .as_ref()
-                .map(|value| value.trim().to_ascii_lowercase()),
-        )
+        .bind(&user.google_email)
         .bind(user.date_of_birth)
         .bind(&user.sex)
         .bind(&user.current_level)
         .bind(&user.notes)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
     }
 
-    for membership in &bootstrap.memberships {
-        query(
-            "insert into team_membership (team_id, user_id, role) values ($1, $2, $3)
-             on conflict (team_id, user_id) do update set role = excluded.role",
-        )
-        .bind(&membership.team_id)
-        .bind(&membership.user_id)
-        .bind(&membership.role)
-        .execute(&state.pool)
-        .await?;
+    for team_id in &team_ids {
+        query("delete from team_membership where team_id = $1")
+            .bind(team_id)
+            .execute(&mut *tx)
+            .await?;
     }
+
+    for membership in &normalized.memberships {
+        query("insert into team_membership (team_id, user_id, role) values ($1, $2, $3)")
+            .bind(&membership.team_id)
+            .bind(&membership.user_id)
+            .bind(&membership.role)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    query("delete from team where not (team_id = any($1))")
+        .bind(&team_ids)
+        .execute(&mut *tx)
+        .await?;
+
+    query(
+        "delete from web_session ws
+         where not exists (
+             select 1
+             from team_membership auth_tm
+             where auth_tm.team_id = ws.team_id
+               and auth_tm.user_id = ws.authenticated_user_id
+         )
+         or not exists (
+             select 1
+             from team_membership active_tm
+             where active_tm.team_id = ws.team_id
+               and active_tm.user_id = ws.active_user_id
+         )",
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
 
     Ok(BootstrapApplyResponse {
         status: "ok".to_string(),
-        team_id: bootstrap.team.team_id,
-        user_count: bootstrap.users.len(),
-        membership_count: bootstrap.memberships.len(),
-        learner_count: learner_memberships.len(),
+        team_count: normalized.teams.len(),
+        user_count: normalized.users.len(),
+        membership_count: normalized.memberships.len(),
+        learner_count: normalized.learner_count,
     })
 }
 
@@ -1018,7 +1206,7 @@ pub async fn fetch_library(
     state: &Arc<AppState>,
     context: &SessionContext,
 ) -> anyhow::Result<(LibraryBundle, LibraryReloadResponse)> {
-    ensure_viewer_can_read_library(&context.authenticated_user)?;
+    ensure_viewer_can_read_library(&context.active_user)?;
 
     let bundle = state.library.read().await.clone();
     let report = library_report_response(&*state.library_report.read().await);
@@ -1029,7 +1217,7 @@ pub async fn fetch_library_workspace(
     state: &Arc<AppState>,
     context: &SessionContext,
 ) -> anyhow::Result<LibraryWorkspaceResponse> {
-    ensure_viewer_can_manage_team(&context.authenticated_user)?;
+    ensure_viewer_can_manage_team(&context.active_user)?;
     let team_id = context.team_id.clone();
 
     let library = state.library.read().await.clone();
@@ -1065,7 +1253,7 @@ pub async fn list_library_documents(
     state: &Arc<AppState>,
     context: &SessionContext,
 ) -> anyhow::Result<Vec<LibraryDocumentSummary>> {
-    ensure_viewer_can_read_library(&context.authenticated_user)?;
+    ensure_viewer_can_read_library(&context.active_user)?;
 
     Ok(state
         .library_documents
@@ -1081,7 +1269,7 @@ pub async fn fetch_library_document(
     context: &SessionContext,
     route_path: &str,
 ) -> anyhow::Result<LibraryDocumentPayload> {
-    ensure_viewer_can_read_library(&context.authenticated_user)?;
+    ensure_viewer_can_read_library(&context.active_user)?;
 
     let normalized = route_path.trim().trim_matches('/');
     if normalized.is_empty() {
@@ -1111,28 +1299,6 @@ pub async fn fetch_viewer_session(
     build_session_response(state, context.as_ref()).await
 }
 
-pub async fn login_dev_viewer_session(
-    state: &Arc<AppState>,
-    username: &str,
-) -> anyhow::Result<(Uuid, ViewerSessionResponse)> {
-    if !state.config.dev_username_signin_enabled {
-        bail!("development username sign-in is disabled");
-    }
-
-    let team_id = resolve_primary_team_id(state).await?;
-    let authenticated_user = resolve_team_member_by_username(state, &team_id, username).await?;
-    let session_id = create_web_session(
-        state,
-        &team_id,
-        &authenticated_user.user_id,
-        &authenticated_user.user_id,
-    )
-    .await?;
-    let context = resolve_session_context(state, session_id).await?;
-    let response = build_session_response(state, Some(&context)).await?;
-    Ok((session_id, response))
-}
-
 pub async fn switch_active_user(
     state: &Arc<AppState>,
     session_id: Uuid,
@@ -1151,6 +1317,40 @@ pub async fn switch_active_user(
     )
     .bind(session_id)
     .bind(&requested_user.user_id)
+    .bind(Utc::now())
+    .execute(&state.pool)
+    .await?;
+
+    let updated = resolve_session_context(state, session_id).await?;
+    build_session_response(state, Some(&updated)).await
+}
+
+pub async fn switch_active_team(
+    state: &Arc<AppState>,
+    session_id: Uuid,
+    team_id: &str,
+) -> anyhow::Result<ViewerSessionResponse> {
+    let context = resolve_session_context(state, session_id).await?;
+    let requested_team_id = team_id.trim();
+    if requested_team_id.is_empty() {
+        bail!("team_id is required");
+    }
+
+    let requested_owner = resolve_team_member_by_id(state, requested_team_id, &context.authenticated_user.user_id)
+        .await
+        .with_context(|| format!("team '{}' is not available for this owner session", requested_team_id))?;
+    ensure_viewer_can_manage_team(&requested_owner)?;
+
+    query(
+        "update web_session
+         set team_id = $2,
+             active_user_id = $3,
+             updated_at = $4
+         where session_id = $1",
+    )
+    .bind(session_id)
+    .bind(requested_team_id)
+    .bind(&requested_owner.user_id)
     .bind(Utc::now())
     .execute(&state.pool)
     .await?;
@@ -1244,16 +1444,16 @@ pub async fn finish_google_oauth_flow(
     let session_owner = resolve_owner_for_google_identity(state, &google_user).await?;
     let session_id = create_web_session(
         state,
-        &session_owner.team_id,
-        &session_owner.authenticated_user.user_id,
-        &session_owner.authenticated_user.user_id,
+        &session_owner.default_team_id,
+        &session_owner.authenticated_user_id,
+        &session_owner.authenticated_user_id,
     )
     .await?;
     Ok((Some(session_id), redirect))
 }
 
 pub async fn fetch_dashboard(state: &Arc<AppState>, context: &SessionContext) -> anyhow::Result<DashboardResponse> {
-    let team = fetch_team_summary(state).await?;
+    let team = fetch_team_summary_by_id(state, &context.team_id).await?;
     let team_id = context.team_id.clone();
     let learners = query_as::<_, LearnerRow>(
         "select learner_id, team_id, user_id, display_name, date_of_birth, sex, current_level, notes
@@ -1266,9 +1466,9 @@ pub async fn fetch_dashboard(state: &Arc<AppState>, context: &SessionContext) ->
     .await?;
 
     let library = state.library.read().await.clone();
-    let visible_learners = if context.authenticated_user.can_view_all_learners {
+    let visible_learners = if context.active_user.can_view_all_learners {
         learners
-    } else if let Some(learner_id) = context.authenticated_user.learner_id.as_deref() {
+    } else if let Some(learner_id) = context.active_user.learner_id.as_deref() {
         learners
             .into_iter()
             .filter(|learner| learner.learner_id == learner_id)
@@ -1277,7 +1477,7 @@ pub async fn fetch_dashboard(state: &Arc<AppState>, context: &SessionContext) ->
         Vec::new()
     };
     let learner_dashboards = build_dashboard_cards(state, &library, &visible_learners).await?;
-    let library_report = if context.authenticated_user.can_read_library {
+    let library_report = if context.active_user.can_read_library {
         Some(library_report_response(&*state.library_report.read().await))
     } else {
         None
@@ -1305,8 +1505,8 @@ pub async fn list_learners(state: &Arc<AppState>, context: &SessionContext) -> a
     Ok(learners
         .into_iter()
         .filter(|learner| {
-            context.authenticated_user.can_view_all_learners
-                || context.authenticated_user.learner_id.as_deref() == Some(learner.learner_id.as_str())
+            context.active_user.can_view_all_learners
+                || context.active_user.learner_id.as_deref() == Some(learner.learner_id.as_str())
         })
         .map(|learner| LearnerSummary {
             learner_id: learner.learner_id,
@@ -1318,12 +1518,12 @@ pub async fn list_learners(state: &Arc<AppState>, context: &SessionContext) -> a
         .collect())
 }
 
-pub async fn fetch_learner_detail(
+async fn load_learner_detail_payload(
     state: &Arc<AppState>,
     context: &SessionContext,
     learner_id: &str,
 ) -> anyhow::Result<LearnerDetailResponse> {
-    ensure_viewer_can_access_learner(&context.authenticated_user, learner_id)?;
+    ensure_viewer_can_access_learner(&context.active_user, learner_id)?;
     let team_id = context.team_id.clone();
 
     let learner = query_as::<_, LearnerRow>(
@@ -1394,14 +1594,23 @@ pub async fn fetch_learner_detail(
     })
 }
 
+pub async fn fetch_learner_detail(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    learner_id: &str,
+) -> anyhow::Result<LearnerDetailResponse> {
+    ensure_viewer_can_manage_team(&context.active_user)?;
+    load_learner_detail_payload(state, context, learner_id).await
+}
+
 pub async fn fetch_learner_workspace(
     state: &Arc<AppState>,
     context: &SessionContext,
     learner_id: &str,
 ) -> anyhow::Result<crate::domain::LearnerWorkspaceResponse> {
-    ensure_viewer_can_access_learner(&context.authenticated_user, learner_id)?;
-    let detail = fetch_learner_detail(state, context, learner_id).await?;
-    let support_workspace = context.authenticated_user.can_manage_team;
+    ensure_viewer_can_access_learner(&context.active_user, learner_id)?;
+    let detail = load_learner_detail_payload(state, context, learner_id).await?;
+    let support_workspace = context.active_user.can_manage_team;
     let sessions = if support_workspace {
         detail.sessions.clone()
     } else {
@@ -1527,7 +1736,7 @@ pub async fn start_session_material_activity(
     session_material_id: &str,
 ) -> anyhow::Result<ActivityStartResponse> {
     let (session, materials) = load_session_and_material_rows(&state.pool, session_id).await?;
-    ensure_viewer_can_access_learner(&context.authenticated_user, &session.learner_id)?;
+    ensure_viewer_can_access_learner(&context.active_user, &session.learner_id)?;
 
     let session_material = materials
         .iter()
@@ -1595,7 +1804,7 @@ pub async fn complete_activity_instance(
     let (session_material_id, seed) = runtime::parse_activity_instance_id(activity_instance_id)?;
     let session_material = load_session_material_row(&state.pool, &session_material_id).await?;
     let session = load_session_row(&state.pool, &session_material.session_id).await?;
-    ensure_viewer_can_access_learner(&context.authenticated_user, &session.learner_id)?;
+    ensure_viewer_can_access_learner(&context.active_user, &session.learner_id)?;
 
     let library = state.library.read().await.clone();
     let material = library
@@ -2046,18 +2255,6 @@ fn document_description_for_kind(documents: &[LibraryDocument], kind: &str, docu
         .filter(|description| !description.is_empty())
 }
 
-async fn fetch_team_summary(state: &Arc<AppState>) -> anyhow::Result<Option<TeamSummary>> {
-    let team = query_as::<_, TeamRow>("select team_id, display_name, description from team order by team_id limit 1")
-        .fetch_optional(&state.pool)
-        .await?;
-
-    Ok(team.map(|row| TeamSummary {
-        team_id: row.team_id,
-        display_name: row.display_name,
-        description: row.description,
-    }))
-}
-
 async fn fetch_team_summary_by_id(state: &Arc<AppState>, team_id: &str) -> anyhow::Result<Option<TeamSummary>> {
     let team = query_as::<_, TeamRow>(
         "select team_id, display_name, description
@@ -2076,11 +2273,29 @@ async fn fetch_team_summary_by_id(state: &Arc<AppState>, team_id: &str) -> anyho
     }))
 }
 
-async fn resolve_primary_team_id(state: &Arc<AppState>) -> anyhow::Result<String> {
-    fetch_team_summary(state)
-        .await?
-        .map(|team| team.team_id)
-        .ok_or_else(|| anyhow!("no team is configured"))
+async fn list_owner_team_summaries_for_user(state: &Arc<AppState>, user_id: &str) -> anyhow::Result<Vec<TeamSummary>> {
+    let teams = query_as::<_, TeamRow>(
+        "select
+            t.team_id,
+            t.display_name,
+            t.description
+         from team_membership tm
+         join team t on t.team_id = tm.team_id
+         where tm.user_id = $1 and tm.role = 'owner'
+         order by t.display_name, t.team_id",
+    )
+    .bind(user_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(teams
+        .into_iter()
+        .map(|row| TeamSummary {
+            team_id: row.team_id,
+            display_name: row.display_name,
+            description: row.description,
+        })
+        .collect())
 }
 
 async fn list_team_members_for_team(state: &Arc<AppState>, team_id: &str) -> anyhow::Result<Vec<TeamMemberSummary>> {
@@ -3335,6 +3550,7 @@ fn session_workspace_order(left: &SessionDetail, right: &SessionDetail) -> Order
 
 #[cfg(test)]
 mod tests {
+    use catalog::{BootstrapMembership, BootstrapTeam, BootstrapUser, IdentityBootstrap};
     use chrono::NaiveDate;
 
     use crate::domain::{
@@ -3344,8 +3560,8 @@ mod tests {
     };
 
     use super::{
-        build_assigned_pathways, continue_block_for_assigned_journeys, learner_safe_workspace_summary,
-        response_sessions_for_assigned_journeys,
+        build_assigned_pathways, compile_bootstrap, continue_block_for_assigned_journeys,
+        learner_safe_workspace_summary, response_sessions_for_assigned_journeys,
     };
 
     fn sample_session() -> SessionDetail {
@@ -3533,6 +3749,172 @@ mod tests {
         assert_eq!(grouped[0].assigned_playlists.len(), 2);
         assert_eq!(grouped[1].pathway_title, "Subtraction Foundations");
         assert_eq!(grouped[1].playlist_count, 1);
+    }
+
+    #[test]
+    fn compile_bootstrap_flattens_shared_users_across_multiple_teams() {
+        let bootstrap = IdentityBootstrap {
+            teams: vec![
+                BootstrapTeam {
+                    team_id: "team-alpha".to_string(),
+                    display_name: "Team Alpha".to_string(),
+                    description: "Alpha".to_string(),
+                    users: vec![
+                        BootstrapUser {
+                            user_id: "user-owner".to_string(),
+                            username: "owner".to_string(),
+                            display_name: "Owner One".to_string(),
+                            first_name: Some("Owner".to_string()),
+                            last_name: Some("One".to_string()),
+                            email: Some("owner@example.com".to_string()),
+                            google_subject: None,
+                            google_email: None,
+                            date_of_birth: None,
+                            sex: None,
+                            current_level: None,
+                            notes: Some("Owner".to_string()),
+                        },
+                        BootstrapUser {
+                            user_id: "user-learner-a".to_string(),
+                            username: "learner-a".to_string(),
+                            display_name: "Learner A".to_string(),
+                            first_name: None,
+                            last_name: None,
+                            email: None,
+                            google_subject: None,
+                            google_email: None,
+                            date_of_birth: NaiveDate::from_ymd_opt(2017, 1, 1),
+                            sex: Some("Male".to_string()),
+                            current_level: Some("Year 2".to_string()),
+                            notes: None,
+                        },
+                    ],
+                    memberships: vec![
+                        BootstrapMembership {
+                            user_id: "user-owner".to_string(),
+                            role: "owner".to_string(),
+                        },
+                        BootstrapMembership {
+                            user_id: "user-learner-a".to_string(),
+                            role: "learner".to_string(),
+                        },
+                    ],
+                },
+                BootstrapTeam {
+                    team_id: "team-beta".to_string(),
+                    display_name: "Team Beta".to_string(),
+                    description: "Beta".to_string(),
+                    users: vec![
+                        BootstrapUser {
+                            user_id: "user-owner".to_string(),
+                            username: "owner".to_string(),
+                            display_name: "Owner One".to_string(),
+                            first_name: Some("Owner".to_string()),
+                            last_name: Some("One".to_string()),
+                            email: Some("owner@example.com".to_string()),
+                            google_subject: None,
+                            google_email: None,
+                            date_of_birth: None,
+                            sex: None,
+                            current_level: None,
+                            notes: Some("Owner".to_string()),
+                        },
+                        BootstrapUser {
+                            user_id: "user-learner-b".to_string(),
+                            username: "learner-b".to_string(),
+                            display_name: "Learner B".to_string(),
+                            first_name: None,
+                            last_name: None,
+                            email: None,
+                            google_subject: None,
+                            google_email: None,
+                            date_of_birth: NaiveDate::from_ymd_opt(2018, 2, 2),
+                            sex: Some("Female".to_string()),
+                            current_level: Some("Year 1".to_string()),
+                            notes: None,
+                        },
+                    ],
+                    memberships: vec![
+                        BootstrapMembership {
+                            user_id: "user-owner".to_string(),
+                            role: "owner".to_string(),
+                        },
+                        BootstrapMembership {
+                            user_id: "user-learner-b".to_string(),
+                            role: "learner".to_string(),
+                        },
+                    ],
+                },
+            ],
+        };
+
+        let compiled = compile_bootstrap(&bootstrap).expect("bootstrap should compile");
+
+        assert_eq!(compiled.teams.len(), 2);
+        assert_eq!(compiled.users.len(), 3);
+        assert_eq!(compiled.memberships.len(), 4);
+        assert_eq!(compiled.learner_count, 2);
+    }
+
+    #[test]
+    fn compile_bootstrap_rejects_conflicting_shared_user_definitions() {
+        let bootstrap = IdentityBootstrap {
+            teams: vec![
+                BootstrapTeam {
+                    team_id: "team-alpha".to_string(),
+                    display_name: "Team Alpha".to_string(),
+                    description: "Alpha".to_string(),
+                    users: vec![BootstrapUser {
+                        user_id: "user-owner".to_string(),
+                        username: "owner".to_string(),
+                        display_name: "Owner One".to_string(),
+                        first_name: Some("Owner".to_string()),
+                        last_name: Some("One".to_string()),
+                        email: Some("owner@example.com".to_string()),
+                        google_subject: None,
+                        google_email: None,
+                        date_of_birth: None,
+                        sex: None,
+                        current_level: None,
+                        notes: Some("Owner".to_string()),
+                    }],
+                    memberships: vec![BootstrapMembership {
+                        user_id: "user-owner".to_string(),
+                        role: "owner".to_string(),
+                    }],
+                },
+                BootstrapTeam {
+                    team_id: "team-beta".to_string(),
+                    display_name: "Team Beta".to_string(),
+                    description: "Beta".to_string(),
+                    users: vec![BootstrapUser {
+                        user_id: "user-owner".to_string(),
+                        username: "owner".to_string(),
+                        display_name: "Owner With Different Name".to_string(),
+                        first_name: Some("Owner".to_string()),
+                        last_name: Some("One".to_string()),
+                        email: Some("owner@example.com".to_string()),
+                        google_subject: None,
+                        google_email: None,
+                        date_of_birth: None,
+                        sex: None,
+                        current_level: None,
+                        notes: Some("Owner".to_string()),
+                    }],
+                    memberships: vec![BootstrapMembership {
+                        user_id: "user-owner".to_string(),
+                        role: "owner".to_string(),
+                    }],
+                },
+            ],
+        };
+
+        let error = compile_bootstrap(&bootstrap).expect_err("bootstrap should be rejected");
+
+        assert!(
+            error.to_string().contains("defined differently across teams"),
+            "unexpected error: {error}"
+        );
     }
 
     fn sample_assigned_journey(assignment_id: &str, session: SessionDetail) -> LearnerAssignedJourneySummary {

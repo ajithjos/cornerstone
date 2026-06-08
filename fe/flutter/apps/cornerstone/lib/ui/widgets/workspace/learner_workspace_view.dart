@@ -13,7 +13,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
   final LearnerWorkspacePayload? workspace;
   final bool viewerCanReadLibrary;
   final ValueChanged<String> onOpenLibraryRoute;
-  final Future<void> Function(SessionDetail session, SessionMaterial material) onStartActivity;
+  final Future<void> Function(SessionDetail session, SessionMaterial material)
+  onStartActivity;
 
   @override
   Widget build(BuildContext context) {
@@ -26,12 +27,22 @@ class _LearnerWorkspaceView extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.school_rounded, size: 56, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+              Icon(
+                Icons.school_rounded,
+                size: 56,
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.4,
+                ),
+              ),
               const SizedBox(height: 20),
               Text(
-                viewer != null && viewer!.isLearner ? 'This username is not linked to a learner profile yet.' : 'Select a learner to open the learner workspace.',
+                viewer != null && viewer!.isLearner
+                    ? 'This username is not linked to a learner profile yet.'
+                    : 'Select a learner to open the learner workspace.',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -46,8 +57,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
       growable: false,
     );
     final assignedPathwayCount = assignedPathways.length;
-    final singleAssignedJourney =
-      assignedJourneys.length == 1 ? assignedJourneys.first : null;
+    final singleAssignedJourney = assignedJourneys.length == 1
+        ? assignedJourneys.first
+        : null;
     final hasMultipleAssignedJourneys = assignedJourneys.length > 1;
     final journey = singleAssignedJourney?.journey ?? learnerWorkspace.journey;
     final learnerSurface = learnerWorkspace.workspace;
@@ -86,7 +98,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
           return session;
         }
       }
-      return orderedJourneySessions.isEmpty ? null : orderedJourneySessions.first;
+      return orderedJourneySessions.isEmpty
+          ? null
+          : orderedJourneySessions.first;
     }
 
     final orderedSessions = orderSessions(
@@ -100,11 +114,25 @@ class _LearnerWorkspaceView extends StatelessWidget {
             .firstWhere((_) => true, orElse: () => null);
     final currentStanding =
         nextSession?.sequenceNumber ??
-        (journey != null && journey.totalSessionCount > 0 ? (journey.completedSessionCount + 1).clamp(1, journey.totalSessionCount) : null);
-    final journeyProgress = journey == null || journey.totalSessionCount == 0 ? null : (journey.completedSessionCount / journey.totalSessionCount).clamp(0.0, 1.0);
+        (journey != null && journey.totalSessionCount > 0
+            ? (journey.completedSessionCount + 1).clamp(
+                1,
+                journey.totalSessionCount,
+              )
+            : null);
+    final journeyProgress = journey == null || journey.totalSessionCount == 0
+        ? null
+        : (journey.completedSessionCount / journey.totalSessionCount).clamp(
+            0.0,
+            1.0,
+          );
     final progressStatusCounts = <String, int>{};
     for (final state in learnerWorkspace.progress) {
-      progressStatusCounts.update(state.status, (count) => count + 1, ifAbsent: () => 1);
+      progressStatusCounts.update(
+        state.status,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
     }
     final practiceSessions = learnerSurface.practiceLane;
     final progressSnapshot = learnerSurface.progressSnapshot;
@@ -120,9 +148,16 @@ class _LearnerWorkspaceView extends StatelessWidget {
       );
     }
 
-    Widget buildSessionSequenceCard(SessionDetail session, {required bool active}) {
-      final learnerGroups = session.materialsByKind.where((group) => group.audience == 'learner').toList(growable: false);
-      final adultGroups = session.materialsByKind.where((group) => group.audience == 'adult').toList(growable: false);
+    Widget buildSessionSequenceCard(
+      SessionDetail session, {
+      required bool active,
+    }) {
+      final learnerGroups = session.materialsByKind
+          .where((group) => group.audience == 'learner')
+          .toList(growable: false);
+      final adultGroups = session.materialsByKind
+          .where((group) => group.audience == 'adult')
+          .toList(growable: false);
       return Container(
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(18),
@@ -130,11 +165,19 @@ class _LearnerWorkspaceView extends StatelessWidget {
           color: active
               ? Color.alphaBlend(
                   theme.colorScheme.secondary.withValues(alpha: 0.07),
-                  theme.colorScheme.surface.withValues(alpha: theme.brightness == Brightness.dark ? 0.72 : 0.94),
+                  theme.colorScheme.surface.withValues(
+                    alpha: theme.brightness == Brightness.dark ? 0.72 : 0.94,
+                  ),
                 )
-              : theme.colorScheme.surface.withValues(alpha: theme.brightness == Brightness.dark ? 0.58 : 0.88),
+              : theme.colorScheme.surface.withValues(
+                  alpha: theme.brightness == Brightness.dark ? 0.58 : 0.88,
+                ),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: active ? theme.colorScheme.secondary.withValues(alpha: 0.22) : theme.colorScheme.outlineVariant.withValues(alpha: 0.84)),
+          border: Border.all(
+            color: active
+                ? theme.colorScheme.secondary.withValues(alpha: 0.22)
+                : theme.colorScheme.outlineVariant.withValues(alpha: 0.84),
+          ),
         ),
         constraints: const BoxConstraints(minHeight: 136),
         child: Theme(
@@ -148,8 +191,12 @@ class _LearnerWorkspaceView extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 18,
-                  backgroundColor: active ? theme.colorScheme.secondary : theme.colorScheme.primary.withValues(alpha: 0.12),
-                  foregroundColor: active ? theme.colorScheme.onSecondary : theme.colorScheme.primary,
+                  backgroundColor: active
+                      ? theme.colorScheme.secondary
+                      : theme.colorScheme.primary.withValues(alpha: 0.12),
+                  foregroundColor: active
+                      ? theme.colorScheme.onSecondary
+                      : theme.colorScheme.primary,
                   child: Text('${session.sequenceNumber ?? '?'}'),
                 ),
                 const SizedBox(width: 12),
@@ -163,11 +210,24 @@ class _LearnerWorkspaceView extends StatelessWidget {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _ContractChip(domain: 'material_kind', value: session.dominantKind),
+                          _ContractChip(
+                            domain: 'material_kind',
+                            value: session.dominantKind,
+                          ),
                           if (session.status == 'completed')
-                            _PillBadge(text: 'Practice again', color: theme.colorScheme.primary.withValues(alpha: 0.10), textColor: theme.colorScheme.primary),
+                            _PillBadge(
+                              text: 'Practice again',
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.10,
+                              ),
+                              textColor: theme.colorScheme.primary,
+                            ),
                           if (session.requiresAdultSupport)
-                            _PillBadge(text: 'Adult support', color: theme.colorScheme.tertiaryContainer, textColor: theme.colorScheme.onTertiaryContainer),
+                            _PillBadge(
+                              text: 'Adult support',
+                              color: theme.colorScheme.tertiaryContainer,
+                              textColor: theme.colorScheme.onTertiaryContainer,
+                            ),
                         ],
                       ),
                     ],
@@ -175,9 +235,15 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _PillBadge(
-                  text: session.status == 'completed' ? 'Completed' : session.scheduledDate,
-                  color: active ? theme.colorScheme.tertiaryContainer : theme.colorScheme.primary.withValues(alpha: 0.12),
-                  textColor: active ? theme.colorScheme.onTertiaryContainer : theme.colorScheme.primary,
+                  text: session.status == 'completed'
+                      ? 'Completed'
+                      : session.scheduledDate,
+                  color: active
+                      ? theme.colorScheme.tertiaryContainer
+                      : theme.colorScheme.primary.withValues(alpha: 0.12),
+                  textColor: active
+                      ? theme.colorScheme.onTertiaryContainer
+                      : theme.colorScheme.primary,
                 ),
               ],
             ),
@@ -189,9 +255,13 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 children: session.materialsByKind
                     .map(
                       (group) => _PillBadge(
-                        text: 'material_kind:${_contractTermLabel(group.kind)} · count:${group.materialCount}',
+                        text:
+                            'material_kind:${_contractTermLabel(group.kind)} · count:${group.materialCount}',
                         color: _materialKindBackgroundColor(theme, group.kind),
-                        textColor: _materialKindForegroundColor(theme, group.kind),
+                        textColor: _materialKindForegroundColor(
+                          theme,
+                          group.kind,
+                        ),
                       ),
                     )
                     .toList(growable: false),
@@ -202,9 +272,13 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 const _MissingLearnerContentNotice()
               else
                 _SessionWorkspaceAudiencePanel(
-                  title: active ? 'Current session workspace' : 'Session workspace',
-                  description: 'Open this session to read the note, work through the practice, and launch live activity items.',
-                  emptyState: 'No learner-facing materials are attached to this session yet.',
+                  title: active
+                      ? 'Current session workspace'
+                      : 'Session workspace',
+                  description:
+                      'Open this session to read the note, work through the practice, and launch live activity items.',
+                  emptyState:
+                      'No learner-facing materials are attached to this session yet.',
                   icon: Icons.school_rounded,
                   groups: learnerGroups,
                   session: session,
@@ -217,8 +291,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 const SizedBox(height: 12),
                 _SessionWorkspaceAudiencePanel(
                   title: 'Teaching guidance for parent or teacher',
-                  description: 'Use this guidance to explain and correct before the learner attempts activities.',
-                  emptyState: 'No teaching guidance is attached to this session yet.',
+                  description:
+                      'Use this guidance to explain and correct before the learner attempts activities.',
+                  emptyState:
+                      'No teaching guidance is attached to this session yet.',
                   icon: Icons.co_present_rounded,
                   groups: adultGroups,
                   session: session,
@@ -252,12 +328,11 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   assignedJourneyInfo.totalSessionCount,
                 )
               : null);
-      final journeyProgress =
-          assignedJourneyInfo.totalSessionCount == 0
-              ? null
-              : (assignedJourneyInfo.completedSessionCount /
-                      assignedJourneyInfo.totalSessionCount)
-                  .clamp(0.0, 1.0);
+      final journeyProgress = assignedJourneyInfo.totalSessionCount == 0
+          ? null
+          : (assignedJourneyInfo.completedSessionCount /
+                    assignedJourneyInfo.totalSessionCount)
+                .clamp(0.0, 1.0);
 
       return _SurfaceCard(
         child: Column(
@@ -265,10 +340,12 @@ class _LearnerWorkspaceView extends StatelessWidget {
           children: [
             if (includePathwayContext) ...[
               Text(
-                assignedJourneyInfo.pathwayTitle ?? assignedJourneyInfo.playlistTitle,
+                assignedJourneyInfo.pathwayTitle ??
+                    assignedJourneyInfo.playlistTitle,
                 style: theme.textTheme.titleLarge,
               ),
-              if ((assignedJourneyInfo.pathwayDescription ?? '').isNotEmpty) ...[
+              if ((assignedJourneyInfo.pathwayDescription ?? '')
+                  .isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(
                   assignedJourneyInfo.pathwayDescription!,
@@ -279,7 +356,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
               ],
               const SizedBox(height: 12),
             ],
-            Text(assignedJourneyInfo.playlistTitle, style: theme.textTheme.headlineSmall),
+            Text(
+              assignedJourneyInfo.playlistTitle,
+              style: theme.textTheme.headlineSmall,
+            ),
             const SizedBox(height: 6),
             Text(
               assignedJourneyInfo.playlistDescription,
@@ -305,7 +385,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   textColor: theme.colorScheme.onSecondaryContainer,
                 ),
                 _PillBadge(
-                  text: '${assignedJourneyInfo.completedSessionCount} completed',
+                  text:
+                      '${assignedJourneyInfo.completedSessionCount} completed',
                   color: theme.colorScheme.surfaceContainerHighest,
                   textColor: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -337,14 +418,16 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 children: [
                   if (assignedJourneyInfo.pathwayRoutePath != null)
                     TextButton(
-                      onPressed: () =>
-                          onOpenLibraryRoute(assignedJourneyInfo.pathwayRoutePath!),
+                      onPressed: () => onOpenLibraryRoute(
+                        assignedJourneyInfo.pathwayRoutePath!,
+                      ),
                       child: const Text('Open pathway brief'),
                     ),
                   if (assignedJourneyInfo.playlistRoutePath != null)
                     TextButton(
-                      onPressed: () =>
-                          onOpenLibraryRoute(assignedJourneyInfo.playlistRoutePath!),
+                      onPressed: () => onOpenLibraryRoute(
+                        assignedJourneyInfo.playlistRoutePath!,
+                      ),
                       child: const Text('Open playlist brief'),
                     ),
                 ],
@@ -384,7 +467,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(assignedPathway.pathwayTitle, style: theme.textTheme.headlineSmall),
+            Text(
+              assignedPathway.pathwayTitle,
+              style: theme.textTheme.headlineSmall,
+            ),
             if (assignedPathway.pathwayDescription.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
@@ -400,7 +486,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
               runSpacing: 8,
               children: [
                 _PillBadge(
-                  text: '${assignedPathway.playlistCount} playlist${assignedPathway.playlistCount == 1 ? '' : 's'}',
+                  text:
+                      '${assignedPathway.playlistCount} playlist${assignedPathway.playlistCount == 1 ? '' : 's'}',
                   color: theme.colorScheme.primary.withValues(alpha: 0.12),
                   textColor: theme.colorScheme.primary,
                 ),
@@ -416,10 +503,12 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 ),
               ],
             ),
-            if (viewerCanReadLibrary && assignedPathway.pathwayRoutePath != null) ...[
+            if (viewerCanReadLibrary &&
+                assignedPathway.pathwayRoutePath != null) ...[
               const SizedBox(height: 14),
               TextButton(
-                onPressed: () => onOpenLibraryRoute(assignedPathway.pathwayRoutePath!),
+                onPressed: () =>
+                    onOpenLibraryRoute(assignedPathway.pathwayRoutePath!),
                 child: const Text('Open pathway brief'),
               ),
             ],
@@ -451,13 +540,15 @@ class _LearnerWorkspaceView extends StatelessWidget {
       children: [
         _PageHeroCard(
           eyebrow: isSupportView ? 'Learner preview' : 'Learner home',
-          title: isSupportView ? 'Learner workspace for support' : 'My learning workspace',
+          title: isSupportView
+              ? 'Learner workspace for support'
+              : 'My learning workspace',
           description: hasMultipleAssignedJourneys
-            ? assignedPathwayCount > 1
-              ? 'You have ${assignedJourneys.length} assigned playlists across $assignedPathwayCount pathways. Start in Now, then open each playlist below to see its own current session and full session path.'
-              : 'You have ${assignedJourneys.length} assigned playlists in one pathway. Start in Now, then open each playlist below to see its own current session and full session path.'
-            : journey == null
-            ? 'This is your learner home: start now, keep practising, and track progress in one place.'
+              ? assignedPathwayCount > 1
+                    ? 'You have ${assignedJourneys.length} assigned playlists across $assignedPathwayCount pathways. Start in Now, then open each playlist below to see its own current session and full session path.'
+                    : 'You have ${assignedJourneys.length} assigned playlists in one pathway. Start in Now, then open each playlist below to see its own current session and full session path.'
+              : journey == null
+              ? 'This is your learner home: start now, keep practising, and track progress in one place.'
               : learnerSurface.attentionLabel.isNotEmpty
               ? learnerSurface.attentionLabel
               : currentStanding == null
@@ -485,12 +576,26 @@ class _LearnerWorkspaceView extends StatelessWidget {
             if (!hasMultipleAssignedJourneys)
               _StatChip(
                 label: 'Standing',
-                value: currentStanding == null ? '--' : 'S$currentStanding/${journey?.totalSessionCount ?? learnerWorkspace.sessions.length}',
+                value: currentStanding == null
+                    ? '--'
+                    : 'S$currentStanding/${journey?.totalSessionCount ?? learnerWorkspace.sessions.length}',
                 icon: Icons.place_rounded,
               ),
-            _StatChip(label: 'Completed', value: '${progressSnapshot.completedSessionCount}', icon: Icons.task_alt_rounded),
-            _StatChip(label: 'Ready now', value: '${progressSnapshot.pendingSessionCount}', icon: Icons.rocket_launch_rounded),
-            _StatChip(label: 'Review', value: '${progressSnapshot.reviewItemCount}', icon: Icons.pending_actions_rounded),
+            _StatChip(
+              label: 'Completed',
+              value: '${progressSnapshot.completedSessionCount}',
+              icon: Icons.task_alt_rounded,
+            ),
+            _StatChip(
+              label: 'Ready now',
+              value: '${progressSnapshot.pendingSessionCount}',
+              icon: Icons.rocket_launch_rounded,
+            ),
+            _StatChip(
+              label: 'Review',
+              value: '${progressSnapshot.reviewItemCount}',
+              icon: Icons.pending_actions_rounded,
+            ),
           ],
         ),
         const SizedBox(height: 20),
@@ -500,24 +605,33 @@ class _LearnerWorkspaceView extends StatelessWidget {
             children: [
               Text('Learning lanes', style: theme.textTheme.headlineSmall),
               const SizedBox(height: 6),
-              Text('Use this order: Now, Practice, Journey, Progress.', style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                'Use this order: Now, Practice, Journey, Progress.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 14),
               Wrap(
                 spacing: 10,
                 runSpacing: 10,
                 children: [
                   _PillBadge(
-                    text: nextSession == null ? 'Now: waiting' : 'Now: Session ${nextSession.sequenceNumber ?? '?'}',
+                    text: nextSession == null
+                        ? 'Now: waiting'
+                        : 'Now: Session ${nextSession.sequenceNumber ?? '?'}',
                     color: theme.colorScheme.secondaryContainer,
                     textColor: theme.colorScheme.onSecondaryContainer,
                   ),
                   _PillBadge(
-                    text: 'Practice: ${practiceSessions.length} step${practiceSessions.length == 1 ? '' : 's'}',
+                    text:
+                        'Practice: ${practiceSessions.length} step${practiceSessions.length == 1 ? '' : 's'}',
                     color: theme.colorScheme.primary.withValues(alpha: 0.12),
                     textColor: theme.colorScheme.primary,
                   ),
                   _PillBadge(
-                    text: 'Progress: ${progressSnapshot.reviewItemCount} review',
+                    text:
+                        'Progress: ${progressSnapshot.reviewItemCount} review',
                     color: theme.colorScheme.tertiaryContainer,
                     textColor: theme.colorScheme.onTertiaryContainer,
                   ),
@@ -532,7 +646,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Assigned playlists', style: theme.textTheme.headlineSmall),
+                Text(
+                  'Assigned playlists',
+                  style: theme.textTheme.headlineSmall,
+                ),
                 const SizedBox(height: 6),
                 Text(
                   assignedPathwayCount > 1
@@ -557,9 +674,15 @@ class _LearnerWorkspaceView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('My current pathway', style: theme.textTheme.headlineSmall),
+                Text(
+                  'My current pathway',
+                  style: theme.textTheme.headlineSmall,
+                ),
                 const SizedBox(height: 6),
-                Text(journey.pathwayTitle ?? journey.playlistTitle, style: theme.textTheme.titleLarge),
+                Text(
+                  journey.pathwayTitle ?? journey.playlistTitle,
+                  style: theme.textTheme.titleLarge,
+                ),
                 const SizedBox(height: 8),
                 const _ContractChipRow(
                   children: [
@@ -568,7 +691,12 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(journey.pathwayDescription ?? journey.playlistDescription, style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                Text(
+                  journey.pathwayDescription ?? journey.playlistDescription,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(height: 14),
                 Wrap(
                   spacing: 8,
@@ -585,33 +713,54 @@ class _LearnerWorkspaceView extends StatelessWidget {
                       textColor: theme.colorScheme.onSecondaryContainer,
                     ),
                     if (journey.recommendedLevel.isNotEmpty)
-                      _PillBadge(text: journey.recommendedLevel, color: theme.colorScheme.tertiaryContainer, textColor: theme.colorScheme.onTertiaryContainer),
+                      _PillBadge(
+                        text: journey.recommendedLevel,
+                        color: theme.colorScheme.tertiaryContainer,
+                        textColor: theme.colorScheme.onTertiaryContainer,
+                      ),
                   ],
                 ),
                 if (journeyProgress != null) ...[
                   const SizedBox(height: 14),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(999),
-                    child: LinearProgressIndicator(minHeight: 10, value: journeyProgress, backgroundColor: theme.colorScheme.surfaceContainerHighest),
+                    child: LinearProgressIndicator(
+                      minHeight: 10,
+                      value: journeyProgress,
+                      backgroundColor:
+                          theme.colorScheme.surfaceContainerHighest,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     currentStanding == null
                         ? '${journey.completedSessionCount} of ${journey.totalSessionCount} sessions completed'
                         : 'You are standing at session $currentStanding of ${journey.totalSessionCount}',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
-                if (viewerCanReadLibrary && (journey.pathwayRoutePath != null || journey.playlistRoutePath != null)) ...[
+                if (viewerCanReadLibrary &&
+                    (journey.pathwayRoutePath != null ||
+                        journey.playlistRoutePath != null)) ...[
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
                     children: [
                       if (journey.pathwayRoutePath != null)
-                        TextButton(onPressed: () => onOpenLibraryRoute(journey.pathwayRoutePath!), child: const Text('Open pathway brief')),
+                        TextButton(
+                          onPressed: () =>
+                              onOpenLibraryRoute(journey.pathwayRoutePath!),
+                          child: const Text('Open pathway brief'),
+                        ),
                       if (journey.playlistRoutePath != null)
-                        TextButton(onPressed: () => onOpenLibraryRoute(journey.playlistRoutePath!), child: const Text('Open playlist brief')),
+                        TextButton(
+                          onPressed: () =>
+                              onOpenLibraryRoute(journey.playlistRoutePath!),
+                          child: const Text('Open playlist brief'),
+                        ),
                     ],
                   ),
                 ],
@@ -630,21 +779,39 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 Text(
                   continueBlock?.description ??
                       'This is the workspace for what you are learning right now. Read the note, do the practice, and launch the live step from here.',
-                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 18),
-                if (continueBlock != null) ...[Text(continueBlock.title, style: theme.textTheme.titleLarge), const SizedBox(height: 10)],
+                if (continueBlock != null) ...[
+                  Text(continueBlock.title, style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 10),
+                ],
                 _ContractChipRow(
                   children: [
                     if (continueBlock != null)
-                      _PillBadge(text: continueBlock.actionLabel, color: theme.colorScheme.secondaryContainer, textColor: theme.colorScheme.onSecondaryContainer),
+                      _PillBadge(
+                        text: continueBlock.actionLabel,
+                        color: theme.colorScheme.secondaryContainer,
+                        textColor: theme.colorScheme.onSecondaryContainer,
+                      ),
                     const _ContractChip(domain: 'entity', value: 'session'),
-                    _ContractChip(domain: 'material_kind', value: nextSession.dominantKind),
-                    if (nextSession.requiresAdultSupport) const _ContractChip(domain: 'status', value: 'adult_guided'),
+                    _ContractChip(
+                      domain: 'material_kind',
+                      value: nextSession.dominantKind,
+                    ),
+                    if (nextSession.requiresAdultSupport)
+                      const _ContractChip(
+                        domain: 'status',
+                        value: 'adult_guided',
+                      ),
                     if (nextSession.estimatedMinutes > 0)
                       _PillBadge(
                         text: '${nextSession.estimatedMinutes} min',
-                        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.12,
+                        ),
                         textColor: theme.colorScheme.primary,
                       ),
                   ],
@@ -652,17 +819,25 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 const SizedBox(height: 16),
                 Builder(
                   builder: (context) {
-                    final learnerGroups = nextSession.materialsByKind.where((group) => group.audience == 'learner').toList(growable: false);
-                    final adultGroups = nextSession.materialsByKind.where((group) => group.audience == 'adult').toList(growable: false);
+                    final learnerGroups = nextSession.materialsByKind
+                        .where((group) => group.audience == 'learner')
+                        .toList(growable: false);
+                    final adultGroups = nextSession.materialsByKind
+                        .where((group) => group.audience == 'adult')
+                        .toList(growable: false);
                     if (learnerGroups.isEmpty) {
                       return const _MissingLearnerContentNotice();
                     }
                     return Column(
                       children: [
                         _SessionWorkspaceAudiencePanel(
-                          title: isSupportView ? 'Learner materials in this session' : 'What I work on now',
-                          description: 'The learner-facing materials for the current session stay together here.',
-                          emptyState: 'No learner-facing materials are attached to this session yet.',
+                          title: isSupportView
+                              ? 'Learner materials in this session'
+                              : 'What I work on now',
+                          description:
+                              'The learner-facing materials for the current session stay together here.',
+                          emptyState:
+                              'No learner-facing materials are attached to this session yet.',
                           icon: Icons.school_rounded,
                           groups: learnerGroups,
                           session: nextSession,
@@ -675,8 +850,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
                           const SizedBox(height: 12),
                           _SessionWorkspaceAudiencePanel(
                             title: 'Teaching guidance for parent or teacher',
-                            description: 'Use this guidance to explain and correct before the learner attempts activities.',
-                            emptyState: 'No teaching guidance is attached to this session yet.',
+                            description:
+                                'Use this guidance to explain and correct before the learner attempts activities.',
+                            emptyState:
+                                'No teaching guidance is attached to this session yet.',
                             icon: Icons.co_present_rounded,
                             groups: adultGroups,
                             session: nextSession,
@@ -704,7 +881,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   'Completed work that has already been recorded for this learner.',
-                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 ...recentWins.map(
@@ -714,7 +893,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surface.withValues(alpha: 0.62),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: theme.colorScheme.outlineVariant),
+                      border: Border.all(
+                        color: theme.colorScheme.outlineVariant,
+                      ),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -723,17 +904,28 @@ class _LearnerWorkspaceView extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(win.sessionTitle, style: theme.textTheme.titleMedium),
+                              Text(
+                                win.sessionTitle,
+                                style: theme.textTheme.titleMedium,
+                              ),
                               const SizedBox(height: 4),
                               Text(
-                                win.notes.isEmpty ? 'Completed and recorded in the learner history.' : win.notes,
-                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                                win.notes.isEmpty
+                                    ? 'Completed and recorded in the learner history.'
+                                    : win.notes,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 12),
-                        _PillBadge(text: win.scoreLabel, color: theme.colorScheme.secondaryContainer, textColor: theme.colorScheme.onSecondaryContainer),
+                        _PillBadge(
+                          text: win.scoreLabel,
+                          color: theme.colorScheme.secondaryContainer,
+                          textColor: theme.colorScheme.onSecondaryContainer,
+                        ),
                       ],
                     ),
                   ),
@@ -752,13 +944,25 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   'Open any session workspace below to see where you stand and what that session asks you to do.',
-                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 if (learnerWorkspace.sessions.isEmpty)
-                  Text('No sessions are available yet.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant))
+                  Text(
+                    'No sessions are available yet.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
                 else
-                  ...orderedSessions.map((session) => buildSessionSequenceCard(session, active: session.sessionId == nextSession?.sessionId)),
+                  ...orderedSessions.map(
+                    (session) => buildSessionSequenceCard(
+                      session,
+                      active: session.sessionId == nextSession?.sessionId,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -772,15 +976,27 @@ class _LearnerWorkspaceView extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 'Open the learner-facing practice and check materials that are already inside your assigned route.',
-                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 18),
               if (practiceSessions.isEmpty)
-                Text('No practice items are available yet.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant))
+                Text(
+                  'No practice items are available yet.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                )
               else
                 ...practiceSessions.map((session) {
                   final practiceGroups = session.materialsByKind
-                      .where((group) => group.kind == 'worksheet' || group.kind == 'drill' || group.kind == 'quick_check')
+                      .where(
+                        (group) =>
+                            group.kind == 'worksheet' ||
+                            group.kind == 'drill' ||
+                            group.kind == 'quick_check',
+                      )
                       .toList(growable: false);
                   return Container(
                     margin: const EdgeInsets.only(bottom: 14),
@@ -788,7 +1004,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surface.withValues(alpha: 0.62),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: theme.colorScheme.outlineVariant),
+                      border: Border.all(
+                        color: theme.colorScheme.outlineVariant,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -799,7 +1017,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            _ContractChip(domain: 'material_kind', value: session.dominantKind),
+                            _ContractChip(
+                              domain: 'material_kind',
+                              value: session.dominantKind,
+                            ),
                             _PillBadge(
                               text: 'Session ${session.sequenceNumber ?? '?'}',
                               color: theme.colorScheme.surfaceContainerHighest,
@@ -834,11 +1055,21 @@ class _LearnerWorkspaceView extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 'A simple snapshot of where this learner is secure, still developing, and not started yet.',
-                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 18),
-              if (progressStatusCounts.isEmpty && progressSnapshot.secureCount == 0 && progressSnapshot.developingCount == 0 && progressSnapshot.notStartedCount == 0)
-                Text('No progress has been recorded yet.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant))
+              if (progressStatusCounts.isEmpty &&
+                  progressSnapshot.secureCount == 0 &&
+                  progressSnapshot.developingCount == 0 &&
+                  progressSnapshot.notStartedCount == 0)
+                Text(
+                  'No progress has been recorded yet.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                )
               else
                 Wrap(
                   spacing: 10,
@@ -876,12 +1107,21 @@ class _LearnerWorkspaceView extends StatelessWidget {
             children: [
               Text('Review queue', style: theme.textTheme.headlineSmall),
               const SizedBox(height: 6),
-              Text('These are the skills that still need another pass.', style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                'These are the skills that still need another pass.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 18),
               if (learnerWorkspace.reviewItems.isEmpty)
                 Row(
                   children: [
-                    Icon(Icons.check_circle_rounded, size: 18, color: Colors.green.shade600),
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 18,
+                      color: Colors.green.shade600,
+                    ),
                     const SizedBox(width: 8),
                     const Text('No pending review items.'),
                   ],
@@ -892,7 +1132,11 @@ class _LearnerWorkspaceView extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                     title: Text(item.reason),
                     subtitle: Text(_contractTermLabel(item.skillId)),
-                    trailing: _PillBadge(text: item.dueDate, color: theme.colorScheme.errorContainer, textColor: theme.colorScheme.onErrorContainer),
+                    trailing: _PillBadge(
+                      text: item.dueDate,
+                      color: theme.colorScheme.errorContainer,
+                      textColor: theme.colorScheme.onErrorContainer,
+                    ),
                   ),
                 ),
             ],

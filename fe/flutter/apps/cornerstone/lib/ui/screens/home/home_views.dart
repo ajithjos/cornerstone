@@ -24,13 +24,9 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _googleSigninEnabled && _devUsernameSigninEnabled
-                          ? 'Use Google for hosted owner access, or use a bootstrap username in development.'
-                          : _googleSigninEnabled
+                      _googleSigninEnabled
                           ? 'Continue with Google to open the team workspace.'
-                          : _devUsernameSigninEnabled
-                          ? 'Enter a bootstrap username to continue.'
-                          : 'No sign-in methods are configured for this environment yet.',
+                          : 'Google sign-in is not configured for this environment yet.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -63,56 +59,13 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                         ),
                       ),
                     ],
-                    if (_googleSigninEnabled && _devUsernameSigninEnabled) ...[
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Divider(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.outlineVariant,
-                            ),
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: Text('or'),
-                          ),
-                          Expanded(
-                            child: Divider(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.outlineVariant,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 16),
+                    Text(
+                      'Only owners already provisioned in the identity bootstrap can sign in. Learners switch profiles after an owner signs in.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
-                    ],
-                    if (_devUsernameSigninEnabled) ...[
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _usernameController,
-                        textInputAction: TextInputAction.go,
-                        onSubmitted: _authBusy
-                            ? null
-                            : (_) => _loginWithUsername(),
-                        decoration: const InputDecoration(
-                          labelText: 'Development username',
-                          prefixIcon: Icon(Icons.alternate_email_rounded),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.tonalIcon(
-                          onPressed: _authBusy
-                              ? null
-                              : () => _loginWithUsername(),
-                          icon: const Icon(Icons.login_rounded, size: 18),
-                          label: const Text('Use bootstrap username'),
-                        ),
-                      ),
-                    ],
+                    ),
                   ],
                 ),
               ),
@@ -166,8 +119,10 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
     final username = _shellUsername();
     final viewer = _currentViewer;
     final activeViewer = _activeViewer;
+    final availableTeams = _availableTeams;
     final switchableUsers =
         _viewerSession?.availableUsers ?? const <ViewerUser>[];
+    final currentTeam = dashboard.team ?? _viewerSession?.team;
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
       children: [
@@ -177,11 +132,9 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
           description: viewer == null
               ? (dashboard.team?.description ??
                     'Manage your profile and theme in one place.')
-              : viewer.canManageTeam
-              ? activeViewer != null && activeViewer.userId != viewer.userId
-                    ? 'Manage your profile, theme, and team learning space while viewing ${activeViewer.displayName}.'
-                    : 'Manage your profile, theme, and team learning space in one place.'
-              : 'Keep your profile, theme, and learner space settings in one place.',
+              : activeViewer != null && activeViewer.userId != viewer.userId
+              ? 'Signed in as ${viewer.displayName} and currently viewing ${activeViewer.displayName} in this team space.'
+              : 'Signed in as ${viewer.displayName}. Manage your team space, theme, and profile in one place.',
           trailing: Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -243,8 +196,8 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                   viewer.canManageTeam
                       ? activeViewer != null &&
                                 activeViewer.userId != viewer.userId
-                            ? 'This owner session can manage the team and is currently acting as ${activeViewer.displayName}.'
-                            : 'This owner session can manage every learner, assignments, and progress updates.'
+                            ? 'Signed in owner stays ${viewer.displayName}. The on-screen learner profile is ${activeViewer.displayName}.'
+                            : 'This owner session can switch teams, learners, assignments, and progress views.'
                       : 'This account stays focused on the learner view, progress, and pending work.',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -265,7 +218,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                       ),
                     ),
                   ),
-                  title: Text(viewer.displayName),
+                  title: Text('Signed in owner: ${viewer.displayName}'),
                   subtitle: Text(
                     '@${viewer.username}',
                     style: theme.textTheme.bodySmall,
@@ -323,6 +276,36 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                     ),
                   ),
                 ],
+                if (availableTeams.length > 1) ...[
+                  const SizedBox(height: 18),
+                  Text('Switch team space', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Move this owner session into another bootstrap team where the signed-in owner is allowed.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: availableTeams
+                        .map(
+                          (team) => OutlinedButton.icon(
+                            onPressed:
+                                _authBusy ||
+                                    _busy ||
+                                    team.teamId == currentTeam?.teamId
+                                ? null
+                                : () => _switchActiveTeam(team.teamId),
+                            icon: const Icon(Icons.groups_rounded, size: 18),
+                            label: Text(team.displayName),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ],
                 if (switchableUsers.length > 1) ...[
                   const SizedBox(height: 18),
                   Text(
@@ -349,9 +332,9 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                                 : () => _switchActiveUser(
                                     user.userId,
                                     preferredLearnerId: user.learnerId,
-                                    destination: user.learnerId != null
-                                        ? _ShellDestination.learner
-                                        : _ShellDestination.account,
+                                    destination: user.canManageTeam
+                                        ? _ShellDestination.owner
+                                        : _ShellDestination.learner,
                                   ),
                             icon: Icon(
                               user.learnerId != null
@@ -380,25 +363,25 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Team membership', style: theme.textTheme.headlineSmall),
+              Text('Team space', style: theme.textTheme.headlineSmall),
               const SizedBox(height: 8),
               Text(
-                'Current team and permissions for this account.',
+                'Current team and on-screen profile for this signed-in owner session.',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 18),
-              if (dashboard.team != null)
+              if (currentTeam != null)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(
                     Icons.groups_rounded,
                     color: theme.colorScheme.primary,
                   ),
-                  title: Text(dashboard.team!.displayName),
+                  title: Text(currentTeam.displayName),
                   subtitle: Text(
-                    dashboard.team!.description,
+                    currentTeam.description,
                     style: theme.textTheme.bodySmall,
                   ),
                 )
@@ -422,20 +405,24 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                     ),
                     _PillBadge(
                       text: viewer.canManageTeam
-                          ? 'Can manage team'
+                          ? 'Owner session'
                           : 'Learner view only',
                       color: theme.colorScheme.primary.withValues(alpha: 0.12),
                       textColor: theme.colorScheme.primary,
                     ),
                     _PillBadge(
-                      text: viewer.canReadLibrary
+                      text:
+                          (activeViewer?.canReadLibrary ??
+                              viewer.canReadLibrary)
                           ? 'Can read library'
                           : 'No library access',
                       color: theme.colorScheme.tertiaryContainer,
                       textColor: theme.colorScheme.onTertiaryContainer,
                     ),
                     _PillBadge(
-                      text: viewer.canViewAllLearners
+                      text:
+                          (activeViewer?.canViewAllLearners ??
+                              viewer.canViewAllLearners)
                           ? 'Can view all learners'
                           : 'Can view assigned learner only',
                       color: theme.colorScheme.surfaceContainerHighest,

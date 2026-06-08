@@ -171,7 +171,7 @@ pub struct WorkspaceMaterialKindGroupSummary {
 #[derive(Debug, Clone, Serialize)]
 pub struct BootstrapApplyResponse {
     pub status: String,
-    pub team_id: String,
+    pub team_count: usize,
     pub user_count: usize,
     pub membership_count: usize,
     pub learner_count: usize,
@@ -190,7 +190,8 @@ pub struct ViewerSessionResponse {
     pub authenticated: bool,
     pub auth: AuthOptionsSummary,
     pub team: Option<TeamSummary>,
-    pub current_user: Option<TeamMemberSummary>,
+    pub available_teams: Vec<TeamSummary>,
+    pub authenticated_user: Option<TeamMemberSummary>,
     pub active_user: Option<TeamMemberSummary>,
     pub available_users: Vec<TeamMemberSummary>,
     pub developer_docs_url: Option<String>,
@@ -198,7 +199,6 @@ pub struct ViewerSessionResponse {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthOptionsSummary {
-    pub dev_username_signin: bool,
     pub google_signin: bool,
 }
 
@@ -573,13 +573,13 @@ pub struct ReviewRebuildRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct DevSigninRequest {
-    pub username: String,
+pub struct SwitchActiveUserRequest {
+    pub user_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct SwitchActiveUserRequest {
-    pub user_id: String,
+pub struct SwitchActiveTeamRequest {
+    pub team_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -332,9 +332,7 @@ struct LoadedLibrary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityBootstrap {
-    pub team: BootstrapTeam,
-    pub users: Vec<BootstrapUser>,
-    pub memberships: Vec<BootstrapMembership>,
+    pub teams: Vec<BootstrapTeam>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -342,9 +340,11 @@ pub struct BootstrapTeam {
     pub team_id: String,
     pub display_name: String,
     pub description: String,
+    pub users: Vec<BootstrapUser>,
+    pub memberships: Vec<BootstrapMembership>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BootstrapUser {
     pub user_id: String,
     pub username: String,
@@ -360,9 +360,8 @@ pub struct BootstrapUser {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BootstrapMembership {
-    pub team_id: String,
     pub user_id: String,
     pub role: String,
 }
@@ -449,9 +448,7 @@ impl LibraryBundle {
     }
 
     pub fn material(&self, material_id: &str) -> Option<&MaterialDocument> {
-        self.materials
-            .iter()
-            .find(|material| material.id == material_id)
+        self.materials.iter().find(|material| material.id == material_id)
     }
 }
 
@@ -517,8 +514,7 @@ fn load_library_documents(
             stage_ids: pathway_meta.stage_ids.clone(),
             playlist_ids: pathway_meta.playlist_ids.clone(),
             entry_points: pathway_meta.entry_points.clone(),
-            description: markdown_first_paragraph(&pathway_body)
-                .unwrap_or_else(|| pathway_meta.title.clone()),
+            description: markdown_first_paragraph(&pathway_body).unwrap_or_else(|| pathway_meta.title.clone()),
             source_path: pathway_relative_path,
         });
         loaded.documents.push(LibraryDocument {
@@ -530,8 +526,7 @@ fn load_library_documents(
             subject_id: pathway_meta.subject_id.clone(),
             area_id: pathway_meta.area_id.clone(),
             pathway_id: pathway_meta.id.clone(),
-            description: markdown_first_paragraph(&pathway_body)
-                .unwrap_or_else(|| pathway_meta.title.clone()),
+            description: markdown_first_paragraph(&pathway_body).unwrap_or_else(|| pathway_meta.title.clone()),
             body: pathway_body.clone(),
         });
 
@@ -548,8 +543,8 @@ fn load_library_documents(
 
             let recommended_age = pathway_meta.recommended_age_min;
             let description = summarize_skill_body(&skill_body);
-            let success_criteria = extract_labeled_bullet(&skill_body, "successful performance")
-                .unwrap_or_else(|| description.clone());
+            let success_criteria =
+                extract_labeled_bullet(&skill_body, "successful performance").unwrap_or_else(|| description.clone());
             loaded.skills.push(Skill {
                 skill_id: skill_meta.id,
                 subject_id: pathway_meta.subject_id.clone(),
@@ -579,8 +574,8 @@ fn load_library_documents(
         for stage_path in list_markdown_files(&pathway_root.join("stages"))? {
             let stage_relative_path = relative_content_path(content_root, &stage_path)?;
             let (stage_meta, stage_body) = read_markdown_frontmatter::<StageFrontmatter>(&stage_path)?;
-            let stage_description = markdown_first_paragraph(&stage_body)
-                .unwrap_or_else(|| "Pathway stage".to_string());
+            let stage_description =
+                markdown_first_paragraph(&stage_body).unwrap_or_else(|| "Pathway stage".to_string());
             loaded.documents.push(LibraryDocument {
                 route_path: route_path_from_source_path(&stage_relative_path)?,
                 source_path: stage_relative_path.clone(),
@@ -623,13 +618,9 @@ fn load_library_documents(
         }
 
         for stage_id in &pathway_meta.stage_ids {
-            let (_, stage) = stage_documents.remove(stage_id).ok_or_else(|| {
-                anyhow!(
-                    "pathway '{}' lists missing stage '{}'",
-                    pathway_meta.id,
-                    stage_id
-                )
-            })?;
+            let (_, stage) = stage_documents
+                .remove(stage_id)
+                .ok_or_else(|| anyhow!("pathway '{}' lists missing stage '{}'", pathway_meta.id, stage_id))?;
             loaded.stages.push(stage);
         }
         if let Some((stage_id, _)) = stage_documents.into_iter().next() {
@@ -645,13 +636,10 @@ fn load_library_documents(
             let playlist_relative_path = relative_content_path(content_root, &playlist_path)?;
             let (playlist_meta, playlist_body) = read_markdown_frontmatter::<PlaylistFrontmatter>(&playlist_path)?;
             if playlist_meta.recommended_age_min > playlist_meta.recommended_age_max {
-                bail!(
-                    "playlist '{}' has an invalid recommended age range",
-                    playlist_meta.id
-                );
+                bail!("playlist '{}' has an invalid recommended age range", playlist_meta.id);
             }
-            let playlist_description = markdown_first_paragraph(&playlist_body)
-                .unwrap_or_else(|| playlist_meta.title.clone());
+            let playlist_description =
+                markdown_first_paragraph(&playlist_body).unwrap_or_else(|| playlist_meta.title.clone());
             loaded.documents.push(LibraryDocument {
                 route_path: route_path_from_source_path(&playlist_relative_path)?,
                 source_path: playlist_relative_path.clone(),
@@ -695,13 +683,9 @@ fn load_library_documents(
         }
 
         for playlist_id in &pathway_meta.playlist_ids {
-            let playlist = playlist_documents.remove(playlist_id).ok_or_else(|| {
-                anyhow!(
-                    "pathway '{}' lists missing playlist '{}'",
-                    pathway_meta.id,
-                    playlist_id
-                )
-            })?;
+            let playlist = playlist_documents
+                .remove(playlist_id)
+                .ok_or_else(|| anyhow!("pathway '{}' lists missing playlist '{}'", pathway_meta.id, playlist_id))?;
             loaded.playlists.push(playlist);
         }
         if let Some((playlist_id, _)) = playlist_documents.into_iter().next() {
@@ -719,9 +703,8 @@ fn load_library_documents(
                 .recommended_age
                 .unwrap_or(pathway_meta.recommended_age_min);
             let difficulty = material_meta.difficulty.unwrap_or_else(|| "core".to_string());
-            let title = extract_markdown_title(&material_body).ok_or_else(|| {
-                anyhow!("{} is missing a markdown H1 title", material_path.display())
-            })?;
+            let title = extract_markdown_title(&material_body)
+                .ok_or_else(|| anyhow!("{} is missing a markdown H1 title", material_path.display()))?;
 
             loaded.material_index.push(MaterialIndexItem {
                 material_id: material_meta.id.clone(),
@@ -760,8 +743,7 @@ fn load_library_documents(
                 subject_id: material.subject_id.clone(),
                 area_id: material.area_id.clone(),
                 pathway_id: pathway_meta.id.clone(),
-                description: markdown_first_paragraph(&material.body)
-                    .unwrap_or_else(|| material.title.clone()),
+                description: markdown_first_paragraph(&material.body).unwrap_or_else(|| material.title.clone()),
                 body: material.body.clone(),
             });
         }
@@ -793,8 +775,7 @@ fn read_markdown_frontmatter<T>(source_path: &Path) -> anyhow::Result<(T, String
 where
     T: for<'de> Deserialize<'de>,
 {
-    let raw = fs::read_to_string(source_path)
-        .with_context(|| format!("failed to read {}", source_path.display()))?;
+    let raw = fs::read_to_string(source_path).with_context(|| format!("failed to read {}", source_path.display()))?;
     let (frontmatter, body) = split_frontmatter(&raw, source_path)?;
     let metadata = serde_yaml::from_str(&frontmatter)
         .with_context(|| format!("invalid frontmatter in {}", source_path.display()))?;
@@ -803,9 +784,7 @@ where
 
 fn list_markdown_files(directory: &Path) -> anyhow::Result<Vec<std::path::PathBuf>> {
     let mut files = Vec::new();
-    for entry in fs::read_dir(directory)
-        .with_context(|| format!("failed to read {}", directory.display()))?
-    {
+    for entry in fs::read_dir(directory).with_context(|| format!("failed to read {}", directory.display()))? {
         let entry = entry.with_context(|| format!("failed to read entry in {}", directory.display()))?;
         let path = entry.path();
         if path.is_file() && path.extension().and_then(|extension| extension.to_str()) == Some("md") {
@@ -827,7 +806,7 @@ fn relative_content_path(content_root: &Path, source_path: &Path) -> anyhow::Res
 fn extract_markdown_title(body: &str) -> Option<String> {
     body.lines()
         .find_map(|line| line.strip_prefix("# ").map(ToOwned::to_owned))
-    }
+}
 
 fn markdown_first_paragraph(body: &str) -> Option<String> {
     let mut saw_title = false;
@@ -860,20 +839,14 @@ fn markdown_first_paragraph(body: &str) -> Option<String> {
         lines.push(trimmed.to_string());
     }
 
-    if lines.is_empty() {
-        None
-    } else {
-        Some(lines.join(" "))
-    }
+    if lines.is_empty() { None } else { Some(lines.join(" ")) }
 }
 
 fn extract_labeled_bullet(body: &str, label: &str) -> Option<String> {
     let prefix = format!("- {}:", label);
     body.lines().find_map(|line| {
         let trimmed = line.trim();
-        trimmed
-            .strip_prefix(&prefix)
-            .map(|value| value.trim().to_string())
+        trimmed.strip_prefix(&prefix).map(|value| value.trim().to_string())
     })
 }
 
@@ -976,10 +949,7 @@ fn validate_library_document_routes(documents: &[LibraryDocument]) -> anyhow::Re
         "library document route path",
     )?;
 
-    let known_source_paths: BTreeSet<_> = documents
-        .iter()
-        .map(|document| document.source_path.as_str())
-        .collect();
+    let known_source_paths: BTreeSet<_> = documents.iter().map(|document| document.source_path.as_str()).collect();
 
     for document in documents {
         for target in extract_markdown_link_targets(&document.body) {
@@ -1119,12 +1089,7 @@ fn validate_pathways(
             "pathway subject",
             &pathway.pathway_id,
         )?;
-        ensure_contains(
-            &area_ids,
-            pathway.area_id.as_str(),
-            "pathway area",
-            &pathway.pathway_id,
-        )?;
+        ensure_contains(&area_ids, pathway.area_id.as_str(), "pathway area", &pathway.pathway_id)?;
         let pathway_area = lookup_required(&area_map, pathway.area_id.as_str(), "pathway area", &pathway.pathway_id)?;
         if pathway_area.subject_id != pathway.subject_id {
             bail!(
@@ -1140,10 +1105,7 @@ fn validate_pathways(
             bail!("pathway '{}' has no playlists", pathway.pathway_id);
         }
         if pathway.recommended_age_min > pathway.recommended_age_max {
-            bail!(
-                "pathway '{}' has an invalid recommended age range",
-                pathway.pathway_id
-            );
+            bail!("pathway '{}' has an invalid recommended age range", pathway.pathway_id);
         }
 
         for stage_id in &pathway.stage_ids {
@@ -1199,51 +1161,33 @@ fn validate_catalog(
 ) -> anyhow::Result<()> {
     ensure_unique_ids(subjects.iter().map(|subject| subject.subject_id.as_str()), "subject")?;
     ensure_unique_ids(areas.iter().map(|area| area.area_id.as_str()), "area")?;
+    ensure_unique_ids(skills.iter().map(|skill| skill.skill_id.as_str()), "skill")?;
+    ensure_unique_ids(stages.iter().map(|stage| stage.stage_id.as_str()), "stage")?;
     ensure_unique_ids(
-        skills.iter().map(|skill| skill.skill_id.as_str()),
-        "skill",
-    )?;
-    ensure_unique_ids(
-        stages.iter().map(|stage| stage.stage_id.as_str()),
-        "stage",
-    )?;
-    ensure_unique_ids(
-        playlists
-            .iter()
-            .map(|playlist| playlist.playlist_id.as_str()),
+        playlists.iter().map(|playlist| playlist.playlist_id.as_str()),
         "playlist",
     )?;
     ensure_unique_ids(
-        materials
-            .iter()
-            .map(|material| material.material_id.as_str()),
+        materials.iter().map(|material| material.material_id.as_str()),
         "material",
     )?;
-    ensure_unique_ids(
-        materials.iter().map(|material| material.path.as_str()),
-        "material path",
-    )?;
+    ensure_unique_ids(materials.iter().map(|material| material.path.as_str()), "material path")?;
 
     let subject_ids: BTreeSet<_> = subjects.iter().map(|subject| subject.subject_id.as_str()).collect();
     let area_ids: BTreeSet<_> = areas.iter().map(|area| area.area_id.as_str()).collect();
     let skill_ids: BTreeSet<_> = skills.iter().map(|skill| skill.skill_id.as_str()).collect();
-    let stage_ids: BTreeSet<_> = stages
-        .iter()
-        .map(|stage| stage.stage_id.as_str())
-        .collect();
+    let stage_ids: BTreeSet<_> = stages.iter().map(|stage| stage.stage_id.as_str()).collect();
     let material_ids: BTreeSet<_> = material_documents.iter().map(|item| item.id.as_str()).collect();
     let area_map: HashMap<_, _> = areas.iter().map(|area| (area.area_id.as_str(), area)).collect();
     let skill_map: HashMap<_, _> = skills.iter().map(|skill| (skill.skill_id.as_str(), skill)).collect();
     let stage_map: HashMap<_, _> = stages.iter().map(|stage| (stage.stage_id.as_str(), stage)).collect();
-    let material_map: HashMap<_, _> = material_documents.iter().map(|material| (material.id.as_str(), material)).collect();
+    let material_map: HashMap<_, _> = material_documents
+        .iter()
+        .map(|material| (material.id.as_str(), material))
+        .collect();
 
     for area in areas {
-        ensure_contains(
-            &subject_ids,
-            area.subject_id.as_str(),
-            "area subject",
-            &area.area_id,
-        )?;
+        ensure_contains(&subject_ids, area.subject_id.as_str(), "area subject", &area.area_id)?;
     }
 
     for skill in skills {
@@ -1265,18 +1209,18 @@ fn validate_catalog(
     }
 
     for stage in stages {
-        ensure_contains(&subject_ids, stage.subject_id.as_str(), "stage subject", &stage.stage_id)?;
+        ensure_contains(
+            &subject_ids,
+            stage.subject_id.as_str(),
+            "stage subject",
+            &stage.stage_id,
+        )?;
         ensure_contains(&area_ids, stage.area_id.as_str(), "stage area", &stage.stage_id)?;
         if stage.skill_ids.is_empty() {
             bail!("stage '{}' has no skills", stage.stage_id);
         }
         for skill_id in &stage.skill_ids {
-            ensure_contains(
-                &skill_ids,
-                skill_id.as_str(),
-                "stage skill",
-                &stage.stage_id,
-            )?;
+            ensure_contains(&skill_ids, skill_id.as_str(), "stage skill", &stage.stage_id)?;
             let stage_skill = lookup_required(&skill_map, skill_id.as_str(), "stage skill", &stage.stage_id)?;
             if stage_skill.subject_id != stage.subject_id || stage_skill.area_id != stage.area_id {
                 bail!(
@@ -1295,7 +1239,12 @@ fn validate_catalog(
             "playlist subject",
             &playlist.playlist_id,
         )?;
-        ensure_contains(&area_ids, playlist.area_id.as_str(), "playlist area", &playlist.playlist_id)?;
+        ensure_contains(
+            &area_ids,
+            playlist.area_id.as_str(),
+            "playlist area",
+            &playlist.playlist_id,
+        )?;
         if playlist.stage_ids.is_empty() {
             bail!("playlist '{}' has no stages", playlist.playlist_id);
         }
@@ -1308,13 +1257,9 @@ fn validate_catalog(
 
         let mut allowed_stage_skills = BTreeSet::new();
         for stage_id in &playlist.stage_ids {
-            ensure_contains(
-                &stage_ids,
-                stage_id.as_str(),
-                "playlist stage",
-                &playlist.playlist_id,
-            )?;
-            let playlist_stage = lookup_required(&stage_map, stage_id.as_str(), "playlist stage", &playlist.playlist_id)?;
+            ensure_contains(&stage_ids, stage_id.as_str(), "playlist stage", &playlist.playlist_id)?;
+            let playlist_stage =
+                lookup_required(&stage_map, stage_id.as_str(), "playlist stage", &playlist.playlist_id)?;
             if playlist_stage.subject_id != playlist.subject_id || playlist_stage.area_id != playlist.area_id {
                 bail!(
                     "playlist '{}' mixes subject or area boundaries with stage '{}'",
@@ -1328,7 +1273,8 @@ fn validate_catalog(
         }
         for skill_id in &playlist.skill_ids {
             ensure_contains(&skill_ids, skill_id.as_str(), "playlist skill", &playlist.playlist_id)?;
-            let playlist_skill = lookup_required(&skill_map, skill_id.as_str(), "playlist skill", &playlist.playlist_id)?;
+            let playlist_skill =
+                lookup_required(&skill_map, skill_id.as_str(), "playlist skill", &playlist.playlist_id)?;
             if playlist_skill.subject_id != playlist.subject_id || playlist_skill.area_id != playlist.area_id {
                 bail!(
                     "playlist '{}' mixes subject or area boundaries with skill '{}'",
@@ -1383,12 +1329,7 @@ fn validate_catalog(
             let mut session_practice_skills = BTreeSet::new();
             let mut session_prior_instruction_skills = BTreeSet::new();
             for skill_id in &session.skill_ids {
-                ensure_contains(
-                    &skill_ids,
-                    skill_id.as_str(),
-                    "session skill",
-                    &playlist.playlist_id,
-                )?;
+                ensure_contains(&skill_ids, skill_id.as_str(), "session skill", &playlist.playlist_id)?;
                 if !playlist_skill_set.contains(skill_id.as_str()) {
                     bail!(
                         "playlist '{}' session '{}' uses undeclared playlist skill '{}'",
@@ -1397,7 +1338,8 @@ fn validate_catalog(
                         skill_id
                     );
                 }
-                let session_skill = lookup_required(&skill_map, skill_id.as_str(), "session skill", &playlist.playlist_id)?;
+                let session_skill =
+                    lookup_required(&skill_map, skill_id.as_str(), "session skill", &playlist.playlist_id)?;
                 if session_skill.subject_id != playlist.subject_id || session_skill.area_id != playlist.area_id {
                     bail!(
                         "playlist '{}' session '{}' mixes subject or area boundaries with skill '{}'",
@@ -1423,9 +1365,7 @@ fn validate_catalog(
                 )?;
                 session_kinds.insert(session_material.kind.as_str());
                 playlist_material_kinds.insert(session_material.kind.as_str());
-                if session_material.subject_id != playlist.subject_id
-                    || session_material.area_id != playlist.area_id
-                {
+                if session_material.subject_id != playlist.subject_id || session_material.area_id != playlist.area_id {
                     bail!(
                         "playlist '{}' session '{}' mixes subject or area boundaries with material '{}'",
                         playlist.playlist_id,
@@ -1544,24 +1484,16 @@ fn validate_catalog(
         }
 
         if !playlist_material_kinds.contains(LESSON_NOTE_KIND) {
-            bail!(
-                "playlist '{}' is missing a lesson_note material",
-                playlist.playlist_id
-            );
+            bail!("playlist '{}' is missing a lesson_note material", playlist.playlist_id);
         }
-        if !(playlist_material_kinds.contains(WORKSHEET_KIND)
-            || playlist_material_kinds.contains(DRILL_KIND))
-        {
+        if !(playlist_material_kinds.contains(WORKSHEET_KIND) || playlist_material_kinds.contains(DRILL_KIND)) {
             bail!(
                 "playlist '{}' is missing learner practice material; add a worksheet or drill",
                 playlist.playlist_id
             );
         }
         if !playlist_material_kinds.contains(QUICK_CHECK_KIND) {
-            bail!(
-                "playlist '{}' is missing a quick_check material",
-                playlist.playlist_id
-            );
+            bail!("playlist '{}' is missing a quick_check material", playlist.playlist_id);
         }
     }
 
@@ -1607,12 +1539,7 @@ fn validate_catalog(
 
         let mut allowed_stage_skills = BTreeSet::new();
         for skill_id in &material.skill_ids {
-            ensure_contains(
-                &skill_ids,
-                skill_id.as_str(),
-                "material skill",
-                &material.id,
-            )?;
+            ensure_contains(&skill_ids, skill_id.as_str(), "material skill", &material.id)?;
             let material_skill = lookup_required(&skill_map, skill_id.as_str(), "material skill", &material.id)?;
             if material_skill.subject_id != material.subject_id || material_skill.area_id != material.area_id {
                 bail!(
@@ -1623,12 +1550,7 @@ fn validate_catalog(
             }
         }
         for stage_id in &material.stage_ids {
-            ensure_contains(
-                &stage_ids,
-                stage_id.as_str(),
-                "material stage",
-                &material.id,
-            )?;
+            ensure_contains(&stage_ids, stage_id.as_str(), "material stage", &material.id)?;
             let material_stage = lookup_required(&stage_map, stage_id.as_str(), "material stage", &material.id)?;
             if material_stage.subject_id != material.subject_id || material_stage.area_id != material.area_id {
                 bail!(
@@ -1663,7 +1585,10 @@ fn validate_catalog(
         if !stages.iter().any(|stage| stage.subject_id == subject.subject_id) {
             bail!("subject '{}' has no stages", subject.subject_id);
         }
-        if !playlists.iter().any(|playlist| playlist.subject_id == subject.subject_id) {
+        if !playlists
+            .iter()
+            .any(|playlist| playlist.subject_id == subject.subject_id)
+        {
             bail!("subject '{}' has no playlists", subject.subject_id);
         }
         if !material_documents
@@ -1684,7 +1609,10 @@ fn validate_catalog(
         if !playlists.iter().any(|playlist| playlist.area_id == area.area_id) {
             bail!("area '{}' has no playlists", area.area_id);
         }
-        if !material_documents.iter().any(|material| material.area_id == area.area_id) {
+        if !material_documents
+            .iter()
+            .any(|material| material.area_id == area.area_id)
+        {
             bail!("area '{}' has no materials", area.area_id);
         }
     }
@@ -1699,7 +1627,10 @@ fn validate_catalog(
         {
             bail!("skill '{}' is not used by any material", skill.skill_id);
         }
-        if !playlists.iter().any(|playlist| playlist.skill_ids.contains(&skill.skill_id)) {
+        if !playlists
+            .iter()
+            .any(|playlist| playlist.skill_ids.contains(&skill.skill_id))
+        {
             bail!("skill '{}' is not used by any playlist", skill.skill_id);
         }
         if !playlists.iter().any(|playlist| {
@@ -1714,7 +1645,10 @@ fn validate_catalog(
     }
 
     for stage in stages {
-        if !playlists.iter().any(|playlist| playlist.stage_ids.contains(&stage.stage_id)) {
+        if !playlists
+            .iter()
+            .any(|playlist| playlist.stage_ids.contains(&stage.stage_id))
+        {
             bail!("stage '{}' is not used by any playlist", stage.stage_id);
         }
         if !material_documents

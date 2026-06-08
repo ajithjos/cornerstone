@@ -115,7 +115,8 @@ pub fn resolve_program(runtime: &MaterialRuntime) -> anyhow::Result<&'static Run
     registered_programs()
         .iter()
         .find(|program| {
-            program.engine_id == runtime.engine_id && program.template_id == runtime.template_id
+            program.engine_id == runtime.engine_id
+                && program.template_id == runtime.template_id
         })
         .ok_or_else(|| anyhow!("unsupported runtime '{runtime_id}'"))
 }

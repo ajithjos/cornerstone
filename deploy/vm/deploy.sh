@@ -226,7 +226,6 @@ render_runtime_env_file() {
 	deploy_write_env_line "$destination" CORNERSTONE_POSTGRES_PORT "$CORNERSTONE_POSTGRES_PORT"
 	deploy_write_env_line "$destination" CORNERSTONE_FRONTEND_PUBLIC_URL "$CORNERSTONE_FRONTEND_PUBLIC_URL"
 	deploy_write_env_line "$destination" CORNERSTONE_DEVELOPER_DOCS_URL "${CORNERSTONE_DEVELOPER_DOCS_URL:-}"
-	deploy_write_env_line "$destination" CORNERSTONE_DEV_USERNAME_SIGNIN_ENABLED "${CORNERSTONE_DEV_USERNAME_SIGNIN_ENABLED:-false}"
 	deploy_write_env_line "$destination" CORNERSTONE_POSTGRES_DB "$CORNERSTONE_POSTGRES_DB"
 	deploy_write_env_line "$destination" CORNERSTONE_POSTGRES_ADMIN_USER "$CORNERSTONE_POSTGRES_ADMIN_USER"
 	deploy_write_env_line "$destination" CORNERSTONE_POSTGRES_ADMIN_PASSWORD "$postgres_admin_password"

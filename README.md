@@ -9,7 +9,7 @@ This repository now contains an MVP stack with:
 - a standalone Docusaurus developer-docs site for repo and operator references
 - Docker-based dev and VM-oriented deployment templates
 
-Identity bootstrap lives under `deploy/config/runtime_defaults/identity_bootstrap.yaml`.
+Identity bootstrap team definitions live under `deploy/config/runtime_defaults/identity_bootstrap.yaml`.
 Curriculum content stays under `content/`.
 
 ## Quickstart

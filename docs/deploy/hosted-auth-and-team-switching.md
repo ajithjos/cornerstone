@@ -8,7 +8,7 @@ The goal is not to build a full enterprise identity system. The goal is to keep 
 
 Today Cornerstone is still using a local-first identity shape:
 
-- `deploy/config/runtime_defaults/identity_bootstrap.yaml` seeds one team, its users, and memberships
+- `deploy/config/runtime_defaults/identity_bootstrap.yaml` seeds bootstrap-managed teams, users, and memberships
 - both dev compose and the current production template mount the same bootstrap file and auto-apply it at startup
 - the API still trusts a lightweight viewer session and the `x-cornerstone-viewer` header to decide who is acting
 
@@ -156,7 +156,7 @@ For hosted web:
 
 The current `ViewerSessionResponse` shape is already close to what you need. Keep the idea of:
 
-- current authenticated user
+- authenticated user
 - current active user
 - available users
 - team summary
@@ -170,7 +170,6 @@ Follow the CRM split between auth endpoints and business endpoints.
 Add an auth namespace such as:
 
 - `GET /api/v1/auth/options`
-- `POST /api/v1/auth/dev/signin`
 - `GET /api/v1/auth/google/start`
 - `GET /api/v1/auth/google/callback`
 - `POST /api/v1/auth/signout`
@@ -178,6 +177,7 @@ Add an auth namespace such as:
 Keep a session namespace for the active Cornerstone member context:
 
 - `GET /api/v1/session`
+- `POST /api/v1/session/active-team`
 - `POST /api/v1/session/active-user`
 
 For the first hosted version, `GET /api/v1/session` should return:
@@ -250,8 +250,8 @@ It should not remain the hosted authentication mechanism.
 
 In other words:
 
-- local and dev: bootstrap can continue to support quick username-based testing
-- hosted production: bootstrap creates users and memberships, while real owner sign-in controls internet access
+- local and dev: bootstrap still provisions teams, users, and memberships
+- every environment: real owner sign-in controls internet access
 
 This keeps local iteration fast without locking production into a local-only auth model.
 
@@ -307,7 +307,6 @@ Prefer same-origin hosting over cross-origin API calls. It simplifies cookies, C
 
 ### Phase 4: Tighten the Hosted Path
 
-- disable public access to the legacy username-only hosted flow
 - add audit logging for `authenticated_user_id` plus `active_user_id`
 - add password fallback only if Google-only turns out to be operationally painful
 

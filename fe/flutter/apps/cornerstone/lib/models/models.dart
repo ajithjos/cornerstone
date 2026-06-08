@@ -27,9 +27,10 @@ class ViewerSessionPayload {
     required this.status,
     required this.authenticated,
     required this.auth,
+    required this.availableTeams,
     required this.availableUsers,
     this.team,
-    this.currentUser,
+    this.authenticatedUser,
     this.activeUser,
     this.developerDocsUrl,
   });
@@ -44,9 +45,15 @@ class ViewerSessionPayload {
       team: json['team'] == null
           ? null
           : TeamInfo.fromJson(json['team'] as Map<String, dynamic>),
-      currentUser: json['current_user'] == null
+      availableTeams:
+          ((json['available_teams'] as List<dynamic>?) ?? const <dynamic>[])
+              .map((item) => TeamInfo.fromJson(item as Map<String, dynamic>))
+              .toList(),
+      authenticatedUser: json['authenticated_user'] == null
           ? null
-          : ViewerUser.fromJson(json['current_user'] as Map<String, dynamic>),
+          : ViewerUser.fromJson(
+              json['authenticated_user'] as Map<String, dynamic>,
+            ),
       activeUser: json['active_user'] == null
           ? null
           : ViewerUser.fromJson(json['active_user'] as Map<String, dynamic>),
@@ -62,23 +69,20 @@ class ViewerSessionPayload {
   final bool authenticated;
   final AuthOptions auth;
   final TeamInfo? team;
-  final ViewerUser? currentUser;
+  final List<TeamInfo> availableTeams;
+  final ViewerUser? authenticatedUser;
   final ViewerUser? activeUser;
   final String? developerDocsUrl;
   final List<ViewerUser> availableUsers;
 }
 
 class AuthOptions {
-  AuthOptions({required this.devUsernameSignin, required this.googleSignin});
+  AuthOptions({required this.googleSignin});
 
   factory AuthOptions.fromJson(Map<String, dynamic> json) {
-    return AuthOptions(
-      devUsernameSignin: json['dev_username_signin'] as bool? ?? false,
-      googleSignin: json['google_signin'] as bool? ?? false,
-    );
+    return AuthOptions(googleSignin: json['google_signin'] as bool? ?? false);
   }
 
-  final bool devUsernameSignin;
   final bool googleSignin;
 }
 

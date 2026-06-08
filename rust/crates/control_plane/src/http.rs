@@ -16,16 +16,17 @@ use uuid::Uuid;
 use catalog::LibraryBundle;
 
 use crate::domain::{
-    ActivityStartResponse, AssignmentRequest, CompleteActivityRequest, CompleteActivityResponse, DevSigninRequest,
+    ActivityStartResponse, AssignmentRequest, CompleteActivityRequest, CompleteActivityResponse,
     LibraryDocumentResponse, LibraryDocumentsResponse, LibraryReloadResponse, OperationStatusResponse,
-    RecordSessionRequest, ReviewRebuildRequest, SwitchActiveUserRequest, ViewerSessionResponse,
+    RecordSessionRequest, ReviewRebuildRequest, SwitchActiveTeamRequest, SwitchActiveUserRequest,
+    ViewerSessionResponse,
 };
 use crate::service::{
     AppState, apply_bootstrap, complete_activity_instance, create_assignment, delete_viewer_session,
     fetch_auth_options, fetch_dashboard, fetch_learner_detail, fetch_learner_workspace, fetch_library,
     fetch_library_document, fetch_library_workspace, fetch_viewer_session, finish_google_oauth_flow, list_learners,
-    list_library_documents, login_dev_viewer_session, rebuild_review_items, record_session, reload_library,
-    resolve_session_context, start_google_oauth_flow, start_session_material_activity, switch_active_user,
+    list_library_documents, rebuild_review_items, record_session, reload_library, resolve_session_context,
+    start_google_oauth_flow, start_session_material_activity, switch_active_team, switch_active_user,
 };
 
 const SESSION_COOKIE_NAME: &str = "cornerstone_session";
@@ -133,11 +134,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/", get(index))
         .route("/health", get(health))
         .route("/api/v1/auth/options", get(get_auth_options))
-        .route("/api/v1/auth/dev/signin", post(post_dev_signin))
         .route("/api/v1/auth/google/start", get(get_google_start))
         .route("/api/v1/auth/google/callback", get(get_google_callback))
         .route("/api/v1/auth/signout", post(post_signout))
         .route("/api/v1/session", get(get_viewer_session))
+        .route("/api/v1/session/active-team", post(post_active_team))
         .route("/api/v1/session/active-user", post(post_active_user))
         .route("/api/v1/library", get(get_library))
         .route("/api/v1/library/workspace", get(get_library_workspace))
@@ -197,18 +198,6 @@ async fn get_viewer_session(
     Ok(Json(fetch_viewer_session(&state, session_id_from_jar(&jar)).await?))
 }
 
-async fn post_dev_signin(
-    jar: CookieJar,
-    State(state): State<Arc<AppState>>,
-    Json(request): Json<DevSigninRequest>,
-) -> Result<(CookieJar, Json<ViewerSessionResponse>), ApiError> {
-    let (session_id, response) = login_dev_viewer_session(&state, &request.username).await?;
-    Ok((
-        jar.add(build_session_cookie(&state.config.frontend_public_url, session_id)),
-        Json(response),
-    ))
-}
-
 async fn get_google_start(
     Query(query): Query<GoogleStartQuery>,
     State(state): State<Arc<AppState>>,
@@ -258,6 +247,16 @@ async fn post_active_user(
     let session_id =
         session_id_from_jar(&jar).ok_or_else(|| ApiError(anyhow!("an authenticated session is required")))?;
     Ok(Json(switch_active_user(&state, session_id, &request.user_id).await?))
+}
+
+async fn post_active_team(
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<SwitchActiveTeamRequest>,
+) -> Result<Json<ViewerSessionResponse>, ApiError> {
+    let session_id =
+        session_id_from_jar(&jar).ok_or_else(|| ApiError(anyhow!("an authenticated session is required")))?;
+    Ok(Json(switch_active_team(&state, session_id, &request.team_id).await?))
 }
 
 async fn get_library(jar: CookieJar, State(state): State<Arc<AppState>>) -> Result<Json<LibraryPayload>, ApiError> {

@@ -33,7 +33,6 @@ class CornerstoneHomePage extends StatefulWidget {
 
 class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   final CornerstoneApiClient _apiClient = CornerstoneApiClient();
-  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _scoreController = TextEditingController(
     text: '8',
   );
@@ -74,7 +73,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
 
   @override
   void dispose() {
-    _usernameController.dispose();
     _scoreController.dispose();
     _maxScoreController.dispose();
     _durationController.dispose();
@@ -82,19 +80,19 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     super.dispose();
   }
 
-  ViewerUser? get _currentViewer => _viewerSession?.currentUser;
+  ViewerUser? get _currentViewer => _viewerSession?.authenticatedUser;
   ViewerUser? get _activeViewer => _viewerSession?.activeUser ?? _currentViewer;
-  bool get _viewerCanManage => _currentViewer?.canManageTeam ?? false;
-  bool get _viewerCanReadLibrary => _currentViewer?.canReadLibrary ?? false;
+  List<TeamInfo> get _availableTeams =>
+      _viewerSession?.availableTeams ?? const <TeamInfo>[];
+  bool get _viewerCanManage => _activeViewer?.canManageTeam ?? false;
+  bool get _viewerCanReadLibrary => _activeViewer?.canReadLibrary ?? false;
   bool get _viewerCanOpenDeveloperDocs =>
-      _currentViewer?.canOpenDeveloperDocs ?? false;
+      _activeViewer?.canOpenDeveloperDocs ?? false;
   String? get _developerDocsUrl => _viewerSession?.developerDocsUrl;
-  bool get _devUsernameSigninEnabled =>
-      _viewerSession?.auth.devUsernameSignin ?? false;
   bool get _googleSigninEnabled => _viewerSession?.auth.googleSignin ?? false;
 
   List<_ShellDestination> get _availableDestinations {
-    final viewer = _currentViewer;
+    final viewer = _activeViewer;
     if (viewer == null) return const <_ShellDestination>[];
     if (viewer.canManageTeam) {
       return <_ShellDestination>[
@@ -112,7 +110,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
 
   List<LearnerDashboard> get _visibleLearners {
     final dashboard = _dashboard;
-    final viewer = _currentViewer;
+    final viewer = _activeViewer;
     if (dashboard == null) return const <LearnerDashboard>[];
     if (viewer == null ||
         viewer.canViewAllLearners ||
@@ -128,13 +126,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     return viewer.isLearner || viewer.learnerId != null
         ? _ShellDestination.learner
         : _ShellDestination.owner;
-  }
-
-  void _setUsernameInput(String username) {
-    _usernameController.value = TextEditingValue(
-      text: username,
-      selection: TextSelection.collapsed(offset: username.length),
-    );
   }
 
   String? _nextLearnerIdForViewer(
@@ -180,13 +171,11 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     try {
       final viewerSession = await _apiClient.fetchViewerSession();
       if (!mounted) return;
-      final suggestedUsername = viewerSession.currentUser?.username ?? '';
-      _setUsernameInput(suggestedUsername);
-      final authErrorMessage = viewerSession.currentUser == null
+      final authErrorMessage = viewerSession.authenticatedUser == null
           ? _authErrorMessageFromLocation()
           : null;
 
-      if (viewerSession.currentUser == null) {
+      if (viewerSession.authenticatedUser == null) {
         setState(() {
           _viewerSession = viewerSession;
           _sessionLoading = false;
@@ -209,7 +198,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       }
 
       final defaultViewer =
-          viewerSession.activeUser ?? viewerSession.currentUser!;
+          viewerSession.activeUser ?? viewerSession.authenticatedUser!;
       setState(() {
         _viewerSession = viewerSession;
         _sessionLoading = false;
@@ -237,62 +226,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         _authBusy = false;
         _loading = false;
         _busy = false;
-        _sessionErrorMessage = error.toString();
-      });
-    }
-  }
-
-  Future<void> _loginWithUsername([String? username]) async {
-    final requestedUsername = (username ?? _usernameController.text).trim();
-    if (requestedUsername.isEmpty) {
-      setState(() {
-        _sessionErrorMessage = 'Enter a username to continue.';
-      });
-      return;
-    }
-
-    setState(() {
-      _authBusy = true;
-      _sessionErrorMessage = null;
-    });
-    try {
-      final viewerSession = await _apiClient.loginWithUsername(
-        requestedUsername,
-      );
-      if (!mounted) return;
-      final currentUser = viewerSession.currentUser;
-      if (currentUser == null) {
-        setState(() {
-          _authBusy = false;
-          _sessionErrorMessage = 'Unable to resolve that username.';
-        });
-        return;
-      }
-
-      _setUsernameInput(currentUser.username);
-      final defaultViewer = viewerSession.activeUser ?? currentUser;
-      setState(() {
-        _viewerSession = viewerSession;
-        _authBusy = false;
-        _dashboard = null;
-        _libraryWorkspace = null;
-        _libraryDocuments = null;
-        _selectedLibraryDocument = null;
-        _learnerDetail = null;
-        _learnerWorkspace = null;
-        _selectedLearnerId = null;
-        _selectedLibraryRoutePath = null;
-        _selectedDestination = _defaultDestinationForViewer(defaultViewer);
-        _loading = true;
-        _busy = false;
-        _libraryDocumentBusy = false;
-        _errorMessage = null;
-      });
-      await _loadAll(preserveSelection: false);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _authBusy = false;
         _sessionErrorMessage = error.toString();
       });
     }
@@ -328,13 +261,43 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     try {
       final viewerSession = await _apiClient.switchActiveUser(userId);
       if (!mounted) return;
-      final activeUser = viewerSession.activeUser ?? viewerSession.currentUser;
+      final activeUser =
+          viewerSession.activeUser ?? viewerSession.authenticatedUser;
       setState(() {
         _viewerSession = viewerSession;
         _selectedLearnerId = preferredLearnerId ?? activeUser?.learnerId;
         if (destination != null) {
           _selectedDestination = destination;
         }
+      });
+      await _loadAll(preserveSelection: false);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorMessage = error.toString();
+      });
+    }
+  }
+
+  Future<void> _switchActiveTeam(String teamId) async {
+    setState(() {
+      _busy = true;
+      _errorMessage = null;
+      _sessionErrorMessage = null;
+    });
+    try {
+      final viewerSession = await _apiClient.switchActiveTeam(teamId);
+      if (!mounted) return;
+      final activeUser =
+          viewerSession.activeUser ?? viewerSession.authenticatedUser;
+      final destination = activeUser == null
+          ? _ShellDestination.account
+          : _defaultDestinationForViewer(activeUser);
+      setState(() {
+        _viewerSession = viewerSession;
+        _selectedLearnerId = activeUser?.learnerId;
+        _selectedDestination = destination;
       });
       await _loadAll(preserveSelection: false);
     } catch (error) {
@@ -388,12 +351,18 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       LearnerWorkspacePayload? learnerWorkspace;
       LibraryDocumentData? selectedLibraryDocument;
       if (nextLearnerId != null) {
-        final results = await Future.wait<dynamic>([
-          _apiClient.fetchLearnerDetail(nextLearnerId),
-          _apiClient.fetchLearnerWorkspace(nextLearnerId),
-        ]);
-        learnerDetail = results[0] as LearnerDetailPayload;
-        learnerWorkspace = results[1] as LearnerWorkspacePayload;
+        if (_viewerCanManage) {
+          final results = await Future.wait<dynamic>([
+            _apiClient.fetchLearnerDetail(nextLearnerId),
+            _apiClient.fetchLearnerWorkspace(nextLearnerId),
+          ]);
+          learnerDetail = results[0] as LearnerDetailPayload;
+          learnerWorkspace = results[1] as LearnerWorkspacePayload;
+        } else {
+          learnerWorkspace = await _apiClient.fetchLearnerWorkspace(
+            nextLearnerId,
+          );
+        }
       }
       if (_viewerCanReadLibrary) {
         libraryWorkspace = await _apiClient.fetchLibraryWorkspace();

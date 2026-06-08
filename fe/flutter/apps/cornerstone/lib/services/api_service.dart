@@ -39,15 +39,6 @@ class CornerstoneApiClient {
     return ViewerSessionPayload.fromJson(_decode(response));
   }
 
-  Future<ViewerSessionPayload> loginWithUsername(String username) async {
-    final response = await _client.post(
-      Uri.parse('$baseUrl/api/v1/auth/dev/signin'),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode({'username': username}),
-    );
-    return ViewerSessionPayload.fromJson(_decode(response));
-  }
-
   Uri googleStartUri({String nextPath = '/'}) {
     return Uri.parse(
       '$baseUrl/api/v1/auth/google/start',
@@ -66,6 +57,15 @@ class CornerstoneApiClient {
       Uri.parse('$baseUrl/api/v1/session/active-user'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({'user_id': userId}),
+    );
+    return ViewerSessionPayload.fromJson(_decode(response));
+  }
+
+  Future<ViewerSessionPayload> switchActiveTeam(String teamId) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/session/active-team'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'team_id': teamId}),
     );
     return ViewerSessionPayload.fromJson(_decode(response));
   }

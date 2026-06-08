@@ -14,7 +14,6 @@ pub struct AppConfig {
     pub auto_bootstrap: bool,
     pub frontend_public_url: String,
     pub developer_docs_public_url: Option<String>,
-    pub dev_username_signin_enabled: bool,
     pub google_oauth_client_id: Option<String>,
     pub google_oauth_client_secret: Option<String>,
 }
@@ -31,7 +30,6 @@ impl AppConfig {
             auto_bootstrap: required_bool("CORNERSTONE_AUTO_BOOTSTRAP")?,
             frontend_public_url: required_env("CORNERSTONE_FRONTEND_PUBLIC_URL")?,
             developer_docs_public_url: optional_env("CORNERSTONE_DEVELOPER_DOCS_URL"),
-            dev_username_signin_enabled: optional_bool("CORNERSTONE_DEV_USERNAME_SIGNIN_ENABLED", false)?,
             google_oauth_client_id: optional_env("CORNERSTONE_GOOGLE_OAUTH_CLIENT_ID"),
             google_oauth_client_secret: optional_env("CORNERSTONE_GOOGLE_OAUTH_CLIENT_SECRET"),
         })
@@ -77,14 +75,6 @@ fn required_path(key: &str) -> anyhow::Result<PathBuf> {
 
 fn required_bool(key: &str) -> anyhow::Result<bool> {
     parse_bool(&required_env(key)?)
-}
-
-fn optional_bool(key: &str, default: bool) -> anyhow::Result<bool> {
-    match env::var(key) {
-        Ok(value) => parse_bool(&value),
-        Err(env::VarError::NotPresent) => Ok(default),
-        Err(env::VarError::NotUnicode(_)) => Err(anyhow!("{key} must be valid UTF-8")),
-    }
 }
 
 fn parse_bool(value: &str) -> anyhow::Result<bool> {

@@ -1,66 +1,60 @@
-team:
-  team_id: team_josephfamily
-  display_name: Joseph Family 
-  description: Home-based learning team for the Joseph family.
-
-users:
-  - user_id: user_ajith
-    username: ajith
-    display_name: Ajith Jose
-    first_name: Ajith
-    last_name: Jose
-    email: ajith.jose@dhenara.com
-    date_of_birth: 2004-10-15
-    sex: Male
-    notes: Owner
-
-  - user_id: user_chelsy
-    username: chelsy
-    display_name: Chelsy Jacob
-    first_name: Chelsy
-    last_name: Jacob
-    email: chelsy.jacob@dhenara.com
-    date_of_birth: 2008-11-14
-    sex: Female
-    notes: Owner
-
-  - user_id: user_christopher
-    username: christopher
-    display_name: Christopher Joseph
-    date_of_birth: 2017-11-23
-    sex: Male
-    current_level: Year 2
-    notes: Starting with number bonds and addition fluency.
-
-  - user_id: user_margaret
-    username: margaret
-    display_name: Margaret Joseph
-    date_of_birth: 2020-02-02
-    sex: Female
-    current_level: Year 5
-    notes: Starting with multiplication and division fluency.
-
-  - user_id: user_johnpaul
-    username: johnpaul
-    display_name: Johnpaul Joseph
-    date_of_birth: 2022-01-15
-    sex: Male
-    current_level: Early Years
-    notes: Preschool readiness.
-
-memberships:
+teams:
   - team_id: team_josephfamily
-    user_id: user_ajith
-    role: owner
-  - team_id: team_josephfamily
-    user_id: user_chelsy
-    role: owner
-  - team_id: team_josephfamily
-    user_id: user_christopher
-    role: learner
-  - team_id: team_josephfamily
-    user_id: user_margaret
-    role: learner
-  - team_id: team_josephfamily
-    user_id: user_johnpaul
-    role: learner
+    display_name: Joseph Family
+    description: Home-based learning team for the Joseph family.
+    users:
+      - user_id: user_ajith
+        username: ajith
+        display_name: Ajith Jose
+        first_name: Ajith
+        last_name: Jose
+        email: ajith.jose@dhenara.com
+        date_of_birth: 2004-10-15
+        sex: Male
+        notes: Owner
+
+      - user_id: user_chelsy
+        username: chelsy
+        display_name: Chelsy Jacob
+        first_name: Chelsy
+        last_name: Jacob
+        email: chelsy.jacob@dhenara.com
+        date_of_birth: 2008-11-14
+        sex: Female
+        notes: Owner
+
+      - user_id: user_christopher
+        username: christopher
+        display_name: Christopher Joseph
+        date_of_birth: 2017-11-23
+        sex: Male
+        current_level: Year 2
+        notes: Starting with number bonds and addition fluency.
+
+      - user_id: user_margaret
+        username: margaret
+        display_name: Margaret Joseph
+        date_of_birth: 2020-02-02
+        sex: Female
+        current_level: Year 5
+        notes: Starting with multiplication and division fluency.
+
+      - user_id: user_johnpaul
+        username: johnpaul
+        display_name: Johnpaul Joseph
+        date_of_birth: 2022-01-15
+        sex: Male
+        current_level: Early Years
+        notes: Preschool readiness.
+
+    memberships:
+      - user_id: user_ajith
+        role: owner
+      - user_id: user_chelsy
+        role: owner
+      - user_id: user_christopher
+        role: learner
+      - user_id: user_margaret
+        role: learner
+      - user_id: user_johnpaul
+        role: learner

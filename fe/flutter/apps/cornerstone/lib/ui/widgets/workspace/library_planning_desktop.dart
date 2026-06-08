@@ -475,7 +475,7 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
   }) {
     const sep = Icon(Icons.chevron_right_rounded, size: 16);
 
-    Widget _crumb(String label, String value, {bool active = false}) {
+    Widget crumb(String label, String value, {bool active = false}) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -525,22 +525,22 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _crumb('Pathway', pathway.title, active: focusLevel == 0),
+          crumb('Pathway', pathway.title, active: focusLevel == 0),
           const SizedBox(width: 6),
           sep,
           const SizedBox(width: 6),
-          _crumb('Playlist', playlist.title, active: focusLevel == 1),
+          crumb('Playlist', playlist.title, active: focusLevel == 1),
           if (session != null) ...[
             const SizedBox(width: 6),
             sep,
             const SizedBox(width: 6),
-            _crumb('Session', session.title, active: focusLevel == 2),
+            crumb('Session', session.title, active: focusLevel == 2),
           ],
           if (material != null) ...[
             const SizedBox(width: 6),
             sep,
             const SizedBox(width: 6),
-            _crumb('Material', material.title, active: focusLevel == 3),
+            crumb('Material', material.title, active: focusLevel == 3),
           ],
         ],
       ),

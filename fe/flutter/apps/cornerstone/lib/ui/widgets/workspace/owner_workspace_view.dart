@@ -53,11 +53,12 @@ class _OwnerWorkspaceView extends StatelessWidget {
         .length;
     final selectedDetail = detail;
     final assignedJourneys =
-      selectedDetail?.assignedJourneys ?? const <LearnerAssignedJourney>[];
+        selectedDetail?.assignedJourneys ?? const <LearnerAssignedJourney>[];
     final assignedPathways =
-      selectedDetail?.assignedPathways ?? const <LearnerAssignedPathway>[];
-    final singleAssignedJourney =
-      assignedJourneys.length == 1 ? assignedJourneys.first : null;
+        selectedDetail?.assignedPathways ?? const <LearnerAssignedPathway>[];
+    final singleAssignedJourney = assignedJourneys.length == 1
+        ? assignedJourneys.first
+        : null;
     final journey = singleAssignedJourney?.journey ?? selectedDetail?.journey;
     final workspace = selectedDetail?.workspace;
     final continueBlock = workspace?.continueBlock;
@@ -261,13 +262,18 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                     assignedPathway.pathwayTitle,
                                     style: theme.textTheme.titleLarge,
                                   ),
-                                  if (assignedPathway.pathwayDescription.isNotEmpty) ...[
+                                  if (assignedPathway
+                                      .pathwayDescription
+                                      .isNotEmpty) ...[
                                     const SizedBox(height: 4),
                                     Text(
                                       assignedPathway.pathwayDescription,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurfaceVariant,
-                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
                                     ),
                                   ],
                                   const SizedBox(height: 10),
@@ -276,52 +282,95 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                     runSpacing: 8,
                                     children: [
                                       _PillBadge(
-                                        text: '${assignedPathway.playlistCount} playlists',
-                                        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                                        text:
+                                            '${assignedPathway.playlistCount} playlists',
+                                        color: theme.colorScheme.primary
+                                            .withValues(alpha: 0.12),
                                         textColor: theme.colorScheme.primary,
                                       ),
                                       _PillBadge(
-                                        text: '${assignedPathway.totalSessionCount} sessions',
-                                        color: theme.colorScheme.secondaryContainer,
-                                        textColor: theme.colorScheme.onSecondaryContainer,
+                                        text:
+                                            '${assignedPathway.totalSessionCount} sessions',
+                                        color: theme
+                                            .colorScheme
+                                            .secondaryContainer,
+                                        textColor: theme
+                                            .colorScheme
+                                            .onSecondaryContainer,
                                       ),
                                       _PillBadge(
-                                        text: '${assignedPathway.pendingSessionCount} pending',
-                                        color: theme.colorScheme.tertiaryContainer,
-                                        textColor: theme.colorScheme.onTertiaryContainer,
+                                        text:
+                                            '${assignedPathway.pendingSessionCount} pending',
+                                        color:
+                                            theme.colorScheme.tertiaryContainer,
+                                        textColor: theme
+                                            .colorScheme
+                                            .onTertiaryContainer,
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 12),
-                                  ...assignedPathway.assignedPlaylists.map((assignedJourney) {
-                                    final assignedJourneyInfo = assignedJourney.journey;
+                                  ...assignedPathway.assignedPlaylists.map((
+                                    assignedJourney,
+                                  ) {
+                                    final assignedJourneyInfo =
+                                        assignedJourney.journey;
                                     final currentJourneySession =
-                                        assignedJourney.continueBlock?.session ??
+                                        assignedJourney
+                                            .continueBlock
+                                            ?.session ??
                                         assignedJourney.sessions
-                                            .where((session) => session.status != 'completed')
+                                            .where(
+                                              (session) =>
+                                                  session.status != 'completed',
+                                            )
                                             .cast<SessionDetail?>()
-                                            .firstWhere((_) => true, orElse: () => assignedJourney.sessions.isEmpty ? null : assignedJourney.sessions.first);
+                                            .firstWhere(
+                                              (_) => true,
+                                              orElse: () =>
+                                                  assignedJourney
+                                                      .sessions
+                                                      .isEmpty
+                                                  ? null
+                                                  : assignedJourney
+                                                        .sessions
+                                                        .first,
+                                            );
                                     final currentJourneyStanding =
                                         currentJourneySession?.sequenceNumber ??
-                                        (assignedJourneyInfo.totalSessionCount > 0
-                                            ? (assignedJourneyInfo.completedSessionCount + 1)
-                                                .clamp(1, assignedJourneyInfo.totalSessionCount)
+                                        (assignedJourneyInfo.totalSessionCount >
+                                                0
+                                            ? (assignedJourneyInfo
+                                                          .completedSessionCount +
+                                                      1)
+                                                  .clamp(
+                                                    1,
+                                                    assignedJourneyInfo
+                                                        .totalSessionCount,
+                                                  )
                                             : null);
                                     final assignedJourneyProgress =
-                                        assignedJourneyInfo.totalSessionCount == 0
+                                        assignedJourneyInfo.totalSessionCount ==
+                                            0
                                         ? null
-                                        : (assignedJourneyInfo.completedSessionCount /
-                                                assignedJourneyInfo.totalSessionCount)
-                                            .clamp(0.0, 1.0);
+                                        : (assignedJourneyInfo
+                                                      .completedSessionCount /
+                                                  assignedJourneyInfo
+                                                      .totalSessionCount)
+                                              .clamp(0.0, 1.0);
                                     return Container(
                                       margin: const EdgeInsets.only(top: 12),
                                       padding: const EdgeInsets.all(14),
                                       decoration: BoxDecoration(
-                                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.36),
+                                        color: theme
+                                            .colorScheme
+                                            .surfaceContainerHighest
+                                            .withValues(alpha: 0.36),
                                         borderRadius: BorderRadius.circular(16),
                                       ),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             assignedJourneyInfo.playlistTitle,
@@ -329,10 +378,14 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                           ),
                                           const SizedBox(height: 6),
                                           Text(
-                                            assignedJourneyInfo.playlistDescription,
-                                            style: theme.textTheme.bodySmall?.copyWith(
-                                              color: theme.colorScheme.onSurfaceVariant,
-                                            ),
+                                            assignedJourneyInfo
+                                                .playlistDescription,
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: theme
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                                ),
                                           ),
                                           const SizedBox(height: 10),
                                           Wrap(
@@ -340,36 +393,61 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                             runSpacing: 8,
                                             children: [
                                               _PillBadge(
-                                                text: 'status:${assignedJourney.assignment.status}',
-                                                color: theme.colorScheme.secondaryContainer,
-                                                textColor: theme.colorScheme.onSecondaryContainer,
+                                                text:
+                                                    'status:${assignedJourney.assignment.status}',
+                                                color: theme
+                                                    .colorScheme
+                                                    .secondaryContainer,
+                                                textColor: theme
+                                                    .colorScheme
+                                                    .onSecondaryContainer,
                                               ),
-                                              if (currentJourneyStanding != null)
+                                              if (currentJourneyStanding !=
+                                                  null)
                                                 _PillBadge(
-                                                  text: 'Current session: $currentJourneyStanding/${assignedJourneyInfo.totalSessionCount}',
-                                                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                                                  textColor: theme.colorScheme.primary,
+                                                  text:
+                                                      'Current session: $currentJourneyStanding/${assignedJourneyInfo.totalSessionCount}',
+                                                  color: theme
+                                                      .colorScheme
+                                                      .primary
+                                                      .withValues(alpha: 0.12),
+                                                  textColor:
+                                                      theme.colorScheme.primary,
                                                 ),
                                               _PillBadge(
-                                                text: 'Completed: ${assignedJourneyInfo.completedSessionCount}',
-                                                color: theme.colorScheme.surfaceContainerHighest,
-                                                textColor: theme.colorScheme.onSurfaceVariant,
+                                                text:
+                                                    'Completed: ${assignedJourneyInfo.completedSessionCount}',
+                                                color: theme
+                                                    .colorScheme
+                                                    .surfaceContainerHighest,
+                                                textColor: theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
                                               ),
                                               _PillBadge(
-                                                text: 'Pending: ${assignedJourneyInfo.pendingSessionCount}',
-                                                color: theme.colorScheme.tertiaryContainer,
-                                                textColor: theme.colorScheme.onTertiaryContainer,
+                                                text:
+                                                    'Pending: ${assignedJourneyInfo.pendingSessionCount}',
+                                                color: theme
+                                                    .colorScheme
+                                                    .tertiaryContainer,
+                                                textColor: theme
+                                                    .colorScheme
+                                                    .onTertiaryContainer,
                                               ),
                                             ],
                                           ),
-                                          if (assignedJourneyProgress != null) ...[
+                                          if (assignedJourneyProgress !=
+                                              null) ...[
                                             const SizedBox(height: 12),
                                             ClipRRect(
-                                              borderRadius: BorderRadius.circular(999),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
                                               child: LinearProgressIndicator(
                                                 minHeight: 10,
                                                 value: assignedJourneyProgress,
-                                                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                                                backgroundColor: theme
+                                                    .colorScheme
+                                                    .surfaceContainerHighest,
                                               ),
                                             ),
                                           ],
@@ -420,10 +498,12 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                 text:
                                     'Current session: $currentStanding/${journey.totalSessionCount}',
                                 color: theme.colorScheme.secondaryContainer,
-                                textColor: theme.colorScheme.onSecondaryContainer,
+                                textColor:
+                                    theme.colorScheme.onSecondaryContainer,
                               ),
                             _PillBadge(
-                              text: 'Completed: ${journey.completedSessionCount}',
+                              text:
+                                  'Completed: ${journey.completedSessionCount}',
                               color: theme.colorScheme.primary.withValues(
                                 alpha: 0.12,
                               ),
