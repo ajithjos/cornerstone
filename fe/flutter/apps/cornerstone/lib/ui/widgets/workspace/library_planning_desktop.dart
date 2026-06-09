@@ -473,7 +473,7 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
     LibraryWorkspaceSession? session,
     LibraryWorkspaceMaterial? material,
   }) {
-    const sep = Icon(Icons.chevron_right_rounded, size: 16);
+    const sep = Icon(CornerstoneIcons.chevronRight, size: 16);
 
     Widget crumb(String label, String value, {bool active = false}) {
       return Column(
@@ -589,7 +589,7 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
                   TextButton.icon(
                     onPressed: () =>
                         widget.onOpenLibraryRoute(pathway.routePath!),
-                    icon: const Icon(Icons.description_rounded, size: 16),
+                    icon: const Icon(CornerstoneIcons.document, size: 16),
                     label: const Text('Open document'),
                   ),
                 ],
@@ -652,7 +652,7 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
                   TextButton.icon(
                     onPressed: () =>
                         widget.onOpenLibraryRoute(playlist.routePath!),
-                    icon: const Icon(Icons.auto_stories_rounded, size: 16),
+                    icon: const Icon(CornerstoneIcons.library, size: 16),
                     label: const Text('Open document'),
                   ),
                 ],
@@ -855,7 +855,7 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
                   TextButton.icon(
                     onPressed: () =>
                         widget.onOpenLibraryRoute(material.routePath!),
-                    icon: const Icon(Icons.description_rounded, size: 16),
+                    icon: const Icon(CornerstoneIcons.document, size: 16),
                     label: const Text('Open material'),
                   ),
                 ],
@@ -961,8 +961,8 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
               visualDensity: VisualDensity.compact,
               icon: Icon(
                 _navigatorExpanded
-                    ? Icons.menu_open_rounded
-                    : Icons.menu_rounded,
+                    ? CornerstoneIcons.menuOpen
+                    : CornerstoneIcons.menu,
                 size: 20,
               ),
             ),
@@ -999,7 +999,7 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
                 children: [
                   _DesktopSidebarButton(
                     label: pathway.title,
-                    icon: Icons.route_rounded,
+                    icon: CornerstoneIcons.pathway,
                     level: 0,
                     selected: true,
                     onTap: () {
@@ -1022,7 +1022,7 @@ class _LibraryPlanningDesktopState extends State<_LibraryPlanningDesktop> {
                                 children: [
                                   _DesktopSidebarButton(
                                     label: item.title,
-                                    icon: Icons.playlist_play_rounded,
+                                    icon: CornerstoneIcons.playlist,
                                     level: 1,
                                     selected: isSelectedPlaylist,
                                     onTap: () {

@@ -34,22 +34,7 @@ Color _materialKindForegroundColor(ThemeData theme, String kind) {
   }
 }
 
-IconData _materialKindIcon(String kind) {
-  switch (kind) {
-    case 'lesson_note':
-      return Icons.menu_book_rounded;
-    case 'teaching_note':
-      return Icons.record_voice_over_rounded;
-    case 'worksheet':
-      return Icons.edit_note_rounded;
-    case 'drill':
-      return Icons.play_circle_fill_rounded;
-    case 'quick_check':
-      return Icons.fact_check_rounded;
-    default:
-      return Icons.description_rounded;
-  }
-}
+IconData _materialKindIcon(String kind) => CornerstoneIcons.materialKind(kind);
 
 String _materialActionLabel(String kind) {
   switch (kind) {
@@ -276,8 +261,8 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                           FilledButton.tonalIcon(
                             onPressed: () =>
                                 onStartActivity!(session!, material),
-                            icon: const Icon(
-                              Icons.play_circle_fill_rounded,
+                            icon: Icon(
+                              CornerstoneIcons.materialKind(material.kind),
                               size: 18,
                             ),
                             label: Text(_materialActionLabel(material.kind)),
@@ -288,7 +273,7 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                               material.documentRoutePath!,
                             ),
                             icon: const Icon(
-                              Icons.description_rounded,
+                              CornerstoneIcons.document,
                               size: 18,
                             ),
                             label: Text(_materialActionLabel(material.kind)),

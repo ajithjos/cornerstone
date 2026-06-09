@@ -1,21 +1,21 @@
 part of '../../../main.dart';
 
 enum _ShellDestination {
-  owner('Team', 'Learners and sessions.', Icons.dashboard_rounded),
+  owner('Team', 'Learners and sessions.', CornerstoneIcons.team),
   learner(
     'Learning',
     'Current pathway and session work.',
-    Icons.school_rounded,
+    CornerstoneIcons.learning,
   ),
   library(
     'Pathways',
     'Review authored routes, playlists, and materials.',
-    Icons.auto_stories_rounded,
+    CornerstoneIcons.library,
   ),
   account(
     'Profile',
     'Profile, theme, and personal settings.',
-    Icons.person_rounded,
+    CornerstoneIcons.profile,
   );
 
   const _ShellDestination(this.label, this.subtitle, this.icon);
@@ -859,7 +859,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   List<Widget> _buildProfileMenuChildren(BuildContext context) {
     final children = <Widget>[
       MenuItemButton(
-        leadingIcon: const Icon(Icons.person_rounded),
+        leadingIcon: const Icon(CornerstoneIcons.profile),
         onPressed: () => _setDestination(_ShellDestination.account),
         child: const Text('My Account'),
       ),
@@ -867,7 +867,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     if (_viewerCanReadLibrary && !_viewerCanOpenDeveloperDocs) {
       children.add(
         MenuItemButton(
-          leadingIcon: const Icon(Icons.auto_stories_rounded),
+          leadingIcon: const Icon(CornerstoneIcons.library),
           onPressed: () => _setDestination(_ShellDestination.library),
           child: const Text('Open pathway library'),
         ),

@@ -124,7 +124,7 @@ class _LearnerCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    Icons.assignment_rounded,
+                    CornerstoneIcons.session,
                     size: 14,
                     color: theme.colorScheme.primary,
                   ),
@@ -145,7 +145,7 @@ class _LearnerCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    Icons.playlist_add_check_circle_rounded,
+                    CornerstoneIcons.activity,
                     size: 14,
                     color: theme.colorScheme.primary,
                   ),
@@ -166,7 +166,7 @@ class _LearnerCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  Icons.pending_actions_rounded,
+                  CornerstoneIcons.review,
                   size: 14,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

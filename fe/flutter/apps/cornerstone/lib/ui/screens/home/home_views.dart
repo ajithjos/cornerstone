@@ -327,8 +327,8 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                                   ),
                             icon: Icon(
                               user.learnerId != null
-                                  ? Icons.school_rounded
-                                  : Icons.person_rounded,
+                                  ? CornerstoneIcons.learning
+                                  : CornerstoneIcons.profile,
                               size: 18,
                             ),
                             label: Text(user.displayName),

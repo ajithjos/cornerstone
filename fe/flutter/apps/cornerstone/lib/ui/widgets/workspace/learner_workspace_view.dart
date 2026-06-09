@@ -28,7 +28,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons.school_rounded,
+                CornerstoneIcons.learning,
                 size: 56,
                 color: theme.colorScheme.onSurfaceVariant.withValues(
                   alpha: 0.4,
@@ -279,7 +279,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                       'Open this session to read the note, work through the practice, and launch live activity items.',
                   emptyState:
                       'No learner-facing materials are attached to this session yet.',
-                  icon: Icons.school_rounded,
+                  icon: CornerstoneIcons.learnerAudience,
                   groups: learnerGroups,
                   session: session,
                   viewerCanReadLibrary: viewerCanReadLibrary,
@@ -295,7 +295,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                       'Use this guidance to explain and correct before the learner attempts activities.',
                   emptyState:
                       'No teaching guidance is attached to this session yet.',
-                  icon: Icons.co_present_rounded,
+                  icon: CornerstoneIcons.teachingGuidance,
                   groups: adultGroups,
                   session: session,
                   viewerCanReadLibrary: viewerCanReadLibrary,
@@ -565,13 +565,13 @@ class _LearnerWorkspaceView extends StatelessWidget {
               _StatChip(
                 label: 'Playlists',
                 value: '${assignedJourneys.length}',
-                icon: Icons.view_carousel_rounded,
+                icon: CornerstoneIcons.playlist,
               ),
             if (assignedPathwayCount > 0)
               _StatChip(
                 label: 'Pathways',
                 value: '$assignedPathwayCount',
-                icon: Icons.route_rounded,
+                icon: CornerstoneIcons.pathway,
               ),
             if (!hasMultipleAssignedJourneys)
               _StatChip(
@@ -579,22 +579,22 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 value: currentStanding == null
                     ? '--'
                     : 'S$currentStanding/${journey?.totalSessionCount ?? learnerWorkspace.sessions.length}',
-                icon: Icons.place_rounded,
+                icon: CornerstoneIcons.standing,
               ),
             _StatChip(
               label: 'Completed',
               value: '${progressSnapshot.completedSessionCount}',
-              icon: Icons.task_alt_rounded,
+              icon: CornerstoneIcons.completed,
             ),
             _StatChip(
               label: 'Ready now',
               value: '${progressSnapshot.pendingSessionCount}',
-              icon: Icons.rocket_launch_rounded,
+              icon: CornerstoneIcons.readyNow,
             ),
             _StatChip(
               label: 'Review',
               value: '${progressSnapshot.reviewItemCount}',
-              icon: Icons.pending_actions_rounded,
+              icon: CornerstoneIcons.review,
             ),
           ],
         ),
@@ -838,7 +838,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                               'The learner-facing materials for the current session stay together here.',
                           emptyState:
                               'No learner-facing materials are attached to this session yet.',
-                          icon: Icons.school_rounded,
+                          icon: CornerstoneIcons.learnerAudience,
                           groups: learnerGroups,
                           session: nextSession,
                           viewerCanReadLibrary: viewerCanReadLibrary,
@@ -854,7 +854,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                                 'Use this guidance to explain and correct before the learner attempts activities.',
                             emptyState:
                                 'No teaching guidance is attached to this session yet.',
-                            icon: Icons.co_present_rounded,
+                            icon: CornerstoneIcons.teachingGuidance,
                             groups: adultGroups,
                             session: nextSession,
                             viewerCanReadLibrary: viewerCanReadLibrary,

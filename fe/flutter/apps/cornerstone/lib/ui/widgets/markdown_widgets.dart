@@ -31,7 +31,7 @@ class _LibraryDocumentReader extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.description_rounded,
+              CornerstoneIcons.document,
               size: 48,
               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.42),
             ),

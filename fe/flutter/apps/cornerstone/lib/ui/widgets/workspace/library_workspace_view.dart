@@ -136,7 +136,7 @@ class _LibraryWorkspaceView extends StatelessWidget {
                                 onPressed: () =>
                                     onOpenLibraryRoute(pathway.routePath!),
                                 icon: const Icon(
-                                  Icons.description_rounded,
+                                  CornerstoneIcons.document,
                                   size: 18,
                                 ),
                                 label: const Text('Open route document'),
@@ -591,17 +591,17 @@ class _LibraryWorkspaceView extends StatelessWidget {
                 _StatChip(
                   label: 'Pathways',
                   value: '${libraryWorkspace.pathways.length}',
-                  icon: Icons.route_rounded,
+                  icon: CornerstoneIcons.pathway,
                 ),
                 _StatChip(
                   label: 'Documents',
                   value: '${documents?.documents.length ?? 0}',
-                  icon: Icons.description_rounded,
+                  icon: CornerstoneIcons.document,
                 ),
                 _StatChip(
                   label: 'Materials',
                   value: '$totalMaterials',
-                  icon: Icons.menu_book_rounded,
+                  icon: CornerstoneIcons.lessonNote,
                 ),
               ],
             ),

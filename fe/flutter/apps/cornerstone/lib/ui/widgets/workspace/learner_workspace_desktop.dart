@@ -391,20 +391,20 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                       theme,
                       value: '$assignedPathwayCount',
                       label: 'pathways',
-                      icon: Icons.route_rounded,
+                      icon: CornerstoneIcons.pathway,
                     ),
                   if (assignedPlaylistCount > 0)
                     _buildCompactStat(
                       theme,
                       value: '$assignedPlaylistCount',
                       label: 'playlists',
-                      icon: Icons.view_carousel_rounded,
+                      icon: CornerstoneIcons.playlist,
                     ),
                   _buildCompactStat(
                     theme,
                     value: '${snapshot.pendingSessionCount}',
                     label: 'pending',
-                    icon: Icons.timelapse_rounded,
+                    icon: CornerstoneIcons.pending,
                   ),
                 ],
               ),
@@ -418,8 +418,8 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                   theme: theme,
                   tooltip: _learningMenuOpen ? 'Hide menu' : 'Show menu',
                   icon: _learningMenuOpen
-                      ? Icons.menu_open_rounded
-                      : Icons.menu_rounded,
+                      ? CornerstoneIcons.menuOpen
+                      : CornerstoneIcons.menu,
                   active: _learningMenuOpen,
                   onPressed: () {
                     setState(() => _learningMenuOpen = !_learningMenuOpen);
@@ -434,8 +434,8 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                     ? 'Hide progress snapshot'
                     : 'Show progress snapshot',
                 icon: _progressOpen
-                    ? Icons.insights_rounded
-                    : Icons.insights_outlined,
+                    ? CornerstoneIcons.progressActive
+                    : CornerstoneIcons.progress,
                 active: _progressOpen,
                 onPressed: () {
                   setState(() => _progressOpen = !_progressOpen);
@@ -461,8 +461,8 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
           theme: theme,
           tooltip: _isAllMenuExpanded ? 'Collapse all' : 'Expand all',
           icon: _isAllMenuExpanded
-              ? Icons.unfold_less_rounded
-              : Icons.unfold_more_rounded,
+              ? CornerstoneIcons.collapseAll
+              : CornerstoneIcons.expandAll,
           active: _isAllMenuExpanded,
           onPressed: _toggleExpandAllMenu,
         ),
@@ -647,7 +647,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
           });
         },
         leading: Icon(
-          Icons.playlist_play_rounded,
+          CornerstoneIcons.playlist,
           size: 18,
           color: isPlaylistSelected
               ? theme.colorScheme.primary
@@ -729,7 +729,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
           });
         },
         leading: Icon(
-          Icons.folder_copy_rounded,
+          CornerstoneIcons.pathway,
           size: 18,
           color: theme.colorScheme.onSurfaceVariant,
         ),
@@ -825,7 +825,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
         for (var index = 0; index < parts.length; index++) ...[
           if (index > 0)
             Icon(
-              Icons.chevron_right_rounded,
+              CornerstoneIcons.chevronRight,
               size: 16,
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -919,7 +919,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                   'Everything learner-facing for this session is grouped here.',
               emptyState:
                   'No learner-facing materials are attached to this session yet.',
-              icon: Icons.school_rounded,
+              icon: CornerstoneIcons.learnerAudience,
               groups: learnerGroups,
               session: session,
               viewerCanReadLibrary: widget.viewerCanReadLibrary,
@@ -934,7 +934,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
               description:
                   'Use these notes to guide explanation and correction for this session.',
               emptyState: 'No teaching guidance is attached to this session.',
-              icon: Icons.co_present_rounded,
+              icon: CornerstoneIcons.teachingGuidance,
               groups: adultGroups,
               session: session,
               viewerCanReadLibrary: widget.viewerCanReadLibrary,

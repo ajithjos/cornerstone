@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'models/models.dart';
 import 'services/api_service.dart';
+import 'ui/icons/cornerstone_icons.dart';
 import 'ui/theme/theme_controller.dart';
 
 part 'app/cornerstone_app.dart';

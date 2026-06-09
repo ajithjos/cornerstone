@@ -274,7 +274,7 @@ class _ExecutableActivityDialogState extends State<_ExecutableActivityDialog> {
                                 ),
                               )
                             : const Icon(
-                                Icons.playlist_add_check_circle_rounded,
+                                CornerstoneIcons.activity,
                                 size: 18,
                               ),
                         label: const Text('Submit activity'),

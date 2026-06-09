@@ -610,7 +610,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                             'Everything the learner needs for this session.',
                                         emptyState:
                                             'No learner-facing materials are attached to this session yet.',
-                                        icon: Icons.school_rounded,
+                                        icon: CornerstoneIcons.learnerAudience,
                                         groups: learnerFacingGroups,
                                         session: activeSession,
                                         viewerCanReadLibrary:
@@ -642,7 +642,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                             'Teaching guidance for running this session.',
                                         emptyState:
                                             'No adult guidance notes are attached to this session.',
-                                        icon: Icons.record_voice_over_rounded,
+                                        icon: CornerstoneIcons.teachingNote,
                                         groups: adultFacingGroups,
                                         session: activeSession,
                                         viewerCanReadLibrary:
@@ -683,7 +683,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                               onPressed: () =>
                                   onStartActivity(activeSession!, material),
                               icon: const Icon(
-                                Icons.play_circle_fill_rounded,
+                                CornerstoneIcons.drill,
                                 size: 18,
                               ),
                               label: Text('Start ${material.title}'),
