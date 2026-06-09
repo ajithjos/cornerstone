@@ -27,6 +27,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
   String? _selectedAssignmentId;
   String? _selectedSessionId;
   _SessionStatusFilter _sessionFilter = _SessionStatusFilter.all;
+  bool _learningMenuOpen = true;
   final Set<String> _expandedPathwayKeys = <String>{};
   final Set<String> _expandedAssignmentIds = <String>{};
 
@@ -39,6 +40,26 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
   LearnerWorkspace get _workspace => widget.workspace.workspace;
 
   bool get _isSupportView => widget.workspace.workspaceView == 'owner_support';
+
+  String get _viewerModeLabel {
+    if (_isSupportView) {
+      return switch (widget.workspace.viewerRole) {
+        'owner' => 'Parent view',
+        'learner' => 'Learner view',
+        _ => 'Teacher view',
+      };
+    }
+    return 'Learner view';
+  }
+
+  String? get _selectionSummary {
+    final journey = _journey;
+    final session = _selectedSession;
+    if (journey == null || session == null) {
+      return null;
+    }
+    return '${journey.playlistTitle} · Session ${session.sequenceNumber ?? '?'}';
+  }
 
   List<SessionDetail> _orderSessions(Iterable<SessionDetail> source) {
     final sessions = source.toList(growable: false)
@@ -136,15 +157,6 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     };
   }
 
-  void _selectPlaylist(LearnerAssignedJourney assignedJourney) {
-    final currentSession = _currentSessionForJourney(assignedJourney);
-    setState(() {
-      _selectedAssignmentId = assignedJourney.assignment.assignmentId;
-      _selectedSessionId = currentSession?.sessionId;
-      _expandedAssignmentIds.add(assignedJourney.assignment.assignmentId);
-    });
-  }
-
   void _selectSession(
     LearnerAssignedJourney assignedJourney,
     SessionDetail session,
@@ -213,144 +225,175 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     _selectedSessionId = selected?.sessionId;
   }
 
+  Widget _buildCompactStat(
+    ThemeData theme, {
+    required String value,
+    required String label,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: theme.colorScheme.primary.withValues(alpha: 0.8),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHeader(ThemeData theme) {
     final snapshot = _workspace.progressSnapshot;
     final assignedPlaylistCount = _assignedJourneys.length;
     final assignedPathwayCount = _assignedPathways.length;
-    final continueBlock = _workspace.continueBlock;
+    final selectionSummary = _selectionSummary;
+    final hasAssignments =
+        assignedPlaylistCount > 0 || _assignedPathways.isNotEmpty;
 
-    return _SurfaceCard(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _PillBadge(
-                text: _isSupportView ? 'support view' : 'learner view',
-                color: theme.colorScheme.secondaryContainer,
-                textColor: theme.colorScheme.onSecondaryContainer,
-              ),
-              if (_isSupportView)
-                _PillBadge(
-                  text: 'role:${widget.workspace.viewerRole}',
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  textColor: theme.colorScheme.onSurfaceVariant,
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            _isSupportView
-                ? 'Learner workspace preview'
-                : 'My learning workspace',
-            style: theme.textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            assignedPlaylistCount > 0
-                ? 'Browse pathways, playlists, and sessions in order on the left. Open any session on the right to read materials and start activities.'
-                : _isSupportView
-                ? 'No assigned playlists yet. Session details will appear here when work is assigned.'
-                : 'Your assigned learning will appear here when a parent or teacher assigns pathways.',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              if (assignedPathwayCount > 0)
-                _StatChip(
-                  label: 'Pathways',
-                  value: '$assignedPathwayCount',
-                  icon: Icons.route_rounded,
-                ),
-              if (assignedPlaylistCount > 0)
-                _StatChip(
-                  label: 'Playlists',
-                  value: '$assignedPlaylistCount',
-                  icon: Icons.view_carousel_rounded,
-                ),
-              _StatChip(
-                label: 'Completed',
-                value: '${snapshot.completedSessionCount}',
-                icon: Icons.task_alt_rounded,
-              ),
-              _StatChip(
-                label: 'Pending',
-                value: '${snapshot.pendingSessionCount}',
-                icon: Icons.timelapse_rounded,
-              ),
-              _StatChip(
-                label: 'Review',
-                value: '${snapshot.reviewItemCount}',
-                icon: Icons.pending_actions_rounded,
-              ),
-            ],
-          ),
-          if (continueBlock != null) ...[
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.secondaryContainer.withValues(
-                  alpha: 0.45,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: theme.colorScheme.secondary.withValues(alpha: 0.28),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.play_circle_fill_rounded,
-                    color: theme.colorScheme.secondary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          continueBlock.title,
-                          style: theme.textTheme.titleMedium,
+                        _PillBadge(
+                          text: _viewerModeLabel,
+                          color: theme.colorScheme.secondaryContainer,
+                          textColor: theme.colorScheme.onSecondaryContainer,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          continueBlock.description,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _isSupportView
+                                ? 'Learner workspace'
+                                : 'My learning',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ],
                     ),
+                    if (!_learningMenuOpen &&
+                        selectionSummary != null &&
+                        selectionSummary.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        selectionSummary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                alignment: WrapAlignment.end,
+                children: [
+                  if (assignedPathwayCount > 0)
+                    _buildCompactStat(
+                      theme,
+                      value: '$assignedPathwayCount',
+                      label: 'pathways',
+                      icon: Icons.route_rounded,
+                    ),
+                  if (assignedPlaylistCount > 0)
+                    _buildCompactStat(
+                      theme,
+                      value: '$assignedPlaylistCount',
+                      label: 'playlists',
+                      icon: Icons.view_carousel_rounded,
+                    ),
+                  _buildCompactStat(
+                    theme,
+                    value: '${snapshot.completedSessionCount}',
+                    label: 'done',
+                    icon: Icons.task_alt_rounded,
                   ),
-                  const SizedBox(width: 12),
-                  FilledButton.tonal(
-                    onPressed: () {
-                      for (final journey in _assignedJourneys) {
-                        if (journey.sessions.any(
-                          (session) =>
-                              session.sessionId ==
-                              continueBlock.session.sessionId,
-                        )) {
-                          _selectSession(journey, continueBlock.session);
-                          return;
-                        }
-                      }
-                      setState(() {
-                        _selectedSessionId = continueBlock.session.sessionId;
-                      });
-                    },
-                    child: Text(continueBlock.actionLabel),
+                  _buildCompactStat(
+                    theme,
+                    value: '${snapshot.pendingSessionCount}',
+                    label: 'pending',
+                    icon: Icons.timelapse_rounded,
                   ),
                 ],
+              ),
+            ],
+          ),
+          if (hasAssignments) ...[
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: () {
+                setState(() => _learningMenuOpen = !_learningMenuOpen);
+              },
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                foregroundColor: _learningMenuOpen
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+                backgroundColor: _learningMenuOpen
+                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.45)
+                    : theme.colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.45,
+                      ),
+              ),
+              icon: Icon(
+                _learningMenuOpen
+                    ? Icons.menu_open_rounded
+                    : Icons.menu_rounded,
+                size: 18,
+              ),
+              label: Text(
+                _learningMenuOpen ? 'Hide menu' : 'Learning menu',
+                style: theme.textTheme.labelLarge,
               ),
             ),
           ],
@@ -360,32 +403,49 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
   }
 
   Widget _buildSessionFilterBar(ThemeData theme) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Row(
       children: [
-        ChoiceChip(
-          label: const Text('All sessions'),
-          selected: _sessionFilter == _SessionStatusFilter.all,
-          onSelected: (_) {
-            setState(() => _sessionFilter = _SessionStatusFilter.all);
-          },
-        ),
-        ChoiceChip(
-          label: const Text('Pending'),
-          selected: _sessionFilter == _SessionStatusFilter.pending,
-          onSelected: (_) {
-            setState(() => _sessionFilter = _SessionStatusFilter.pending);
-          },
-        ),
-        ChoiceChip(
-          label: const Text('Completed'),
-          selected: _sessionFilter == _SessionStatusFilter.completed,
-          onSelected: (_) {
-            setState(() => _sessionFilter = _SessionStatusFilter.completed);
-          },
-        ),
+        _buildFilterChip(theme, 'All', _SessionStatusFilter.all),
+        const SizedBox(width: 6),
+        _buildFilterChip(theme, 'Pending', _SessionStatusFilter.pending),
+        const SizedBox(width: 6),
+        _buildFilterChip(theme, 'Done', _SessionStatusFilter.completed),
       ],
+    );
+  }
+
+  Widget _buildFilterChip(
+    ThemeData theme,
+    String label,
+    _SessionStatusFilter value,
+  ) {
+    final selected = _sessionFilter == value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => setState(() => _sessionFilter = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primaryContainer
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                : theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
+          ),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: selected
+                ? theme.colorScheme.onPrimaryContainer
+                : theme.colorScheme.onSurfaceVariant,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
     );
   }
 
@@ -401,14 +461,14 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     }
 
     return Padding(
-      padding: const EdgeInsets.only(left: 28, bottom: 4),
+      padding: const EdgeInsets.only(left: 20, bottom: 2),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: isSelected
                   ? theme.colorScheme.primaryContainer
@@ -429,7 +489,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 14,
+                  radius: 12,
                   backgroundColor: isSelected
                       ? theme.colorScheme.primary
                       : theme.colorScheme.surfaceContainerHighest,
@@ -517,8 +577,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
       data: theme.copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         key: ValueKey('playlist-$assignmentId'),
-        tilePadding: const EdgeInsets.only(left: 12, right: 4),
-        childrenPadding: const EdgeInsets.only(bottom: 6),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+        childrenPadding: const EdgeInsets.only(bottom: 4),
+        visualDensity: VisualDensity.compact,
         initiallyExpanded: isExpanded || isPlaylistSelected,
         onExpansionChanged: (expanded) {
           setState(() {
@@ -530,28 +591,25 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
           });
         },
         leading: Icon(
-          Icons.view_carousel_rounded,
-          size: 20,
+          Icons.playlist_play_rounded,
+          size: 18,
           color: isPlaylistSelected
               ? theme.colorScheme.primary
               : theme.colorScheme.onSurfaceVariant,
         ),
         title: Text(
           journey.playlistTitle,
-          style: theme.textTheme.titleSmall?.copyWith(
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: isPlaylistSelected ? FontWeight.w700 : FontWeight.w600,
           ),
         ),
         subtitle: Text(
-          '${journey.completedSessionCount}/${journey.totalSessionCount} sessions done',
-          style: theme.textTheme.bodySmall?.copyWith(
+          '${journey.completedSessionCount}/${journey.totalSessionCount}',
+          style: theme.textTheme.labelSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
-        ),
-        trailing: IconButton(
-          tooltip: 'Open this playlist',
-          icon: const Icon(Icons.open_in_new_rounded, size: 18),
-          onPressed: () => _selectPlaylist(assignedJourney),
         ),
         children: visibleSessions.isEmpty
             ? [
@@ -597,79 +655,74 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Theme(
-        data: theme.copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          key: ValueKey('pathway-$pathwayKey'),
-          initiallyExpanded: isExpanded,
-          onExpansionChanged: (expanded) {
-            setState(() {
-              if (expanded) {
-                _expandedPathwayKeys.add(pathwayKey);
-              } else {
-                _expandedPathwayKeys.remove(pathwayKey);
-              }
-            });
-          },
-          title: Text(
-            pathway.pathwayTitle,
-            style: theme.textTheme.titleMedium,
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: ValueKey('pathway-$pathwayKey'),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+        childrenPadding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        initiallyExpanded: isExpanded,
+        onExpansionChanged: (expanded) {
+          setState(() {
+            if (expanded) {
+              _expandedPathwayKeys.add(pathwayKey);
+            } else {
+              _expandedPathwayKeys.remove(pathwayKey);
+            }
+          });
+        },
+        leading: Icon(
+          Icons.folder_copy_rounded,
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        title: Text(
+          pathway.pathwayTitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
           ),
-          subtitle: Text(
-            '${pathway.playlistCount} playlist${pathway.playlistCount == 1 ? '' : 's'} · ${pathway.completedSessionCount}/${pathway.totalSessionCount} sessions done',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+        ),
+        subtitle: Text(
+          '${pathway.playlistCount} playlists · ${pathway.completedSessionCount}/${pathway.totalSessionCount}',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-          children: [
-            if (pathway.pathwayDescription.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(
-                  pathway.pathwayDescription,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ...pathway.assignedPlaylists.map(
+        ),
+        children: pathway.assignedPlaylists
+            .map(
               (playlist) => _buildPlaylistSection(
                 theme: theme,
                 assignedJourney: playlist,
                 pathwayKey: pathwayKey,
               ),
-            ),
-          ],
-        ),
+            )
+            .toList(growable: false),
       ),
     );
   }
 
-  Widget _buildNavigatorPanel(ThemeData theme) {
+  Widget _buildLearningMenu(ThemeData theme) {
     final pathways = _assignedPathways;
 
-    return _SurfaceCard(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Learning navigator', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 6),
-          Text(
-            'Pathways, playlists, and sessions appear in assignment order. Expand each level to browse everything, completed or not.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 14),
           _buildSessionFilterBar(theme),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          const SizedBox(height: 4),
           if (pathways.isNotEmpty)
             ...pathways.map(
               (pathway) => _buildPathwaySection(theme: theme, pathway: pathway),
@@ -683,10 +736,13 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
               ),
             )
           else
-            Text(
-              'No assigned pathways yet.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              child: Text(
+                'No assigned work yet.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
         ],
@@ -756,21 +812,12 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     final adultGroups = session.materialsByKind
         .where((group) => group.audience == 'adult')
         .toList(growable: false);
-    final isCurrent = session.sessionId == _currentSession?.sessionId;
-
     return _SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildBreadcrumb(theme, session),
-          const SizedBox(height: 14),
-          Text(
-            isCurrent ? 'Current session' : 'Selected session',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 12),
           Text(session.title, style: theme.textTheme.headlineSmall),
           const SizedBox(height: 10),
           Wrap(
@@ -932,31 +979,43 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
       builder: (context, constraints) {
         final useSideBySide = constraints.maxWidth >= 1180;
 
+        final sessionPanel = _buildSessionDetailPanel(theme, selectedSession);
+
         return ListView(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
           children: [
             _buildHeader(theme),
-            const SizedBox(height: 16),
-            if (useSideBySide)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 11,
-                    child: _buildNavigatorPanel(theme),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 14,
-                    child: _buildSessionDetailPanel(theme, selectedSession),
-                  ),
-                ],
-              )
-            else ...[
-              _buildNavigatorPanel(theme),
-              const SizedBox(height: 16),
-              _buildSessionDetailPanel(theme, selectedSession),
-            ],
+            const SizedBox(height: 12),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: _learningMenuOpen
+                  ? (useSideBySide
+                        ? Row(
+                            key: const ValueKey('menu-open-side'),
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 320,
+                                child: _buildLearningMenu(theme),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(child: sessionPanel),
+                            ],
+                          )
+                        : Column(
+                            key: const ValueKey('menu-open-stacked'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildLearningMenu(theme),
+                              const SizedBox(height: 12),
+                              sessionPanel,
+                            ],
+                          ))
+                  : KeyedSubtree(
+                      key: const ValueKey('menu-closed'),
+                      child: sessionPanel,
+                    ),
+            ),
             const SizedBox(height: 16),
             _buildProgressPanel(theme),
           ],
