@@ -140,7 +140,7 @@ You do not need to reinvent authentication because the API is REST-based.
 
 The simplest correct web shape is:
 
-- same-origin frontend and API at `https://cornerstone.dhenara.com`
+- same-origin frontend and API at `https://scholahouse.com`
 - HTTP-only secure session cookie
 - server-side session lookup on each request
 - same-site browser behavior that avoids exposing session cookies to client-side JavaScript
@@ -269,7 +269,7 @@ For now, keep deployment boring.
 
 - use the same GCP project if that reduces friction
 - use a VM-oriented Docker Compose deployment like the CRM repo
-- attach `cornerstone.dhenara.com` to the VM through HTTPS
+- attach `scholahouse.com` to the VM through HTTPS
 - expose only the reverse proxy publicly
 - keep the control-plane port private behind nginx or an equivalent proxy
 
@@ -278,7 +278,7 @@ Recommended first hosted shape:
 - Flutter web static build served by nginx
 - Rust control plane behind the same nginx instance
 - Postgres on the VM or on a managed service later
-- Google OAuth credentials configured for `cornerstone.dhenara.com`
+- Google OAuth credentials configured for `scholahouse.com`
 
 Prefer same-origin hosting over cross-origin API calls. It simplifies cookies, CSRF, and browser behavior.
 

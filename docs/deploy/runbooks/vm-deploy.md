@@ -60,5 +60,6 @@ What the deploy script does:
 - Real secrets do not belong in tracked files, including `prod.gcp.env`.
 - The VM scripts honor `GCLOUD_BIN` when your local `gcloud` binary lives outside the normal shell `PATH`.
 - If the public DNS zone is managed outside this GCP project, the DNS `A` record still needs to be updated there before the managed certificate can become active.
+- If the DNS zone is on Cloudflare, keep the record `DNS only` until the Google-managed certificate is `ACTIVE`. A proxied record resolves to Cloudflare IPs instead of the load-balancer IP and can block certificate provisioning.
 - If you need machine-specific non-secret overrides on your laptop, put them in `deploy/vm/local/control/prod.gcp.env`.
 - The older files under `deploy/production/templates/` are only compatibility references now.

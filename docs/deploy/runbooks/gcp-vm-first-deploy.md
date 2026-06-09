@@ -11,7 +11,7 @@ Use this hosted shape:
 - one GCP project: `p601-ephphatha-host`
 - one Ubuntu VM: `cornerstone-prod-vm`
 - one GCP external HTTPS load balancer in front of the VM
-- one Google-managed certificate for `cornerstone.dhenara.com`
+- one Google-managed certificate for `scholahouse.com`
 - one Secret Manager runtime env secret: `cornerstone-runtime-env`
 - one CLI-managed OAuth client for hosted owner sign-in
 
@@ -27,13 +27,13 @@ These are the current production values in this repo and project:
 - VM: `cornerstone-prod-vm`
 - VM app root: `/opt/cornerstone`
 - runtime data root: `/var/lib/cornerstone`
-- public domain: `cornerstone.dhenara.com`
+- public domain: `scholahouse.com`
 - current reserved load-balancer IP: `8.233.205.67`
 
 Load-balancer resources created in the first rollout:
 
 - address: `cornerstone-prod-ip`
-- certificate: `cornerstone-prod-cert`
+- certificate: `scholahouse-prod-cert`
 - instance group: `cornerstone-prod-ig`
 - VM tag: `allow-cornerstone-lb`
 - firewall rule: `cornerstone-prod-allow-lb`
@@ -124,8 +124,8 @@ $GCLOUD_BIN compute addresses create cornerstone-prod-ip \
   --global \
   --project p601-ephphatha-host
 
-$GCLOUD_BIN compute ssl-certificates create cornerstone-prod-cert \
-  --domains=cornerstone.dhenara.com \
+$GCLOUD_BIN compute ssl-certificates create scholahouse-prod-cert \
+  --domains=scholahouse.com \
   --global \
   --project p601-ephphatha-host
 
@@ -191,7 +191,7 @@ $GCLOUD_BIN compute target-https-proxies create cornerstone-prod-https-proxy \
   --global \
   --url-map cornerstone-prod-url-map \
   --global-url-map \
-  --ssl-certificates cornerstone-prod-cert \
+  --ssl-certificates scholahouse-prod-cert \
   --global-ssl-certificates \
   --project p601-ephphatha-host
 
@@ -220,7 +220,7 @@ $GCLOUD_BIN iam oauth-clients create cornerstone-web \
   --display-name='Cornerstone Web' \
   --description='Cornerstone hosted owner sign-in' \
   --allowed-scopes='openid,email' \
-  --allowed-redirect-uris='https://cornerstone.dhenara.com/api/v1/auth/google/callback,http://127.0.0.1:8080/api/v1/auth/google/callback' \
+  --allowed-redirect-uris='https://scholahouse.com/api/v1/auth/google/callback,http://127.0.0.1:8080/api/v1/auth/google/callback' \
   --allowed-grant-types='authorization-code-grant,refresh-token-grant'
 
 $GCLOUD_BIN iam oauth-clients credentials create cornerstone-web-cred \
@@ -289,23 +289,25 @@ GCLOUD_BIN=${GCLOUD_BIN:-gcloud} DEPLOY_VM_ALLOW_DIRTY=1 bash deploy/vm/deploy.s
 
 ## 9. DNS Step Still Required Outside This Project
 
-The `dhenara.com` DNS zone is not managed in `p601-ephphatha-host`, so the first rollout could not create the record from this repo.
+The `scholahouse.com` DNS zone is not managed in `p601-ephphatha-host`, so the first rollout could not create the record from this repo.
 
-Create this DNS record in the real DNS control plane for `dhenara.com`:
+Create this DNS record in the real DNS control plane for `scholahouse.com`:
 
-- `A cornerstone.dhenara.com -> 8.233.205.67`
+- `A scholahouse.com -> 8.233.205.67`
+- keep the record `DNS only` while the Google-managed certificate is provisioning
 
 After that record propagates:
 
-- `cornerstone-prod-cert` should move from `PROVISIONING` to `ACTIVE`
-- `https://cornerstone.dhenara.com` should become reachable
+- `scholahouse-prod-cert` should move from `PROVISIONING` to `ACTIVE`
+- `https://scholahouse.com` should become reachable
 - hosted Google sign-in should use the configured callback successfully
 
-Current status after the first rollout:
+Current status during a domain cutover:
 
 - VM deploy completed successfully
 - backend service health is `HEALTHY`
-- certificate is still `PROVISIONING` until the DNS record exists
+- certificate can remain `PROVISIONING` until the DNS record points directly to `8.233.205.67`
+- if Cloudflare is in front of the record, keep the record `DNS only` until the certificate becomes `ACTIVE`
 
 ## 10. Verification Commands
 
@@ -320,7 +322,7 @@ $GCLOUD_BIN compute backend-services get-health cornerstone-prod-backend \
 Certificate status:
 
 ```bash
-$GCLOUD_BIN compute ssl-certificates describe cornerstone-prod-cert \
+$GCLOUD_BIN compute ssl-certificates describe scholahouse-prod-cert \
   --global \
   --project p601-ephphatha-host
 ```
@@ -336,7 +338,7 @@ $GCLOUD_BIN compute ssh cornerstone-prod-vm \
 
 ## Future Domain Change
 
-When you move from `cornerstone.dhenara.com` to a new domain later:
+When you move from one production domain to another later:
 
 1. Update `VM_DOMAIN` and `CORNERSTONE_FRONTEND_PUBLIC_URL` in `deploy/config/environments/prod.gcp.env`.
 2. Update the managed certificate to cover the new domain, or create a replacement certificate and attach it to the HTTPS proxy.
