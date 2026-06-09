@@ -33,6 +33,22 @@ deploy_require_cmd() {
 	command -v "$cmd" >/dev/null 2>&1 || deploy_fail "$scope" "required command not found: $cmd"
 }
 
+deploy_resolve_cmd() {
+	local scope="$1"
+	local env_var_name="$2"
+	local fallback_cmd="$3"
+	local configured_path="${!env_var_name:-}"
+
+	if [[ -n "$configured_path" ]]; then
+		[[ -x "$configured_path" ]] || deploy_fail "$scope" "$env_var_name is set but not executable: $configured_path"
+		printf '%s\n' "$configured_path"
+		return 0
+	fi
+
+	deploy_require_cmd "$scope" "$fallback_cmd"
+	command -v "$fallback_cmd"
+}
+
 deploy_check_docker_prereqs() {
 	local scope="$1"
 	deploy_require_cmd "$scope" docker

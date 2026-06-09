@@ -74,9 +74,7 @@ pub fn parse_activity_instance_id(activity_instance_id: &str) -> anyhow::Result<
     let (session_material_id, seed) = activity_instance_id
         .rsplit_once(':')
         .ok_or_else(|| anyhow!("invalid activity instance id"))?;
-    let parsed_seed = seed
-        .parse::<u64>()
-        .context("invalid activity instance seed")?;
+    let parsed_seed = seed.parse::<u64>().context("invalid activity instance seed")?;
     Ok((session_material_id.to_string(), parsed_seed))
 }
 
@@ -114,10 +112,7 @@ pub fn resolve_program(runtime: &MaterialRuntime) -> anyhow::Result<&'static Run
     let runtime_id = build_runtime_id(&runtime.engine_id, &runtime.template_id);
     registered_programs()
         .iter()
-        .find(|program| {
-            program.engine_id == runtime.engine_id
-                && program.template_id == runtime.template_id
-        })
+        .find(|program| program.engine_id == runtime.engine_id && program.template_id == runtime.template_id)
         .ok_or_else(|| anyhow!("unsupported runtime '{runtime_id}'"))
 }
 

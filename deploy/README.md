@@ -9,6 +9,7 @@ Cornerstone uses the same deployment split in both dev and the VM flow:
 
 Primary entrypoints:
 
+- first hosted rollout guide: `docs/deploy/runbooks/gcp-vm-first-deploy.md`
 - one-time VM host prep: `bash deploy/vm/prepare_host.sh`
 - local compose: `bash deploy/dev/setup.sh`
 - local live frontend mode: `bash deploy/dev/live_frontend/up.sh`

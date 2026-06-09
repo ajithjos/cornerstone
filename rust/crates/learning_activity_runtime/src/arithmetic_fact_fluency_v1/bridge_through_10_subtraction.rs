@@ -3,8 +3,7 @@ use catalog::MaterialRuntime;
 use crate::GeneratedActivity;
 
 use super::shared::{
-    ActivityRng, build_generated_activity, generate_unique_items, integer_item, parameter_string,
-    parameter_usize,
+    ActivityRng, build_generated_activity, generate_unique_items, integer_item, parameter_string, parameter_usize,
 };
 
 pub(super) const TEMPLATE_ID: &str = "bridge_through_10_subtraction";

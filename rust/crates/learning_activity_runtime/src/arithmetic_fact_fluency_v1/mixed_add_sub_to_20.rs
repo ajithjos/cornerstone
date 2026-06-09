@@ -3,8 +3,8 @@ use catalog::MaterialRuntime;
 use crate::GeneratedActivity;
 
 use super::shared::{
-    ActivityRng, build_generated_activity, generate_unique_items, integer_item, item_forms,
-    parameter_string_list, parameter_usize,
+    ActivityRng, build_generated_activity, generate_unique_items, integer_item, item_forms, parameter_string_list,
+    parameter_usize,
 };
 
 pub(super) const TEMPLATE_ID: &str = "mixed_add_sub_to_20";
@@ -54,22 +54,12 @@ pub(super) fn generate(runtime: &MaterialRuntime, seed: u64) -> anyhow::Result<G
                 if operation == "subtraction" {
                     let whole = rng.range_inclusive(4, 20) as i32;
                     let part = rng.range_inclusive(1, whole as u32 - 1) as i32;
-                    integer_item(
-                        index,
-                        format!("{whole} - {part} ="),
-                        whole - part,
-                        "subtract_within_20",
-                    )
+                    integer_item(index, format!("{whole} - {part} ="), whole - part, "subtract_within_20")
                 } else {
                     let total = rng.range_inclusive(4, 20) as i32;
                     let left = rng.range_inclusive(1, total as u32 - 1) as i32;
                     let right = total - left;
-                    integer_item(
-                        index,
-                        format!("{left} + {right} ="),
-                        total,
-                        "add_within_20",
-                    )
+                    integer_item(index, format!("{left} + {right} ="), total, "add_within_20")
                 }
             }
         }
@@ -79,8 +69,7 @@ pub(super) fn generate(runtime: &MaterialRuntime, seed: u64) -> anyhow::Result<G
         runtime,
         seed,
         RUNTIME_ID,
-        "Work through the mixed facts and missing-number items without rushing into guesses."
-            .to_string(),
+        "Work through the mixed facts and missing-number items without rushing into guesses.".to_string(),
         items,
     ))
 }

@@ -8,6 +8,7 @@ REPO_ROOT="$(deploy_repo_root)"
 CONFIG_FILE="${DEPLOY_VM_GCP_ENV_FILE:-$REPO_ROOT/deploy/config/environments/prod.gcp.env}"
 LOCAL_CONFIG_FILE="${DEPLOY_VM_LOCAL_SETUP_ENV_FILE:-$REPO_ROOT/deploy/vm/local/control/prod.gcp.env}"
 SOURCE_FILE="${DEPLOY_VM_RUNTIME_ENV_FILE:-$REPO_ROOT/deploy/vm/local/secrets/runtime-env.json}"
+GCLOUD_BIN="$(deploy_resolve_cmd "deploy/vm" GCLOUD_BIN gcloud)"
 
 load_contract() {
 	[[ -f "$CONFIG_FILE" ]] || deploy_fail "deploy/vm" "tracked setup env file not found: $CONFIG_FILE"
@@ -22,12 +23,11 @@ check_preflight() {
 	local active_config
 	local current_project
 
-	deploy_require_cmd "deploy/vm" gcloud
 	deploy_require_cmd "deploy/vm" python3
 	[[ -f "$SOURCE_FILE" ]] || deploy_fail "deploy/vm" "runtime env source file not found: $SOURCE_FILE"
 
-	active_config="$(gcloud config configurations list --filter=is_active:true --format='value(name)')"
-	current_project="$(gcloud config get-value project 2>/dev/null | tr -d '\n')"
+	active_config="$("$GCLOUD_BIN" config configurations list --filter=is_active:true --format='value(name)')"
+	current_project="$("$GCLOUD_BIN" config get-value project 2>/dev/null | tr -d '\n')"
 	[[ "$active_config" == "$GCP_CONFIG_NAME" ]] || deploy_fail "deploy/vm" "active gcloud config is '$active_config', expected '$GCP_CONFIG_NAME'"
 	[[ "$current_project" == "$GCP_PROJECT_ID" ]] || deploy_fail "deploy/vm" "active gcloud project is '$current_project', expected '$GCP_PROJECT_ID'"
 }
@@ -70,8 +70,8 @@ PY
 }
 
 ensure_secret() {
-	if ! gcloud secrets describe "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
-		gcloud secrets create "$GCP_RUNTIME_ENV_SECRET_NAME" --replication-policy=automatic --project "$GCP_PROJECT_ID" >/dev/null
+	if ! "$GCLOUD_BIN" secrets describe "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
+		"$GCLOUD_BIN" secrets create "$GCP_RUNTIME_ENV_SECRET_NAME" --replication-policy=automatic --project "$GCP_PROJECT_ID" >/dev/null
 		deploy_log "deploy/vm" "Created secret $GCP_RUNTIME_ENV_SECRET_NAME in project $GCP_PROJECT_ID"
 	fi
 }
@@ -80,5 +80,5 @@ load_contract
 check_preflight
 validate_runtime_env_json
 ensure_secret
-gcloud secrets versions add "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" --data-file "$SOURCE_FILE" >/dev/null
+"$GCLOUD_BIN" secrets versions add "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" --data-file "$SOURCE_FILE" >/dev/null
 deploy_log "deploy/vm" "Updated secret $GCP_RUNTIME_ENV_SECRET_NAME from $SOURCE_FILE"

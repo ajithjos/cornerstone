@@ -17,6 +17,8 @@ Cornerstone now follows the same high-level split as the CRM repository:
 
 ## Practical Workflow
 
+For the very first rollout, use `docs/deploy/runbooks/gcp-vm-first-deploy.md` together with this file.
+
 1. Fill `deploy/config/environments/prod.gcp.env` with non-secret GCP and VM values.
 2. Copy `deploy/templates/secrets/runtime-env.example.json` to `deploy/vm/local/secrets/runtime-env.json` and fill the real secrets.
 3. Prepare the target VM directories once with `bash deploy/vm/prepare_host.sh`.

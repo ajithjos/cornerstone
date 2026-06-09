@@ -157,10 +157,7 @@ pub(super) fn score_integer_activity(
     let mut response_log = Vec::new();
 
     for item in &generated.items {
-        let submitted = responses_by_item
-            .get(item.item_id.as_str())
-            .copied()
-            .unwrap_or("");
+        let submitted = responses_by_item.get(item.item_id.as_str()).copied().unwrap_or("");
         let parsed = submitted.parse::<i32>().ok();
         let is_attempted = !submitted.is_empty();
         let is_correct = parsed == Some(item.expected_response);

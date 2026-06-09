@@ -7,6 +7,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/../common.
 REPO_ROOT="$(deploy_repo_root)"
 CONFIG_FILE="${DEPLOY_VM_GCP_ENV_FILE:-$REPO_ROOT/deploy/config/environments/prod.gcp.env}"
 LOCAL_CONFIG_FILE="${DEPLOY_VM_LOCAL_SETUP_ENV_FILE:-$REPO_ROOT/deploy/vm/local/control/prod.gcp.env}"
+GCLOUD_BIN="$(deploy_resolve_cmd "deploy/vm" GCLOUD_BIN gcloud)"
 PLAN_ONLY=0
 TEMP_FILES=()
 
@@ -52,7 +53,7 @@ create_temp_file() {
 }
 
 fetch_runtime_env_secret() {
-	gcloud secrets versions access latest --secret "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID"
+	"$GCLOUD_BIN" secrets versions access latest --secret "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID"
 }
 
 runtime_secret_value() {
@@ -138,7 +139,7 @@ check_backend_timeout_contract() {
 		deploy_fail "deploy/vm" "GCP_BACKEND_TIMEOUT_SEC must be an integer number of seconds"
 	fi
 
-	if ! current_timeout="$(gcloud compute backend-services describe "$GCP_BACKEND_SERVICE_NAME" --global --project "$GCP_PROJECT_ID" --format='value(timeoutSec)' 2>/dev/null | tr -d '\n')"; then
+	if ! current_timeout="$("$GCLOUD_BIN" compute backend-services describe "$GCP_BACKEND_SERVICE_NAME" --global --project "$GCP_PROJECT_ID" --format='value(timeoutSec)' 2>/dev/null | tr -d '\n')"; then
 		deploy_log "deploy/vm" "WARNING: could not describe backend service '$GCP_BACKEND_SERVICE_NAME'; skipping load balancer timeout verification."
 		return 0
 	fi
@@ -163,14 +164,13 @@ check_preflight() {
 	local current_project
 	local git_status
 
-	deploy_require_cmd "deploy/vm" gcloud
 	deploy_require_cmd "deploy/vm" git
 	deploy_require_cmd "deploy/vm" tar
 	deploy_require_cmd "deploy/vm" python3
 	deploy_require_cmd "deploy/vm" flutter
 
-	active_config="$(gcloud config configurations list --filter=is_active:true --format='value(name)')"
-	current_project="$(gcloud config get-value project 2>/dev/null | tr -d '\n')"
+	active_config="$("$GCLOUD_BIN" config configurations list --filter=is_active:true --format='value(name)')"
+	current_project="$("$GCLOUD_BIN" config get-value project 2>/dev/null | tr -d '\n')"
 	git_status="$(git -C "$REPO_ROOT" status --porcelain)"
 
 	[[ "$active_config" == "$GCP_CONFIG_NAME" ]] || deploy_fail "deploy/vm" "active gcloud config is '$active_config', expected '$GCP_CONFIG_NAME'"
@@ -180,9 +180,9 @@ check_preflight() {
 		deploy_fail "deploy/vm" "working tree is dirty. Commit or stash changes before deploying, or rerun with DEPLOY_VM_ALLOW_DIRTY=1"
 	fi
 
-	gcloud compute instances describe "$GCP_INSTANCE_NAME" --zone "$GCP_ZONE" --project "$GCP_PROJECT_ID" >/dev/null
+	"$GCLOUD_BIN" compute instances describe "$GCP_INSTANCE_NAME" --zone "$GCP_ZONE" --project "$GCP_PROJECT_ID" >/dev/null
 	check_backend_timeout_contract
-	gcloud secrets describe "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" >/dev/null
+	"$GCLOUD_BIN" secrets describe "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" >/dev/null
 }
 
 build_frontend() {
@@ -243,9 +243,10 @@ render_runtime_env_file() {
 
 create_release_bundle() {
 	local destination="$1"
-	tar -czf "$destination" \
+	COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 tar -czf "$destination" \
 		--exclude=.git \
 		--exclude=.venv \
+		--exclude='._*' \
 		--exclude=scratchpad \
 		--exclude=rust/target \
 		--exclude=docs_site/node_modules \
@@ -278,8 +279,8 @@ upload_and_activate_release() {
 	local remote_env="/tmp/${RELEASE_NAME}.env"
 	local remote_command
 
-	gcloud compute scp --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" "$bundle_path" "${TARGET_INSTANCE}:${remote_bundle}"
-	gcloud compute scp --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" "$env_path" "${TARGET_INSTANCE}:${remote_env}"
+	"$GCLOUD_BIN" compute scp --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" "$bundle_path" "${TARGET_INSTANCE}:${remote_bundle}"
+	"$GCLOUD_BIN" compute scp --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" "$env_path" "${TARGET_INSTANCE}:${remote_env}"
 
 	remote_command="$(cat <<EOF
 set -euo pipefail
@@ -297,7 +298,7 @@ ls -1dt * 2>/dev/null | tail -n +$((VM_KEEP_RELEASES + 1)) | xargs -r rm -rf --
 EOF
 )"
 
-	gcloud compute ssh --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" "$TARGET_INSTANCE" --command "$remote_command"
+	"$GCLOUD_BIN" compute ssh --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" "$TARGET_INSTANCE" --command "$remote_command"
 }
 
 load_contract

@@ -3,8 +3,7 @@ use catalog::MaterialRuntime;
 use crate::GeneratedActivity;
 
 use super::shared::{
-    ActivityRng, build_generated_activity, generate_unique_items, integer_item, item_forms,
-    parameter_usize,
+    ActivityRng, build_generated_activity, generate_unique_items, integer_item, item_forms, parameter_usize,
 };
 
 pub(super) const TEMPLATE_ID: &str = "readiness_within_5";
@@ -26,9 +25,7 @@ pub(super) fn generate(runtime: &MaterialRuntime, seed: u64) -> anyhow::Result<G
         match form.as_str() {
             "count_group" => {
                 let count = rng.range_inclusive(1, 5) as i32;
-                let group = std::iter::repeat_n("o", count as usize)
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let group = std::iter::repeat_n("o", count as usize).collect::<Vec<_>>().join(" ");
                 integer_item(
                     index,
                     format!("Count the group: {group}"),
@@ -59,12 +56,7 @@ pub(super) fn generate(runtime: &MaterialRuntime, seed: u64) -> anyhow::Result<G
                 let total = rng.range_inclusive(2, 5) as i32;
                 let left = rng.range_inclusive(1, total as u32 - 1) as i32;
                 let right = total - left;
-                integer_item(
-                    index,
-                    format!("{left} + {right} ="),
-                    total,
-                    "add_and_subtract_within_5",
-                )
+                integer_item(index, format!("{left} + {right} ="), total, "add_and_subtract_within_5")
             }
         }
     })?;

@@ -9,6 +9,8 @@ Cornerstone’s hosted deploy now follows the same shape as the CRM repository:
 - hosted runtime secret in GCP Secret Manager
 - repeated deploy through `deploy/vm/deploy.sh`
 
+Use `gcp-vm-first-deploy.md` for the one-time VM, load-balancer, OAuth, and DNS setup. This runbook is for the repeatable deploy path after that hosted shape exists.
+
 ## One-Time Setup
 
 1. Fill `deploy/config/environments/prod.gcp.env` with the VM, domain, GCP project, and non-secret runtime paths.
@@ -23,6 +25,7 @@ cp deploy/templates/secrets/runtime-env.example.json deploy/vm/local/secrets/run
 4. Publish the secret bundle:
 
 ```bash
+export GCLOUD_BIN=/absolute/path/to/gcloud # only when gcloud is not on PATH
 make vm-setup
 make vm-runtime-secret-push
 ```
@@ -32,12 +35,14 @@ make vm-runtime-secret-push
 Review the resolved deploy plan first:
 
 ```bash
+export GCLOUD_BIN=/absolute/path/to/gcloud # only when gcloud is not on PATH
 make vm-deploy-plan
 ```
 
 When the plan looks correct:
 
 ```bash
+export GCLOUD_BIN=/absolute/path/to/gcloud # only when gcloud is not on PATH
 make vm-deploy
 ```
 
@@ -53,5 +58,7 @@ What the deploy script does:
 ## Notes
 
 - Real secrets do not belong in tracked files, including `prod.gcp.env`.
+- The VM scripts honor `GCLOUD_BIN` when your local `gcloud` binary lives outside the normal shell `PATH`.
+- If the public DNS zone is managed outside this GCP project, the DNS `A` record still needs to be updated there before the managed certificate can become active.
 - If you need machine-specific non-secret overrides on your laptop, put them in `deploy/vm/local/control/prod.gcp.env`.
 - The older files under `deploy/production/templates/` are only compatibility references now.

@@ -1419,7 +1419,7 @@ pub async fn start_google_oauth_flow(state: &Arc<AppState>, next_path: Option<&s
         )
         .append_pair("redirect_uri", &redirect_uri)
         .append_pair("response_type", "code")
-        .append_pair("scope", "openid email profile")
+        .append_pair("scope", "openid email")
         .append_pair("state", &state_value)
         .append_pair("code_challenge", &google_code_challenge(&code_verifier))
         .append_pair("code_challenge_method", "S256")
