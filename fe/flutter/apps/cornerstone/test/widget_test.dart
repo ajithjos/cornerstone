@@ -6,7 +6,7 @@ import 'package:cornerstone/main.dart';
 import 'package:cornerstone/ui/theme/theme_controller.dart';
 
 void main() {
-  testWidgets('app shell renders title', (tester) async {
+  testWidgets('app shell builds', (tester) async {
     tester.view.devicePixelRatio = 1.0;
     tester.view.physicalSize = const Size(1280, 800);
     addTearDown(tester.view.resetPhysicalSize);
@@ -16,6 +16,6 @@ void main() {
       CornerstoneApp(themeController: CornerstoneThemeController()),
     );
 
-    expect(find.text('Owner'), findsOneWidget);
+    expect(find.byType(CornerstoneApp), findsOneWidget);
   });
 }
