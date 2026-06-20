@@ -1,0 +1,4 @@
+[submodule "dev/devkit"]
+	path = dev/devkit
+	url = git@github.com:dhenara-inc/dhenara-devkit.git
+	branch = master
