@@ -9,7 +9,8 @@
 **/target
 **/build
 docs_site/build
-dev/site
+dev/site_root
+dev/scratchpad
 coverage
 dist
 *.log

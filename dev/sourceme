@@ -21,6 +21,13 @@ dev_source_env_file() {
 dev_source_env_file "$DEV_DIR/env/default.env"
 dev_source_env_file "$DEV_DIR/env/local.env"
 
+mkdir -p \
+	"$SCRIPT_DIR/dev/site_root/control" \
+	"$SCRIPT_DIR/dev/site_root/data" \
+	"$SCRIPT_DIR/dev/site_root/secrets" \
+	"$SCRIPT_DIR/dev/site_root/tmp" \
+	"$SCRIPT_DIR/dev/scratchpad"
+
 # bootstrap: uv sync --all-extras
 
 uvsync() {
@@ -82,34 +89,34 @@ resolve_tokens() {
 	local value="$1"
 	value="${value//__REPO_ROOT__/$CORNERSTONE_REPO_ROOT}"
 	value="${value//__HOME__/$HOME}"
-	value="${value//__CORNERSTONE_DEV_LOCAL_ROOT__/$CORNERSTONE_DEV_LOCAL_ROOT}"
+	value="${value//__CORNERSTONE_DEV_SITE_ROOT__/$CORNERSTONE_DEV_SITE_ROOT}"
 	value="${value//__CORNERSTONE_DEV_DATA_REVISION__/$CORNERSTONE_DEV_DATA_REVISION}"
 	printf '%s' "$value"
 }
 
 source_env_file "$SCRIPT_DIR/deploy/config/build/images.lock.env"
 source_env_file "$SCRIPT_DIR/deploy/config/environments/dev.env"
-source_env_file "$SCRIPT_DIR/dev/site/control/dev.env"
+source_env_file "$SCRIPT_DIR/dev/site_root/control/dev.env"
 
-RUNTIME_ENV_FILE="$SCRIPT_DIR/dev/site/secrets/runtime-env.json"
+RUNTIME_ENV_FILE="$SCRIPT_DIR/dev/site_root/secrets/runtime-env.json"
 
-: "${CORNERSTONE_DEV_LOCAL_ROOT:?CORNERSTONE_DEV_LOCAL_ROOT must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_DEV_DATA_REVISION:?CORNERSTONE_DEV_DATA_REVISION must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_POSTGRES_PORT:?CORNERSTONE_POSTGRES_PORT must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_CONTROL_PLANE_PORT:?CORNERSTONE_CONTROL_PLANE_PORT must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_FRONTEND_PORT:?CORNERSTONE_FRONTEND_PORT must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_DOCS_SITE_PORT:?CORNERSTONE_DOCS_SITE_PORT must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_POSTGRES_DB:?CORNERSTONE_POSTGRES_DB must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_POSTGRES_APP_USER:?CORNERSTONE_POSTGRES_APP_USER must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_ARTIFACTS_HOST:?CORNERSTONE_ARTIFACTS_HOST must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
-: "${CORNERSTONE_EXPORTS_HOST:?CORNERSTONE_EXPORTS_HOST must be set in deploy/config/environments/dev.env or dev/site/control/dev.env}"
+: "${CORNERSTONE_DEV_SITE_ROOT:?CORNERSTONE_DEV_SITE_ROOT must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_DEV_DATA_REVISION:?CORNERSTONE_DEV_DATA_REVISION must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_POSTGRES_PORT:?CORNERSTONE_POSTGRES_PORT must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_CONTROL_PLANE_PORT:?CORNERSTONE_CONTROL_PLANE_PORT must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_FRONTEND_PORT:?CORNERSTONE_FRONTEND_PORT must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_DOCS_SITE_PORT:?CORNERSTONE_DOCS_SITE_PORT must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_POSTGRES_DB:?CORNERSTONE_POSTGRES_DB must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_POSTGRES_APP_USER:?CORNERSTONE_POSTGRES_APP_USER must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_ARTIFACTS_HOST:?CORNERSTONE_ARTIFACTS_HOST must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
+: "${CORNERSTONE_EXPORTS_HOST:?CORNERSTONE_EXPORTS_HOST must be set in deploy/config/environments/dev.env or dev/site_root/control/dev.env}"
 
 export CORNERSTONE_POSTGRES_ADMIN_PASSWORD="$(runtime_env_json_value "$RUNTIME_ENV_FILE" postgres_admin_password 1)"
 export CORNERSTONE_POSTGRES_APP_PASSWORD="$(runtime_env_json_value "$RUNTIME_ENV_FILE" postgres_app_password 1)"
 export CORNERSTONE_GOOGLE_OAUTH_CLIENT_ID="$(runtime_env_json_value "$RUNTIME_ENV_FILE" google_oauth_client_id 0)"
 export CORNERSTONE_GOOGLE_OAUTH_CLIENT_SECRET="$(runtime_env_json_value "$RUNTIME_ENV_FILE" google_oauth_client_secret 0)"
 
-export CORNERSTONE_DEV_LOCAL_ROOT="$(resolve_tokens "$CORNERSTONE_DEV_LOCAL_ROOT")"
+export CORNERSTONE_DEV_SITE_ROOT="$(resolve_tokens "$CORNERSTONE_DEV_SITE_ROOT")"
 export CORNERSTONE_ARTIFACTS_ROOT="$(resolve_tokens "$CORNERSTONE_ARTIFACTS_HOST")"
 export CORNERSTONE_EXPORTS_ROOT="$(resolve_tokens "$CORNERSTONE_EXPORTS_HOST")"
 export CORNERSTONE_CONTENT_ROOT="$SCRIPT_DIR/content"

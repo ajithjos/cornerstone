@@ -23,7 +23,7 @@ make check-local
 make check
 ```
 
-Local Cornerstone site state belongs under `dev/site/`. That root owns local control overrides, local secrets, Postgres data, artifacts, exports, and generated runtime files.
+Local Cornerstone site state belongs under `dev/site_root/`. That root owns local control overrides, local secrets, Postgres data, artifacts, exports, and generated runtime files.
 
 Deployment commands:
 

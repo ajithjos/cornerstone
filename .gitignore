@@ -19,10 +19,8 @@ docs_site/docs/materials/
 docs_site/docs/library/
 docs_site/docs/developer/
 dev/env/local.env
-dev/site/control/
-dev/site/data/
-dev/site/secrets/
-dev/site/temp/
+dev/site_root/
+dev/scratchpad/
 deploy/dev/local/control/
 deploy/dev/local/secrets/
 deploy/vm/.env

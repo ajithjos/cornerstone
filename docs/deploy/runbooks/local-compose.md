@@ -4,16 +4,16 @@
 
 ```bash
 source dev/sourceme
-mkdir -p dev/site/secrets dev/site/control
-cp deploy/templates/secrets/runtime-env.example.json dev/site/secrets/runtime-env.json
-# edit dev/site/secrets/runtime-env.json once with real local secrets
+mkdir -p dev/site_root/secrets dev/site_root/control
+cp deploy/templates/secrets/runtime-env.example.json dev/site_root/secrets/runtime-env.json
+# edit dev/site_root/secrets/runtime-env.json once with real local secrets
 make setup
 make dev-up
 ```
 
 Tracked non-secret local defaults now live in `deploy/config/environments/dev.env`.
-Create `dev/site/control/dev.env` only if you need machine-specific non-secret overrides.
-Keep real secrets only in `dev/site/secrets/runtime-env.json`.
+Create `dev/site_root/control/dev.env` only if you need machine-specific non-secret overrides.
+Keep real secrets only in `dev/site_root/secrets/runtime-env.json`.
 
 The local runtime secret JSON is the only place where Postgres passwords and Google OAuth secrets belong in development.
 Those values are no longer tracked in repo-owned env files.
