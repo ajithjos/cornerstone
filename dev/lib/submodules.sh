@@ -90,6 +90,19 @@ fi
 
 timestamp="$(date -u '+%Y%m%dT%H%M%SZ')"
 
+init_one() {
+	local path="$1"
+	local repo="$REPO_ROOT/$path"
+
+	if [[ -d "$repo/.git" || -f "$repo/.git" ]]; then
+		echo "[submodules] $path: already initialized"
+		return 0
+	fi
+
+	echo "[submodules] $path: initializing"
+	git submodule update --init -- "$path"
+}
+
 sync_one() {
 	local path="$1"
 	local branch="$2"
@@ -228,7 +241,9 @@ if [[ "$MODE" == "sync" ]]; then
 	echo "[submodules] Syncing submodule URLs"
 	git submodule sync -- "${SUBMODULE_PATHS[@]}"
 	echo "[submodules] Initializing root submodules"
-	git submodule update --init -- "${SUBMODULE_PATHS[@]}"
+	for path in "${SUBMODULE_PATHS[@]}"; do
+		init_one "$path"
+	done
 
 	for i in "${!SUBMODULE_PATHS[@]}"; do
 		sync_one "${SUBMODULE_PATHS[$i]}" "${SUBMODULE_BRANCHES[$i]}"
