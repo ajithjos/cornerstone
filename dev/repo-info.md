@@ -21,6 +21,8 @@ make clean-all
 make clean-deps
 make check-local
 make check
+make submodules-master-check
+make submodules-master
 ```
 
 Local Cornerstone site state belongs under `dev/site_root/`. That root owns local control overrides, local secrets, Postgres data, artifacts, exports, and generated runtime files.

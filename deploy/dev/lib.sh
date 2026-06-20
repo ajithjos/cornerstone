@@ -26,7 +26,13 @@ deploy_dev_init() {
 	DEPLOY_DEV_SETUP_ENV_FILE="${DEPLOY_DEV_SETUP_ENV_FILE:-$DEPLOY_DEV_REPO_ROOT/deploy/config/environments/dev.env}"
 	DEPLOY_DEV_LOCAL_SETUP_ENV_FILE="${DEPLOY_DEV_LOCAL_SETUP_ENV_FILE:-}"
 	DEPLOY_DEV_RUNTIME_ENV_FILE="${DEPLOY_DEV_RUNTIME_ENV_FILE:-$DEPLOY_DEV_SECRETS_DIR/runtime-env.json}"
-	mkdir -p "$DEPLOY_DEV_CONTROL_DIR" "$DEPLOY_DEV_SECRETS_DIR" "$DEPLOY_DEV_SITE_DIR/data" "$DEPLOY_DEV_SITE_DIR/temp" "$DEPLOY_DEV_REPO_ROOT/dev/scratchpad"
+	mkdir -p \
+		"$DEPLOY_DEV_CONTROL_DIR" \
+		"$DEPLOY_DEV_SECRETS_DIR" \
+		"$DEPLOY_DEV_SITE_DIR/data" \
+		"$DEPLOY_DEV_REPO_ROOT/dev/scratchpad/tmp" \
+		"$DEPLOY_DEV_REPO_ROOT/dev/scratchpad/playground" \
+		"$DEPLOY_DEV_REPO_ROOT/dev/scratchpad/shipment"
 	deploy_load_image_catalog "$DEPLOY_DEV_REPO_ROOT"
 }
 

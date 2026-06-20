@@ -25,8 +25,9 @@ mkdir -p \
 	"$SCRIPT_DIR/dev/site_root/control" \
 	"$SCRIPT_DIR/dev/site_root/data" \
 	"$SCRIPT_DIR/dev/site_root/secrets" \
-	"$SCRIPT_DIR/dev/site_root/tmp" \
-	"$SCRIPT_DIR/dev/scratchpad"
+	"$SCRIPT_DIR/dev/scratchpad/tmp" \
+	"$SCRIPT_DIR/dev/scratchpad/playground" \
+	"$SCRIPT_DIR/dev/scratchpad/shipment"
 
 # bootstrap: uv sync --all-extras
 
