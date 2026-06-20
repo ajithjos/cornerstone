@@ -379,7 +379,6 @@ pub fn load_library_content(content_root: &Path) -> anyhow::Result<LibraryConten
     )?;
 
     validate_catalog(
-        content_root,
         &registry.subjects,
         &registry.areas,
         &loaded.skills,
@@ -1150,7 +1149,6 @@ fn validate_pathways(
 }
 
 fn validate_catalog(
-    _content_root: &Path,
     subjects: &[Subject],
     areas: &[Area],
     skills: &[Skill],

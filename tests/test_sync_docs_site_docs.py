@@ -11,11 +11,7 @@ SPEC.loader.exec_module(MODULE)
 def test_sync_docs_site_docs_copies_repo_docs_only() -> None:
     MODULE.sync_docs_site_docs()
     assert (MODULE.DEVELOPER_ROOT / "README.md").exists()
-    assert (
-        MODULE.DEVELOPER_ROOT
-        / "architecture"
-        / "learning-product-definition.md"
-    ).exists()
+    assert (MODULE.DEVELOPER_ROOT / "architecture" / "learning-product-definition.md").exists()
     for removed_root in MODULE.REMOVED_ROOTS:
         assert not removed_root.exists()
 

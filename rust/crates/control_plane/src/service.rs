@@ -1031,19 +1031,19 @@ async fn resolve_owner_for_google_identity(
         }
     };
 
-    if let Some(existing_subject) = owner.google_subject.as_deref() {
-        if !existing_subject.trim().is_empty() && existing_subject != normalized_subject {
-            bail!("Google account does not match the configured owner identity");
-        }
+    if let Some(existing_subject) = owner.google_subject.as_deref()
+        && !existing_subject.trim().is_empty()
+        && existing_subject != normalized_subject
+    {
+        bail!("Google account does not match the configured owner identity");
     }
 
-    if let Some(existing_email) = owner.email.as_deref() {
-        if !existing_email.trim().is_empty()
-            && !existing_email.eq_ignore_ascii_case(&normalized_email)
-            && owner.google_subject.is_none()
-        {
-            bail!("Google account email does not match the configured owner email");
-        }
+    if let Some(existing_email) = owner.email.as_deref()
+        && !existing_email.trim().is_empty()
+        && !existing_email.eq_ignore_ascii_case(&normalized_email)
+        && owner.google_subject.is_none()
+    {
+        bail!("Google account email does not match the configured owner email");
     }
 
     let google_display_name = normalize_optional_string(google_user.name.as_deref());
@@ -1733,13 +1733,15 @@ pub async fn record_session(
         state,
         &session,
         &materials,
-        request.score,
-        request.max_score,
-        request.duration_minutes,
-        notes,
-        "session_notes",
-        artifact_summary,
-        artifact_payload,
+        SessionResultRecord {
+            score: request.score,
+            max_score: request.max_score,
+            duration_minutes: request.duration_minutes,
+            notes,
+            artifact_kind: "session_notes",
+            artifact_summary,
+            artifact_payload,
+        },
     )
     .await
 }
@@ -1855,13 +1857,15 @@ pub async fn complete_activity_instance(
         state,
         &session,
         &materials,
-        scored.correct_count as f64,
-        scored.item_count as f64,
-        duration_minutes_from_seconds(request.duration_seconds),
-        notes,
-        "activity_summary",
-        artifact_summary,
-        artifact_payload,
+        SessionResultRecord {
+            score: scored.correct_count as f64,
+            max_score: scored.item_count as f64,
+            duration_minutes: duration_minutes_from_seconds(request.duration_seconds),
+            notes,
+            artifact_kind: "activity_summary",
+            artifact_summary,
+            artifact_payload,
+        },
     )
     .await?;
 
@@ -1881,18 +1885,32 @@ pub async fn complete_activity_instance(
     })
 }
 
-async fn persist_session_result(
-    state: &Arc<AppState>,
-    session: &SessionRow,
-    materials: &[SessionMaterialRow],
+struct SessionResultRecord<'a> {
     score: f64,
     max_score: f64,
     duration_minutes: i32,
     notes: String,
-    artifact_kind: &str,
+    artifact_kind: &'a str,
     artifact_summary: String,
     artifact_payload: JsonValue,
+}
+
+async fn persist_session_result(
+    state: &Arc<AppState>,
+    session: &SessionRow,
+    materials: &[SessionMaterialRow],
+    record: SessionResultRecord<'_>,
 ) -> anyhow::Result<RecordSessionResponse> {
+    let SessionResultRecord {
+        score,
+        max_score,
+        duration_minutes,
+        notes,
+        artifact_kind,
+        artifact_summary,
+        artifact_payload,
+    } = record;
+
     if max_score <= 0.0 {
         bail!("max_score must be greater than zero");
     }

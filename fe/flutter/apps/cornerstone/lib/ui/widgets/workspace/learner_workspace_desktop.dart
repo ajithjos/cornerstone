@@ -188,8 +188,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
       return false;
     }
     final pathwaysExpanded =
-        pathwayKeys.isEmpty ||
-        pathwayKeys.every(_expandedPathwayKeys.contains);
+        pathwayKeys.isEmpty || pathwayKeys.every(_expandedPathwayKeys.contains);
     final playlistsExpanded = assignmentIds.every(
       _expandedAssignmentIds.contains,
     );
@@ -275,7 +274,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.55,
+        ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
@@ -529,9 +530,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
               color: isSelected
                   ? theme.colorScheme.primaryContainer
                   : isCurrent
-                  ? theme.colorScheme.secondaryContainer.withValues(
-                      alpha: 0.40,
-                    )
+                  ? theme.colorScheme.secondaryContainer.withValues(alpha: 0.40)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
@@ -581,8 +580,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                             _PillBadge(
                               text: 'Current',
                               color: theme.colorScheme.secondaryContainer,
-                              textColor:
-                                  theme.colorScheme.onSecondaryContainer,
+                              textColor: theme.colorScheme.onSecondaryContainer,
                             ),
                           _PillBadge(
                             text: session.status == 'completed'
@@ -766,7 +764,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.28,
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
@@ -998,7 +998,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.28),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.28,
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),

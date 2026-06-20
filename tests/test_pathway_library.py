@@ -124,18 +124,12 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
                 lesson_note_seen = True
             if any(kind in PRACTICE_KINDS for kind in session_material_kinds):
                 has_practice = True
-                assert lesson_note_seen, (
-                    f"playlist {playlist['id']} schedules practice before any lesson note"
-                )
+                assert lesson_note_seen, f"playlist {playlist['id']} schedules practice before any lesson note"
             if "quick_check" in session_material_kinds:
                 has_quick_check = True
-                assert lesson_note_seen, (
-                    f"playlist {playlist['id']} schedules a quick check before any lesson note"
-                )
+                assert lesson_note_seen, f"playlist {playlist['id']} schedules a quick check before any lesson note"
             if "teaching_note" in session_material_kinds:
-                assert any(
-                    kind in LEARNER_FACING_KINDS for kind in session_material_kinds
-                ), (
+                assert any(kind in LEARNER_FACING_KINDS for kind in session_material_kinds), (
                     f"playlist {playlist['id']} includes a teaching-note-only session"
                 )
 

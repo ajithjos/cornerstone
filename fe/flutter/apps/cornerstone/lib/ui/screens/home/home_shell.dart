@@ -759,10 +759,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(
-            color: borderColor,
-            width: selected ? 1.5 : 1,
-          ),
+          border: Border.all(color: borderColor, width: selected ? 1.5 : 1),
         ),
         clipBehavior: Clip.antiAlias,
         child: Image.network(

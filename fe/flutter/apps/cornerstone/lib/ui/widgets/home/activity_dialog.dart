@@ -273,10 +273,7 @@ class _ExecutableActivityDialogState extends State<_ExecutableActivityDialog> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(
-                                CornerstoneIcons.activity,
-                                size: 18,
-                              ),
+                            : const Icon(CornerstoneIcons.activity, size: 18),
                         label: const Text('Submit activity'),
                       ),
                     ),

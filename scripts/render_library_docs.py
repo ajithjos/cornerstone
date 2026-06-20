@@ -152,8 +152,7 @@ def load_library_content() -> dict:
                     "recommended_age": pathway_age_min,
                     "recommended_level": age_band_label(pathway_age_min),
                     "description": description,
-                    "success_criteria": extract_labeled_bullet(skill_body, "successful performance")
-                    or description,
+                    "success_criteria": extract_labeled_bullet(skill_body, "successful performance") or description,
                     "path": relative_library_path(skill_path),
                 }
             )
@@ -285,10 +284,7 @@ def render_markdown(mode: str = "production") -> None:
                 item["description"],
                 "",
                 "Entry points:",
-                *[
-                    f"- `{key}` -> `{playlist_id}`"
-                    for key, playlist_id in sorted(item["entry_points"].items())
-                ],
+                *[f"- `{key}` -> `{playlist_id}`" for key, playlist_id in sorted(item["entry_points"].items())],
             ],
         ),
     )
@@ -374,9 +370,7 @@ def render_markdown(mode: str = "production") -> None:
                 "",
                 "Sessions:",
                 *[
-                    "- day "
-                    f"{session['day_offset']}: {session['title']} -> skills "
-                    f"{', '.join(session['skill_ids'])}"
+                    f"- day {session['day_offset']}: {session['title']} -> skills {', '.join(session['skill_ids'])}"
                     for session in item["session_pattern"]["sessions"]
                 ],
             ],
