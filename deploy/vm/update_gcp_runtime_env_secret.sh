@@ -10,6 +10,9 @@ LOCAL_CONFIG_FILE="${DEPLOY_VM_LOCAL_SETUP_ENV_FILE:-$REPO_ROOT/deploy/vm/local/
 SOURCE_FILE="${DEPLOY_VM_RUNTIME_ENV_FILE:-$REPO_ROOT/deploy/vm/local/secrets/runtime-env.json}"
 GCLOUD_BIN="$(deploy_resolve_cmd "deploy/vm" GCLOUD_BIN gcloud)"
 
+# shellcheck source=../../dev/lib/gcloud.sh
+source "$REPO_ROOT/dev/lib/gcloud.sh"
+
 load_contract() {
 	[[ -f "$CONFIG_FILE" ]] || deploy_fail "deploy/vm" "tracked setup env file not found: $CONFIG_FILE"
 	deploy_load_env_file "$CONFIG_FILE"
@@ -17,19 +20,14 @@ load_contract() {
 	: "${GCP_CONFIG_NAME:?GCP_CONFIG_NAME is required}"
 	: "${GCP_PROJECT_ID:?GCP_PROJECT_ID is required}"
 	: "${GCP_RUNTIME_ENV_SECRET_NAME:?GCP_RUNTIME_ENV_SECRET_NAME is required}"
+	GCP_ACCOUNT="${GCP_ACCOUNT:-}"
 }
 
 check_preflight() {
-	local active_config
-	local current_project
-
 	deploy_require_cmd "deploy/vm" python3
 	[[ -f "$SOURCE_FILE" ]] || deploy_fail "deploy/vm" "runtime env source file not found: $SOURCE_FILE"
 
-	active_config="$("$GCLOUD_BIN" config configurations list --filter=is_active:true --format='value(name)')"
-	current_project="$("$GCLOUD_BIN" config get-value project 2>/dev/null | tr -d '\n')"
-	[[ "$active_config" == "$GCP_CONFIG_NAME" ]] || deploy_fail "deploy/vm" "active gcloud config is '$active_config', expected '$GCP_CONFIG_NAME'"
-	[[ "$current_project" == "$GCP_PROJECT_ID" ]] || deploy_fail "deploy/vm" "active gcloud project is '$current_project', expected '$GCP_PROJECT_ID'"
+	dev_gcloud_check_context "deploy/vm"
 }
 
 validate_runtime_env_json() {

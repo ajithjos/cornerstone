@@ -52,18 +52,18 @@ Use the pathway-library test while shaping cleaned pathway content. Use `make ru
 ## Local Stack Commands
 
 ```bash
-make control-plane-db-up
-make control-plane-compose-up
-make control-plane-compose-down
-make control-plane-compose-reset
+make db
+make dev-up
+make dev-down
+make dev-reset
 
 # For live frontend iteration with hot reload  up/down the BE in Docker and run the FE separately with flutter run:
-make control-plane-live-frontend-up
-make control-plane-live-frontend-down
+make dev-live
+make dev-live-down
 # Run FE separately with:
 flutter run -d chrome --web-port=2255 --dart-define=CORNERSTONE_API_BASE_URL=http://127.0.0.1:8788
 # or
-make frontend-live-run
+make frontend-dev
 
 ```
 

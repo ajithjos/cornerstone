@@ -263,7 +263,7 @@ Fill it with:
 Then publish it:
 
 ```bash
-GCLOUD_BIN=${GCLOUD_BIN:-gcloud} bash deploy/vm/update_gcp_runtime_env_secret.sh
+GCLOUD_BIN=${GCLOUD_BIN:-gcloud} make deploy-secret-push
 ```
 
 ## 8. Prepare The Host And Deploy
@@ -271,20 +271,20 @@ GCLOUD_BIN=${GCLOUD_BIN:-gcloud} bash deploy/vm/update_gcp_runtime_env_secret.sh
 Prepare the VM host directories once:
 
 ```bash
-GCLOUD_BIN=${GCLOUD_BIN:-gcloud} bash deploy/vm/prepare_host.sh
+GCLOUD_BIN=${GCLOUD_BIN:-gcloud} make deploy-setup
 ```
 
 Then run the first deploy with the same repeatable deploy path used later:
 
 ```bash
-GCLOUD_BIN=${GCLOUD_BIN:-gcloud} bash deploy/vm/deploy.sh --plan
-GCLOUD_BIN=${GCLOUD_BIN:-gcloud} bash deploy/vm/deploy.sh
+GCLOUD_BIN=${GCLOUD_BIN:-gcloud} make deploy-plan
+GCLOUD_BIN=${GCLOUD_BIN:-gcloud} make deploy
 ```
 
 If you intentionally deploy uncommitted local work, use:
 
 ```bash
-GCLOUD_BIN=${GCLOUD_BIN:-gcloud} DEPLOY_VM_ALLOW_DIRTY=1 bash deploy/vm/deploy.sh
+GCLOUD_BIN=${GCLOUD_BIN:-gcloud} DEPLOY_VM_ALLOW_DIRTY=1 make deploy
 ```
 
 ## 9. DNS Step Still Required Outside This Project
@@ -344,8 +344,8 @@ When you move from one production domain to another later:
 2. Update the managed certificate to cover the new domain, or create a replacement certificate and attach it to the HTTPS proxy.
 3. Point the new DNS `A` record to the same reserved load-balancer IP `8.233.205.67`, unless you intentionally rotate the frontend IP.
 4. Update the OAuth client allowed redirect URIs to include the new callback URL, or create a replacement OAuth client and credential.
-5. If the OAuth client id or secret changes, update `deploy/vm/local/secrets/runtime-env.json` and republish it with `bash deploy/vm/update_gcp_runtime_env_secret.sh`.
-6. Rerun `make vm-deploy-plan` and `make vm-deploy`.
+5. If the OAuth client id or secret changes, update `deploy/vm/local/secrets/runtime-env.json` and republish it with `make deploy-secret-push`.
+6. Rerun `make deploy-plan` and `make deploy`.
 
 If you keep the same load balancer and reserved IP, the main moving parts are:
 

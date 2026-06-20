@@ -40,7 +40,7 @@ deploy_dev_load_config() {
 		DEPLOY_DEV_LOCAL_DIR="$(deploy_resolve_path "$DEPLOY_DEV_REPO_ROOT" "$(deploy_trim "$(setup_env_get CORNERSTONE_DEV_LOCAL_ROOT)")")"
 	fi
 	if [[ -z "$DEPLOY_DEV_LOCAL_DIR" ]]; then
-		DEPLOY_DEV_LOCAL_DIR="$DEPLOY_DEV_REPO_ROOT/scratchpad/dev/local"
+		DEPLOY_DEV_LOCAL_DIR="$DEPLOY_DEV_REPO_ROOT/dev/site"
 	fi
 	DEPLOY_DEV_CONTROL_DIR="${DEPLOY_DEV_CONTROL_DIR:-$DEPLOY_DEV_LOCAL_DIR/control}"
 	DEPLOY_DEV_SECRETS_DIR="${DEPLOY_DEV_SECRETS_DIR:-$DEPLOY_DEV_LOCAL_DIR/secrets}"

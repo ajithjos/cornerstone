@@ -26,8 +26,8 @@ cp deploy/templates/secrets/runtime-env.example.json deploy/vm/local/secrets/run
 
 ```bash
 export GCLOUD_BIN=/absolute/path/to/gcloud # only when gcloud is not on PATH
-make vm-setup
-make vm-runtime-secret-push
+make deploy-setup
+make deploy-secret-push
 ```
 
 ## Repeated Deploy
@@ -36,14 +36,14 @@ Review the resolved deploy plan first:
 
 ```bash
 export GCLOUD_BIN=/absolute/path/to/gcloud # only when gcloud is not on PATH
-make vm-deploy-plan
+make deploy-plan
 ```
 
 When the plan looks correct:
 
 ```bash
 export GCLOUD_BIN=/absolute/path/to/gcloud # only when gcloud is not on PATH
-make vm-deploy
+make deploy
 ```
 
 What the deploy script does:

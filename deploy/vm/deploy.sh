@@ -9,13 +9,18 @@ CONFIG_FILE="${DEPLOY_VM_GCP_ENV_FILE:-$REPO_ROOT/deploy/config/environments/pro
 LOCAL_CONFIG_FILE="${DEPLOY_VM_LOCAL_SETUP_ENV_FILE:-$REPO_ROOT/deploy/vm/local/control/prod.gcp.env}"
 GCLOUD_BIN="$(deploy_resolve_cmd "deploy/vm" GCLOUD_BIN gcloud)"
 PLAN_ONLY=0
+DOCTOR_ONLY=0
 TEMP_FILES=()
+
+# shellcheck source=../../dev/lib/gcloud.sh
+source "$REPO_ROOT/dev/lib/gcloud.sh"
 
 usage() {
 	cat <<'EOF'
 Usage: deploy/vm/deploy.sh [--plan]
 
 --plan    print the resolved deployment plan without uploading anything
+--doctor  validate the tracked gcloud configuration, project, and account only
 EOF
 }
 
@@ -32,6 +37,10 @@ while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--plan)
 		PLAN_ONLY=1
+		shift
+		;;
+	--doctor)
+		DOCTOR_ONLY=1
 		shift
 		;;
 	-h|--help)
@@ -118,6 +127,7 @@ load_contract() {
 
 	GCP_BACKEND_SERVICE_NAME="${GCP_BACKEND_SERVICE_NAME:-}"
 	GCP_BACKEND_TIMEOUT_SEC="${GCP_BACKEND_TIMEOUT_SEC:-}"
+	GCP_ACCOUNT="${GCP_ACCOUNT:-}"
 
 	if [[ -n "${VM_SSH_USER:-}" ]]; then
 		TARGET_INSTANCE="${VM_SSH_USER}@${GCP_INSTANCE_NAME}"
@@ -160,8 +170,6 @@ check_backend_timeout_contract() {
 }
 
 check_preflight() {
-	local active_config
-	local current_project
 	local git_status
 
 	deploy_require_cmd "deploy/vm" git
@@ -169,20 +177,25 @@ check_preflight() {
 	deploy_require_cmd "deploy/vm" python3
 	deploy_require_cmd "deploy/vm" flutter
 
-	active_config="$("$GCLOUD_BIN" config configurations list --filter=is_active:true --format='value(name)')"
-	current_project="$("$GCLOUD_BIN" config get-value project 2>/dev/null | tr -d '\n')"
+	dev_gcloud_check_context "deploy/vm"
 	git_status="$(git -C "$REPO_ROOT" status --porcelain)"
-
-	[[ "$active_config" == "$GCP_CONFIG_NAME" ]] || deploy_fail "deploy/vm" "active gcloud config is '$active_config', expected '$GCP_CONFIG_NAME'"
-	[[ "$current_project" == "$GCP_PROJECT_ID" ]] || deploy_fail "deploy/vm" "active gcloud project is '$current_project', expected '$GCP_PROJECT_ID'"
 
 	if [[ -n "$git_status" && "${DEPLOY_VM_ALLOW_DIRTY:-0}" != "1" ]]; then
 		deploy_fail "deploy/vm" "working tree is dirty. Commit or stash changes before deploying, or rerun with DEPLOY_VM_ALLOW_DIRTY=1"
 	fi
 
-	"$GCLOUD_BIN" compute instances describe "$GCP_INSTANCE_NAME" --zone "$GCP_ZONE" --project "$GCP_PROJECT_ID" >/dev/null
+	if ! "$GCLOUD_BIN" compute instances describe "$GCP_INSTANCE_NAME" --zone "$GCP_ZONE" --project "$GCP_PROJECT_ID" >/dev/null; then
+		echo "[deploy/vm] ERROR: cannot read VM '$GCP_INSTANCE_NAME' in project '$GCP_PROJECT_ID'." >&2
+		echo "[deploy/vm] If authentication expired, run: gcloud auth login ${GCP_ACCOUNT:-<account>}" >&2
+		dev_gcloud_print_setup_hint "deploy/vm"
+		exit 6
+	fi
 	check_backend_timeout_contract
-	"$GCLOUD_BIN" secrets describe "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" >/dev/null
+	if ! "$GCLOUD_BIN" secrets describe "$GCP_RUNTIME_ENV_SECRET_NAME" --project "$GCP_PROJECT_ID" >/dev/null; then
+		echo "[deploy/vm] ERROR: cannot read runtime secret '$GCP_RUNTIME_ENV_SECRET_NAME'." >&2
+		echo "[deploy/vm] Create or refresh it with deploy/vm/update_gcp_runtime_env_secret.sh after fixing gcloud auth." >&2
+		exit 6
+	fi
 }
 
 build_frontend() {
@@ -260,6 +273,7 @@ print_plan() {
   instance          : $GCP_INSTANCE_NAME
   zone              : $GCP_ZONE
   project           : $GCP_PROJECT_ID
+  gcloud account    : ${GCP_ACCOUNT:-<not enforced>}
   domain            : $VM_DOMAIN
   app root          : $VM_APP_ROOT
   release dir       : $RELEASE_DIR
@@ -302,6 +316,11 @@ EOF
 }
 
 load_contract
+if [[ "$DOCTOR_ONLY" == "1" ]]; then
+	dev_gcloud_check_context "deploy/vm"
+	deploy_log "deploy/vm" "gcloud config, project, and account match the tracked deploy contract."
+	exit 0
+fi
 check_preflight
 prepare_release_metadata
 RUNTIME_ENV_SECRET_JSON="$(fetch_runtime_env_secret)"

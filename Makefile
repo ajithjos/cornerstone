@@ -1,4 +1,4 @@
-.PHONY: help install-dev fmt fmt-check lint test rust-fmt rust-lint rust-test rust-run rust-migrate rust-bootstrap-apply rust-library-validate content-validate frontend-pub-get flutter-version-check flutter-analyze flutter-test frontend-sanity docs-site-install docs-site-prepare docs-site-build docs-site-dev control-plane-db-up control-plane-db-migrate control-plane-bootstrap-apply control-plane-library-reload control-plane-compose-up control-plane-compose-down control-plane-compose-reset control-plane-live-frontend-up control-plane-live-frontend-down frontend-live-run vm-setup vm-runtime-secret-push vm-deploy-plan vm-deploy daily-local daily
+.PHONY: help context doctor setup clean clean-python clean-all clean-deps fmt fmt-check lint test rust-fmt rust-lint rust-test rust-run rust-migrate rust-bootstrap-apply rust-library-validate content-validate frontend-pub-get flutter-version-check flutter-analyze flutter-test frontend-sanity docs-site-install docs-site-prepare docs-site-build docs-site-dev db db-migrate bootstrap-apply library-reload dev-up dev-down dev-reset dev-live dev-live-down frontend-dev deploy-setup deploy-secret-push deploy-plan deploy check-local check
 
 PYTHON_RUN ?= uv run
 FLUTTER_APP_DIR ?= $(CURDIR)/fe/flutter/apps/cornerstone
@@ -9,15 +9,39 @@ CONTENT_ROOT ?= $(CURDIR)/content
 LIVE_FRONTEND_PORT ?= 2255
 LIVE_FRONTEND_API_BASE_URL ?= http://127.0.0.1:8788
 
-help:
-	@echo "Primary targets: daily-local, control-plane-compose-up, rust-run"
-	@echo "Validation targets: fmt-check, lint, test, rust-library-validate, content-validate, frontend-sanity, docs-site-build"
-	@echo "Control-plane targets: control-plane-db-up, control-plane-db-migrate, control-plane-bootstrap-apply, control-plane-library-reload, control-plane-compose-up, control-plane-compose-down, control-plane-compose-reset"
-	@echo "Live frontend targets: control-plane-live-frontend-up, control-plane-live-frontend-down, frontend-live-run"
-	@echo "VM deploy targets: vm-setup, vm-runtime-secret-push, vm-deploy-plan, vm-deploy"
+help: context
 
-install-dev:
+context:
+	@cat dev/repo-info.md
+	@echo
+	@echo "Expected deploy gcloud config: $$(grep '^GCP_CONFIG_NAME=' deploy/config/environments/prod.gcp.env | cut -d= -f2-)"
+	@echo "Expected deploy project: $$(grep '^GCP_PROJECT_ID=' deploy/config/environments/prod.gcp.env | cut -d= -f2-)"
+	@echo "Expected deploy account: $$(grep '^GCP_ACCOUNT=' deploy/config/environments/prod.gcp.env | cut -d= -f2-)"
+	@echo "Active gcloud config: $$(gcloud config configurations list --filter=is_active:true --format='value(name)' 2>/dev/null || echo '<gcloud unavailable>')"
+	@echo "Active gcloud project: $$(gcloud config get-value project 2>/dev/null || echo '<gcloud unavailable>')"
+	@echo "Active gcloud account: $$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -n 1 || echo '<gcloud unavailable>')"
+
+doctor:
+	@command -v uv >/dev/null || (echo "Missing uv. Install uv from https://docs.astral.sh/uv/." >&2; exit 2)
+	@command -v cargo >/dev/null || (echo "Missing cargo. Install Rust with rustup." >&2; exit 2)
+	@command -v flutter >/dev/null || (echo "Missing flutter. Install the pinned Flutter toolchain before frontend work." >&2; exit 2)
+	@command -v docker >/dev/null || (echo "Missing docker. Install/start Docker for make dev-up." >&2; exit 2)
+	@bash deploy/vm/deploy.sh --doctor
+
+setup:
 	uv sync --all-extras
+
+clean:
+	bash dev/lib/clean.sh routine
+
+clean-python:
+	bash dev/lib/clean.sh python
+
+clean-all:
+	bash dev/lib/clean.sh all
+
+clean-deps:
+	bash dev/lib/clean.sh deps
 
 fmt:
 	cargo fmt --manifest-path $(RUST_MANIFEST) --all
@@ -92,48 +116,48 @@ docs-site-build:
 docs-site-dev:
 	@bash -lc 'cd "$(DOCS_SITE_DIR)" && npm install && npm run start'
 
-control-plane-db-up:
+db:
 	bash deploy/dev/setup.sh --postgres-only
 
-control-plane-db-migrate:
+db-migrate:
 	cargo run --manifest-path rust/apps/control_plane/Cargo.toml -- migrate
 
-control-plane-bootstrap-apply:
+bootstrap-apply:
 	cargo run --manifest-path rust/apps/control_plane/Cargo.toml -- bootstrap-apply
 
-control-plane-library-reload:
+library-reload:
 	cargo run --manifest-path rust/apps/control_plane/Cargo.toml -- library-validate
 
-control-plane-compose-up:
+dev-up:
 	bash deploy/dev/setup.sh
 
-control-plane-compose-down:
+dev-down:
 	bash deploy/dev/down.sh
 
-control-plane-compose-reset:
+dev-reset:
 	bash deploy/dev/reset.sh
 
-control-plane-live-frontend-up:
+dev-live:
 	bash deploy/dev/live_frontend/up.sh
 
-control-plane-live-frontend-down:
+dev-live-down:
 	bash deploy/dev/live_frontend/down.sh
 
-frontend-live-run: frontend-pub-get
+frontend-dev: frontend-pub-get
 	@bash -lc 'cd "$(FLUTTER_APP_DIR)" && flutter run -d chrome --web-port $(LIVE_FRONTEND_PORT) --dart-define=CORNERSTONE_API_BASE_URL=$(LIVE_FRONTEND_API_BASE_URL)'
 
-vm-setup:
+deploy-setup:
 	bash deploy/vm/prepare_host.sh
 
-vm-runtime-secret-push:
+deploy-secret-push:
 	bash deploy/vm/update_gcp_runtime_env_secret.sh
 
-vm-deploy-plan:
+deploy-plan:
 	bash deploy/vm/deploy.sh --plan
 
-vm-deploy:
+deploy:
 	bash deploy/vm/deploy.sh
 
-daily-local: fmt-check lint rust-test frontend-sanity content-validate docs-site-build
+check-local: fmt-check lint rust-test frontend-sanity content-validate docs-site-build
 
-daily: daily-local test
+check: check-local test

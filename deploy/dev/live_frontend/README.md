@@ -9,4 +9,4 @@ It is intended for frontend live iteration with `flutter run` on a separate loca
 
 Use this mode when you want hot reload and fast UI iteration while keeping backend behavior stable.
 
-For production-matching integrated flow, use `deploy/dev/setup.sh` (or `make control-plane-compose-up`) instead.
+For production-matching integrated flow, use `deploy/dev/setup.sh` (or `make dev-up`) instead.

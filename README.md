@@ -15,21 +15,21 @@ Curriculum content stays under `content/`.
 ## Quickstart
 
 ```bash
-source sourceme_dev
-make install-dev
-make control-plane-compose-up
+source dev/sourceme
+make setup
+make dev-up
 ```
 
 Live frontend mode (backend in Docker, Flutter with hot reload):
 
 ```bash
-source sourceme_dev
-make control-plane-live-frontend-up
+source dev/sourceme
+make dev-live
 
 # Then run FE separately with:
 flutter run -d chrome --web-port=2255 --dart-define=CORNERSTONE_API_BASE_URL=http://127.0.0.1:8788
 # or
-make frontend-live-run
+make frontend-dev
 ```
 
 Default local URLs:
@@ -37,11 +37,11 @@ Default local URLs:
 - frontend preview: `http://127.0.0.1:8080`
 - control plane API and service index: `http://127.0.0.1:8788`
 
-`make control-plane-compose-up` builds production-style static previews for the
+`make dev-up` builds production-style static previews for the
 Flutter app and serves it from nginx. It does not run live-reload frontend or
 content watchers inside compose.
 
-`make control-plane-live-frontend-up` keeps only backend dependencies in Docker
+`make dev-live` keeps only backend dependencies in Docker
 and is intended for frontend live iteration via `flutter run` on a separate
 port.
 
