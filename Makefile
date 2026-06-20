@@ -1,4 +1,4 @@
-.PHONY: help context doctor setup submodules-master submodules-master-check clean clean-python clean-all clean-deps fmt fmt-check lint test rust-fmt rust-lint rust-test rust-run rust-migrate rust-bootstrap-apply rust-library-validate content-validate frontend-pub-get flutter-version-check flutter-analyze flutter-test frontend-sanity docs-site-install docs-site-prepare docs-site-build docs-site-dev db db-migrate bootstrap-apply library-reload dev-up dev-down dev-reset dev-live dev-live-down frontend-dev deploy-setup deploy-secret-push deploy-plan deploy check-local check
+.PHONY: help context doctor setup devkit-bootstrap submodules-master submodules-master-check clean clean-python clean-all clean-deps fmt fmt-check lint test rust-fmt rust-lint rust-test rust-run rust-migrate rust-bootstrap-apply rust-library-validate content-validate frontend-pub-get flutter-version-check flutter-analyze flutter-test frontend-sanity docs-site-install docs-site-prepare docs-site-build docs-site-dev db db-migrate bootstrap-apply library-reload dev-up dev-down dev-reset dev-live dev-live-down frontend-dev deploy-setup deploy-secret-push deploy-plan deploy check-local check
 
 PYTHON_RUN ?= uv run
 FLUTTER_APP_DIR ?= $(CURDIR)/fe/flutter/apps/cornerstone
@@ -8,11 +8,15 @@ FLUTTER_REQUIRED_VERSION ?= 3.44.1
 CONTENT_ROOT ?= $(CURDIR)/content
 LIVE_FRONTEND_PORT ?= 2255
 LIVE_FRONTEND_API_BASE_URL ?= http://127.0.0.1:8788
+DEVKIT_MAKE := $(MAKE) --no-print-directory -C dev/devkit REPO_ROOT=$(CURDIR)
 
 help: context
 
-context:
-	@cat dev/repo-info.md
+devkit-bootstrap:
+	@if [ ! -f dev/devkit/Makefile ]; then git submodule update --init -- dev/devkit; fi
+
+context: devkit-bootstrap
+	@$(DEVKIT_MAKE) context
 	@echo
 	@echo "Expected deploy gcloud config: $$(grep '^GCP_CONFIG_NAME=' deploy/config/environments/prod.gcp.env | cut -d= -f2-)"
 	@echo "Expected deploy project: $$(grep '^GCP_PROJECT_ID=' deploy/config/environments/prod.gcp.env | cut -d= -f2-)"
@@ -21,33 +25,35 @@ context:
 	@echo "Active gcloud project: $$(gcloud config get-value project 2>/dev/null || echo '<gcloud unavailable>')"
 	@echo "Active gcloud account: $$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -n 1 || echo '<gcloud unavailable>')"
 
-doctor:
+doctor: devkit-bootstrap
+	@$(DEVKIT_MAKE) doctor
 	@command -v uv >/dev/null || (echo "Missing uv. Install uv from https://docs.astral.sh/uv/." >&2; exit 2)
 	@command -v cargo >/dev/null || (echo "Missing cargo. Install Rust with rustup." >&2; exit 2)
 	@command -v flutter >/dev/null || (echo "Missing flutter. Install the pinned Flutter toolchain before frontend work." >&2; exit 2)
 	@command -v docker >/dev/null || (echo "Missing docker. Install/start Docker for make dev-up." >&2; exit 2)
 	@bash deploy/vm/deploy.sh --doctor
 
-setup:
+setup: devkit-bootstrap
+	$(DEVKIT_MAKE) setup
 	uv sync --all-extras
 
-submodules-master:
-	bash dev/lib/submodules.sh sync
+submodules-master: devkit-bootstrap
+	$(DEVKIT_MAKE) submodules-master
 
-submodules-master-check:
-	bash dev/lib/submodules.sh check
+submodules-master-check: devkit-bootstrap
+	$(DEVKIT_MAKE) submodules-master-check
 
-clean:
-	bash dev/lib/clean.sh routine
+clean: devkit-bootstrap
+	$(DEVKIT_MAKE) clean
 
-clean-python:
-	bash dev/lib/clean.sh python
+clean-python: devkit-bootstrap
+	$(DEVKIT_MAKE) clean-python
 
-clean-all:
-	bash dev/lib/clean.sh all
+clean-all: devkit-bootstrap
+	$(DEVKIT_MAKE) clean-all
 
-clean-deps:
-	bash dev/lib/clean.sh deps
+clean-deps: devkit-bootstrap
+	$(DEVKIT_MAKE) clean-deps
 
 fmt:
 	cargo fmt --manifest-path $(RUST_MANIFEST) --all

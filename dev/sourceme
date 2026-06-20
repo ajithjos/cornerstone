@@ -10,50 +10,23 @@ DEV_DIR="$(cd "$(dirname "$SCRIPT_PATH")" >/dev/null 2>&1 && pwd)"
 SCRIPT_DIR="$(cd "$DEV_DIR/.." >/dev/null 2>&1 && pwd)"
 export CORNERSTONE_REPO_ROOT="$SCRIPT_DIR"
 
-dev_source_env_file() {
-	local file="$1"
-	[ -f "$file" ] || return 0
-	set -a
-	. "$file"
-	set +a
-}
+DEVKIT_SOURCEME="$SCRIPT_DIR/dev/devkit/lib/sourceme.sh"
+if [ ! -f "$DEVKIT_SOURCEME" ]; then
+	echo "Missing devkit submodule. Run: git submodule update --init dev/devkit" >&2
+	return 1
+fi
+# shellcheck source=dev/devkit/lib/sourceme.sh
+source "$DEVKIT_SOURCEME" || return $?
 
-dev_source_env_file "$DEV_DIR/env/default.env"
-dev_source_env_file "$DEV_DIR/env/local.env"
-
+devkit_source_dev_env "$DEV_DIR"
+devkit_scaffold_dev_dirs "$SCRIPT_DIR"
 mkdir -p \
 	"$SCRIPT_DIR/dev/site_root/control" \
 	"$SCRIPT_DIR/dev/site_root/data" \
-	"$SCRIPT_DIR/dev/site_root/secrets" \
-	"$SCRIPT_DIR/dev/scratchpad/tmp" \
-	"$SCRIPT_DIR/dev/scratchpad/playground" \
-	"$SCRIPT_DIR/dev/scratchpad/shipment"
+	"$SCRIPT_DIR/dev/site_root/secrets"
 
-# bootstrap: uv sync --all-extras
-
-uvsync() {
-	if command -v uv >/dev/null 2>&1; then
-		echo "Running: uv sync --all-extras"
-		(cd "$SCRIPT_DIR" && uv sync --all-extras) || return $?
-	else
-		echo "uv command not found. Install uv first."
-		return 1
-	fi
-}
-
-if [ -f "$SCRIPT_DIR/.venv/bin/activate" ]; then
-	source "$SCRIPT_DIR/.venv/bin/activate"
-else
-	echo "Warning: .venv not found. Run 'uv sync --all-extras' if you want the repo-managed Python environment."
-fi
-
-source_env_file() {
-	local file="$1"
-	[ -f "$file" ] || return 0
-	set -a
-	. "$file"
-	set +a
-}
+devkit_install_uvsync_helper "$SCRIPT_DIR" "sync --all-extras"
+devkit_activate_venv "$SCRIPT_DIR" "uv sync --all-extras"
 
 runtime_env_json_value() {
 	local source_file="$1"
@@ -95,9 +68,9 @@ resolve_tokens() {
 	printf '%s' "$value"
 }
 
-source_env_file "$SCRIPT_DIR/deploy/config/build/images.lock.env"
-source_env_file "$SCRIPT_DIR/deploy/config/environments/dev.env"
-source_env_file "$SCRIPT_DIR/dev/site_root/control/dev.env"
+devkit_source_env_file "$SCRIPT_DIR/deploy/config/build/images.lock.env"
+devkit_source_env_file "$SCRIPT_DIR/deploy/config/environments/dev.env"
+devkit_source_env_file "$SCRIPT_DIR/dev/site_root/control/dev.env"
 
 RUNTIME_ENV_FILE="$SCRIPT_DIR/dev/site_root/secrets/runtime-env.json"
 

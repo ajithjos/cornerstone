@@ -25,7 +25,7 @@ make submodules-master-check
 make submodules-master
 ```
 
-Shared developer tooling is pinned as the `dev/devkit` submodule. Root make targets remain the daily interface; local `dev/lib/*` wrappers delegate to the devkit.
+Shared developer tooling is pinned as the `dev/devkit` submodule. Root make targets remain the daily interface and call `make -C dev/devkit ...` for shared development behavior.
 
 Local Cornerstone site state belongs under `dev/site_root/`. That root owns local control overrides, local secrets, Postgres data, artifacts, exports, and generated runtime files.
 

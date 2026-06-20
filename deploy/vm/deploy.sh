@@ -12,8 +12,8 @@ PLAN_ONLY=0
 DOCTOR_ONLY=0
 TEMP_FILES=()
 
-# shellcheck source=../../dev/lib/gcloud.sh
-source "$REPO_ROOT/dev/lib/gcloud.sh"
+# shellcheck source=../../dev/devkit/lib/gcloud.sh
+source "$REPO_ROOT/dev/devkit/lib/gcloud.sh"
 
 usage() {
 	cat <<'EOF'

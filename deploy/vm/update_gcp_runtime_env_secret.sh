@@ -10,8 +10,8 @@ LOCAL_CONFIG_FILE="${DEPLOY_VM_LOCAL_SETUP_ENV_FILE:-$REPO_ROOT/deploy/vm/local/
 SOURCE_FILE="${DEPLOY_VM_RUNTIME_ENV_FILE:-$REPO_ROOT/deploy/vm/local/secrets/runtime-env.json}"
 GCLOUD_BIN="$(deploy_resolve_cmd "deploy/vm" GCLOUD_BIN gcloud)"
 
-# shellcheck source=../../dev/lib/gcloud.sh
-source "$REPO_ROOT/dev/lib/gcloud.sh"
+# shellcheck source=../../dev/devkit/lib/gcloud.sh
+source "$REPO_ROOT/dev/devkit/lib/gcloud.sh"
 
 load_contract() {
 	[[ -f "$CONFIG_FILE" ]] || deploy_fail "deploy/vm" "tracked setup env file not found: $CONFIG_FILE"
