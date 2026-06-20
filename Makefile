@@ -60,7 +60,7 @@ lint:
 test:
 	cargo test --manifest-path $(RUST_MANIFEST) --workspace --all-features
 	@bash -lc 'cd "$(FLUTTER_APP_DIR)" && flutter test'
-	$(PYTHON_RUN) pytest -q
+	$(PYTHON_RUN) --with pytest python -m pytest -q
 
 rust-fmt:
 	cargo fmt --manifest-path $(RUST_MANIFEST) --all
