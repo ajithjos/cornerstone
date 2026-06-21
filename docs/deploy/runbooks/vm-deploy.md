@@ -36,6 +36,7 @@ Review the resolved deploy plan first:
 
 ```bash
 export GCLOUD_BIN=/absolute/path/to/gcloud # only when gcloud is not on PATH
+make gcloud-setup
 make deploy-plan
 ```
 

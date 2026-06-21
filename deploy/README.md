@@ -10,9 +10,12 @@ Cornerstone uses the same deployment split in both dev and the VM flow:
 Primary entrypoints:
 
 - first hosted rollout guide: `docs/deploy/runbooks/gcp-vm-first-deploy.md`
+- local gcloud profile setup: `make gcloud-setup`
 - one-time VM host prep: `make deploy-setup`
 - local compose: `bash deploy/dev/setup.sh`
 - local live frontend mode: `bash deploy/dev/live_frontend/up.sh`
 - publish hosted runtime secret: `make deploy-secret-push`
 - hosted deploy plan: `make deploy-plan`
 - hosted deploy: `make deploy`
+
+The shared GCP deploy contract lives at `deploy/config/environments/prod.gcp.env`. The shared override variable is `DEPLOY_GCP_ENV_FILE`.

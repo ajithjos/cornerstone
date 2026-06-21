@@ -5,22 +5,27 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/../common.sh"
 
 REPO_ROOT="$(deploy_repo_root)"
-CONFIG_FILE="${DEPLOY_VM_GCP_ENV_FILE:-$REPO_ROOT/deploy/config/environments/prod.gcp.env}"
-LOCAL_CONFIG_FILE="${DEPLOY_VM_LOCAL_SETUP_ENV_FILE:-$REPO_ROOT/deploy/vm/local/control/prod.gcp.env}"
 GCLOUD_BIN="$(deploy_resolve_cmd "deploy/vm" GCLOUD_BIN gcloud)"
+CONFIG_FILE=""
+LOCAL_CONFIG_FILE="${DEPLOY_VM_LOCAL_SETUP_ENV_FILE:-$REPO_ROOT/deploy/vm/local/control/prod.gcp.env}"
 PLAN_ONLY=0
 DOCTOR_ONLY=0
+CONTEXT_ONLY=0
+GCLOUD_SETUP_ONLY=0
 TEMP_FILES=()
 
 # shellcheck source=../../dev/devkit/lib/gcloud.sh
 source "$REPO_ROOT/dev/devkit/lib/gcloud.sh"
+CONFIG_FILE="$(dev_gcloud_contract_file "$REPO_ROOT")"
 
 usage() {
 	cat <<'EOF'
-Usage: deploy/vm/deploy.sh [--plan]
+Usage: deploy/vm/deploy.sh [--context|--gcloud-setup|--doctor|--plan]
 
---plan    print the resolved deployment plan without uploading anything
---doctor  validate the tracked gcloud configuration, project, and account only
+--context       print the resolved deployment context
+--gcloud-setup  create or switch to the tracked local gcloud configuration
+--doctor        validate the tracked gcloud configuration, project, and account only
+--plan          print the resolved deployment plan without uploading anything
 EOF
 }
 
@@ -35,6 +40,14 @@ trap cleanup_temp_files EXIT
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+	--context)
+		CONTEXT_ONLY=1
+		shift
+		;;
+	--gcloud-setup)
+		GCLOUD_SETUP_ONLY=1
+		shift
+		;;
 	--plan)
 		PLAN_ONLY=1
 		shift
@@ -98,9 +111,24 @@ PY
 }
 
 load_contract() {
-	[[ -f "$CONFIG_FILE" ]] || deploy_fail "deploy/vm" "tracked setup env file not found: $CONFIG_FILE"
-	deploy_load_env_file "$CONFIG_FILE"
+	local contract_gcp_account
+	local contract_gcp_config_name
+	local contract_gcp_project_id
+	local contract_gcp_project_number
+	local contract_gcp_zone
+
+	dev_gcloud_load_contract "$REPO_ROOT" "deploy/vm"
+	contract_gcp_config_name="$GCP_CONFIG_NAME"
+	contract_gcp_project_id="$GCP_PROJECT_ID"
+	contract_gcp_account="$GCP_ACCOUNT"
+	contract_gcp_project_number="$GCP_PROJECT_NUMBER"
+	contract_gcp_zone="${GCP_ZONE:-}"
 	deploy_load_env_file "$LOCAL_CONFIG_FILE"
+	GCP_CONFIG_NAME="$contract_gcp_config_name"
+	GCP_PROJECT_ID="$contract_gcp_project_id"
+	GCP_ACCOUNT="$contract_gcp_account"
+	GCP_PROJECT_NUMBER="$contract_gcp_project_number"
+	GCP_ZONE="$contract_gcp_zone"
 	deploy_load_image_catalog "$REPO_ROOT"
 
 	: "${GCP_CONFIG_NAME:?GCP_CONFIG_NAME is required}"
@@ -270,10 +298,11 @@ create_release_bundle() {
 print_plan() {
 	cat <<EOF
 [deploy/vm] Deployment plan
+  gcloud config    : $GCP_CONFIG_NAME
+  gcloud account   : ${GCP_ACCOUNT:-<not enforced>}
   instance          : $GCP_INSTANCE_NAME
   zone              : $GCP_ZONE
   project           : $GCP_PROJECT_ID
-  gcloud account    : ${GCP_ACCOUNT:-<not enforced>}
   domain            : $VM_DOMAIN
   app root          : $VM_APP_ROOT
   release dir       : $RELEASE_DIR
@@ -284,6 +313,19 @@ print_plan() {
   artifacts dir     : $CORNERSTONE_ARTIFACTS_DIR
   exports dir       : $CORNERSTONE_EXPORTS_DIR
 EOF
+}
+
+confirm_deploy() {
+	local confirmation
+	local phrase="DEPLOY-CORNERSTONE-VM"
+
+	echo
+	printf "Type %s to continue: " "$phrase"
+	IFS= read -r confirmation
+	echo
+	if [[ "$confirmation" != "$phrase" ]]; then
+		deploy_fail "deploy/vm" "deployment aborted"
+	fi
 }
 
 upload_and_activate_release() {
@@ -316,6 +358,17 @@ EOF
 }
 
 load_contract
+if [[ "$CONTEXT_ONLY" == "1" ]]; then
+	prepare_release_metadata
+	print_plan
+	echo
+	dev_gcloud_print_active_context "deploy/vm"
+	exit 0
+fi
+if [[ "$GCLOUD_SETUP_ONLY" == "1" ]]; then
+	dev_gcloud_setup_from_contract "$REPO_ROOT" "deploy/vm"
+	exit 0
+fi
 if [[ "$DOCTOR_ONLY" == "1" ]]; then
 	dev_gcloud_check_context "deploy/vm"
 	deploy_log "deploy/vm" "gcloud config, project, and account match the tracked deploy contract."
@@ -330,6 +383,8 @@ if [[ "$PLAN_ONLY" == "1" ]]; then
 	exit 0
 fi
 
+print_plan
+confirm_deploy
 build_frontend
 
 BUNDLE_PATH="$(create_temp_file cornerstone-vm-release)"
@@ -338,7 +393,6 @@ TEMP_FILES+=("$BUNDLE_PATH" "$ENV_PATH")
 
 create_release_bundle "$BUNDLE_PATH"
 render_runtime_env_file "$ENV_PATH"
-print_plan
 upload_and_activate_release "$BUNDLE_PATH" "$ENV_PATH"
 
 deploy_log "deploy/vm" "Release activated: $RELEASE_NAME"

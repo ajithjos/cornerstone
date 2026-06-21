@@ -32,9 +32,12 @@ Local Cornerstone site state belongs under `dev/site_root/`. That root owns loca
 Deployment commands:
 
 ```bash
+make gcloud-setup
 make deploy-plan
 make deploy
 make deploy-secret-push
 ```
 
 Deployment identity is checked through the tracked GCP contract in `deploy/config/environments/prod.gcp.env`. `make doctor` fails fast when the active gcloud config, account, project, or authentication is wrong.
+
+The shared deploy contract variable is `DEPLOY_GCP_ENV_FILE`; by default it points at `deploy/config/environments/prod.gcp.env`.

@@ -1,4 +1,4 @@
-.PHONY: help context doctor setup devkit-bootstrap submodules-master submodules-master-check clean clean-python clean-all clean-deps fmt fmt-check lint test rust-fmt rust-lint rust-test rust-run rust-migrate rust-bootstrap-apply rust-library-validate content-validate frontend-pub-get flutter-version-check flutter-analyze flutter-test frontend-sanity docs-site-install docs-site-prepare docs-site-build docs-site-dev db db-migrate bootstrap-apply library-reload dev-up dev-down dev-reset dev-live dev-live-down frontend-dev deploy-setup deploy-secret-push deploy-plan deploy check-local check
+.PHONY: help context doctor gcloud-setup setup devkit-bootstrap submodules-master submodules-master-check clean clean-python clean-all clean-deps fmt fmt-check lint test rust-fmt rust-lint rust-test rust-run rust-migrate rust-bootstrap-apply rust-library-validate content-validate frontend-pub-get flutter-version-check flutter-analyze flutter-test frontend-sanity docs-site-install docs-site-prepare docs-site-build docs-site-dev db db-migrate bootstrap-apply library-reload dev-up dev-down dev-reset dev-live dev-live-down frontend-dev deploy-setup deploy-secret-push deploy-plan deploy check-local check
 
 PYTHON_RUN ?= uv run
 FLUTTER_APP_DIR ?= $(CURDIR)/fe/flutter/apps/cornerstone
@@ -8,6 +8,7 @@ FLUTTER_REQUIRED_VERSION ?= 3.44.1
 CONTENT_ROOT ?= $(CURDIR)/content
 LIVE_FRONTEND_PORT ?= 2255
 LIVE_FRONTEND_API_BASE_URL ?= http://127.0.0.1:8788
+DEPLOY_GCP_ENV_FILE ?= deploy/config/environments/prod.gcp.env
 DEVKIT_MAKE := $(MAKE) --no-print-directory -C dev/devkit REPO_ROOT=$(CURDIR)
 
 help: context
@@ -18,12 +19,7 @@ devkit-bootstrap:
 context: devkit-bootstrap
 	@$(DEVKIT_MAKE) context
 	@echo
-	@echo "Expected deploy gcloud config: $$(grep '^GCP_CONFIG_NAME=' deploy/config/environments/prod.gcp.env | cut -d= -f2-)"
-	@echo "Expected deploy project: $$(grep '^GCP_PROJECT_ID=' deploy/config/environments/prod.gcp.env | cut -d= -f2-)"
-	@echo "Expected deploy account: $$(grep '^GCP_ACCOUNT=' deploy/config/environments/prod.gcp.env | cut -d= -f2-)"
-	@echo "Active gcloud config: $$(gcloud config configurations list --filter=is_active:true --format='value(name)' 2>/dev/null || echo '<gcloud unavailable>')"
-	@echo "Active gcloud project: $$(gcloud config get-value project 2>/dev/null || echo '<gcloud unavailable>')"
-	@echo "Active gcloud account: $$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -n 1 || echo '<gcloud unavailable>')"
+	@DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh --context
 
 doctor: devkit-bootstrap
 	@$(DEVKIT_MAKE) doctor
@@ -31,7 +27,10 @@ doctor: devkit-bootstrap
 	@command -v cargo >/dev/null || (echo "Missing cargo. Install Rust with rustup." >&2; exit 2)
 	@command -v flutter >/dev/null || (echo "Missing flutter. Install the pinned Flutter toolchain before frontend work." >&2; exit 2)
 	@command -v docker >/dev/null || (echo "Missing docker. Install/start Docker for make dev-up." >&2; exit 2)
-	@bash deploy/vm/deploy.sh --doctor
+	@DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh --doctor
+
+gcloud-setup: devkit-bootstrap
+	@DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh --gcloud-setup
 
 setup: devkit-bootstrap
 	$(DEVKIT_MAKE) setup
@@ -162,13 +161,13 @@ deploy-setup:
 	bash deploy/vm/prepare_host.sh
 
 deploy-secret-push:
-	bash deploy/vm/update_gcp_runtime_env_secret.sh
+	DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/update_gcp_runtime_env_secret.sh
 
 deploy-plan:
-	bash deploy/vm/deploy.sh --plan
+	DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh --plan
 
 deploy:
-	bash deploy/vm/deploy.sh
+	DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh
 
 check-local: fmt-check lint rust-test frontend-sanity content-validate docs-site-build
 

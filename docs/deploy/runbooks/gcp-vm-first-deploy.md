@@ -277,6 +277,7 @@ GCLOUD_BIN=${GCLOUD_BIN:-gcloud} make deploy-setup
 Then run the first deploy with the same repeatable deploy path used later:
 
 ```bash
+GCLOUD_BIN=${GCLOUD_BIN:-gcloud} make gcloud-setup
 GCLOUD_BIN=${GCLOUD_BIN:-gcloud} make deploy-plan
 GCLOUD_BIN=${GCLOUD_BIN:-gcloud} make deploy
 ```

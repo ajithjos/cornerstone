@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/../common.sh"
 
 REPO_ROOT="$(deploy_repo_root)"
-CONFIG_FILE="${DEPLOY_VM_GCP_ENV_FILE:-$REPO_ROOT/deploy/config/environments/prod.gcp.env}"
+CONFIG_FILE="${DEPLOY_GCP_ENV_FILE:-$REPO_ROOT/deploy/config/environments/prod.gcp.env}"
 LOCAL_CONFIG_FILE="${DEPLOY_VM_LOCAL_SETUP_ENV_FILE:-$REPO_ROOT/deploy/vm/local/control/prod.gcp.env}"
 SOURCE_FILE="${DEPLOY_VM_RUNTIME_ENV_FILE:-$REPO_ROOT/deploy/vm/local/secrets/runtime-env.json}"
 GCLOUD_BIN="$(deploy_resolve_cmd "deploy/vm" GCLOUD_BIN gcloud)"
