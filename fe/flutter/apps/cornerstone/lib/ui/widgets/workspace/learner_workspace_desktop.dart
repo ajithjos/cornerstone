@@ -940,19 +940,33 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
           if (primaryExecutable != null) ...[
             const SizedBox(height: 14),
             FilledButton.icon(
-              onPressed: () =>
-                  widget.onStartActivity(session, primaryExecutable),
+              onPressed: primaryExecutable.canStartActivity
+                  ? () => widget.onStartActivity(session, primaryExecutable)
+                  : null,
               icon: Icon(
                 CornerstoneIcons.materialKind(primaryExecutable.kind),
                 size: 18,
               ),
               label: Text(
-                _materialActionLabel(
-                  primaryExecutable.kind,
-                  repeat: isRepeatableRun,
-                ),
+                primaryExecutable.canStartActivity
+                    ? _materialActionLabel(
+                        primaryExecutable.kind,
+                        repeat: isRepeatableRun,
+                      )
+                    : 'Assessment locked',
               ),
             ),
+            if (primaryExecutable.gate != null &&
+                !primaryExecutable.gate!.enabled) ...[
+              const SizedBox(height: 8),
+              Text(
+                primaryExecutable.gate!.reasonLabel,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 16),
           if (learnerGroups.isEmpty)

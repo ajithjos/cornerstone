@@ -420,6 +420,8 @@ pub struct SessionMaterialSummary {
     pub document_route_path: Option<String>,
     pub document_body: Option<String>,
     pub runtime: Option<SessionMaterialRuntimeSummary>,
+    pub proficiency: Option<SessionMaterialProficiencySummary>,
+    pub gate: Option<SessionMaterialGateSummary>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -436,6 +438,33 @@ pub struct SessionMaterialRuntimeSummary {
     pub engine_id: String,
     pub template_id: String,
     pub executable: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionMaterialProficiencySummary {
+    pub min_attempts: usize,
+    pub window_size: usize,
+    pub target_accuracy: f64,
+    pub consecutive_passes_required: usize,
+    pub target_correct_count: Option<usize>,
+    pub attempt_count: usize,
+    pub recent_attempt_count: usize,
+    pub recent_average_accuracy: f64,
+    pub consecutive_pass_count: usize,
+    pub best_correct_count: usize,
+    pub ready_to_move_on: bool,
+    pub verdict: String,
+    pub verdict_label: String,
+    pub detail_label: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionMaterialGateSummary {
+    pub enabled: bool,
+    pub prerequisite_material_id: String,
+    pub prerequisite_title: String,
+    pub prerequisite_verdict: String,
+    pub reason_label: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -558,6 +587,7 @@ pub struct CompleteActivityResponse {
     pub evidence: EvidenceSummary,
     pub updated_progress: Vec<SkillProgressSummary>,
     pub activity_summary: ActivitySummary,
+    pub proficiency: Option<SessionMaterialProficiencySummary>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -24,7 +24,7 @@ sessions:
       - bridge_through_10_subtraction_drill
     skill_ids:
       - bridge_through_10_for_subtraction
-  - title: Check that bridge-through-10 subtraction is holding in mixed order
+  - title: Assessment on bridge-through-10 subtraction
     material_ids:
       - bridge_through_10_subtraction_check
     skill_ids:

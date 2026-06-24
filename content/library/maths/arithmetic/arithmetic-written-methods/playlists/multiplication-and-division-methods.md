@@ -32,7 +32,7 @@ sessions:
     skill_ids:
       - interpret_division_as_sharing_and_grouping
       - divide_by_one_digit_numbers
-  - title: Quick check on multiplication and division methods
+  - title: Assessment on multiplication and division methods
     material_ids:
       - multiplication_and_division_methods_check
     skill_ids:

@@ -28,7 +28,7 @@ sessions:
     skill_ids:
       - recall_doubles_to_20
       - add_10_to_single_digits
-  - title: Check that the anchor facts are ready to use
+  - title: Assessment on the anchor facts
     material_ids:
       - doubles_and_add_10_check
     skill_ids:

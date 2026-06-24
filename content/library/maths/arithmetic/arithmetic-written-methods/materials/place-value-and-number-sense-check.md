@@ -10,7 +10,7 @@ skill_ids:
 estimated_minutes: 6
 ---
 
-# Place Value And Number Sense Check
+# Place Value And Number Sense Assessment
 
 Keep this brisk and oral where possible.
 

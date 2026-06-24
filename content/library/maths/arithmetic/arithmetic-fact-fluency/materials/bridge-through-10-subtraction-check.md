@@ -19,21 +19,12 @@ runtime:
   persistence:
     store_response_log: false
     store_summary: true
+  gate:
+    requires_ready_material_id: bridge_through_10_subtraction_drill
 ---
 
-# Bridge Through 10 Subtraction Check
+# Bridge Through 10 Subtraction Assessment
 
-```text
-13 - 5 =
-15 - 8 =
-17 - 9 =
-14 - 6 =
-18 - 9 =
-16 - 7 =
-19 - 8 =
-12 - 4 =
-15 - 6 =
-17 - 8 =
-```
+This is a generated assessment. Unlock it after the learner is ready to move on from the bridge-through-`10` subtraction drill.
 
 Passing guide: 8 or more quick correct answers means the learner can use bridge-through-`10` subtraction in mixed order.

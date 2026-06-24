@@ -31,7 +31,7 @@ sessions:
     skill_ids:
       - subtract_two_and_three_digit_numbers
       - explain_exchange_in_written_methods
-  - title: Quick check on written addition and subtraction
+  - title: Assessment on written addition and subtraction
     material_ids:
       - written_addition_and_subtraction_check
     skill_ids:

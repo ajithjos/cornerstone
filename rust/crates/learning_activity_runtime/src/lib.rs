@@ -144,6 +144,8 @@ mod tests {
                 parameters,
                 scoring: None,
                 persistence: None,
+                proficiency: None,
+                gate: None,
             }),
             title: "Test runtime".to_string(),
             body: String::new(),

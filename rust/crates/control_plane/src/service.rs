@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, anyhow, bail};
@@ -30,10 +31,10 @@ use crate::domain::{
     LibraryWorkspaceResponse, MaterialWorkspaceSummary, PathwayEntryPointSummary, PathwayWorkspaceSummary,
     PlaylistAssignmentTargetSummary, PlaylistDeliveryShapeSummary, PlaylistSessionWorkspaceSummary,
     PlaylistWorkspaceSummary, RecordSessionRequest, RecordSessionResponse, ReviewItemRow, ReviewItemSummary,
-    ReviewRebuildResponse, SessionDetail, SessionMaterialKindGroupSummary, SessionMaterialRow,
-    SessionMaterialRuntimeSummary, SessionMaterialSummary, SessionRow, SessionSummary, SkillProgressRow,
-    SkillProgressSummary, StageProgress, TeamMemberRow, TeamMemberSummary, TeamRow, TeamSummary, ViewerSessionResponse,
-    WorkspaceMaterialKindGroupSummary,
+    ReviewRebuildResponse, SessionDetail, SessionMaterialGateSummary, SessionMaterialKindGroupSummary,
+    SessionMaterialProficiencySummary, SessionMaterialRow, SessionMaterialRuntimeSummary, SessionMaterialSummary,
+    SessionRow, SessionSummary, SkillProgressRow, SkillProgressSummary, StageProgress, TeamMemberRow,
+    TeamMemberSummary, TeamRow, TeamSummary, ViewerSessionResponse, WorkspaceMaterialKindGroupSummary,
 };
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -65,6 +66,13 @@ const GOOGLE_USERINFO_ENDPOINT: &str = "https://openidconnect.googleapis.com/v1/
 const GOOGLE_OAUTH_CALLBACK_PATH: &str = "/api/v1/auth/google/callback";
 const GOOGLE_OAUTH_FLOW_TTL_MINUTES: i64 = 15;
 const WEB_SESSION_TTL_DAYS: i64 = 30;
+
+#[derive(Debug, Clone)]
+struct ActivityAttemptSummary {
+    correct_count: usize,
+    item_count: usize,
+    accuracy: f64,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -1561,6 +1569,7 @@ async fn load_learner_detail_payload(
     let documents = state.library_documents.read().await.clone();
     let sessions = fetch_sessions(
         &state.pool,
+        &state.config.artifacts_root,
         &library,
         &documents,
         learner_id,
@@ -1576,8 +1585,15 @@ async fn load_learner_detail_payload(
                 .map(|assignment| build_learner_journey(&library, &documents, assignment, &sessions))
         })
         .flatten();
-    let assigned_journeys =
-        build_assigned_journeys(&state.pool, &library, &documents, learner_id, &assignments).await?;
+    let assigned_journeys = build_assigned_journeys(
+        &state.pool,
+        &state.config.artifacts_root,
+        &library,
+        &documents,
+        learner_id,
+        &assignments,
+    )
+    .await?;
     let assigned_pathways = build_assigned_pathways(&library, &assigned_journeys);
     let workspace = build_learner_workspace(
         &library,
@@ -1764,6 +1780,19 @@ pub async fn start_session_material_activity(
     let material = library
         .material(&session_material.material_id)
         .ok_or_else(|| anyhow!("material '{}' not found in library", session_material.material_id))?;
+    if let Some(gate) = material.runtime.as_ref().and_then(|runtime| runtime.gate.as_ref()) {
+        let gate_summary = build_material_gate_summary(
+            &state.pool,
+            &state.config.artifacts_root,
+            &library,
+            &session.learner_id,
+            &gate.requires_ready_material_id,
+        )
+        .await?;
+        if !gate_summary.enabled {
+            bail!("{}", gate_summary.reason_label);
+        }
+    }
     let generated =
         runtime::generate_activity(material, runtime::activity_seed()).context("failed to generate activity")?;
 
@@ -1868,6 +1897,23 @@ pub async fn complete_activity_instance(
         },
     )
     .await?;
+    let proficiency = match material
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.proficiency.as_ref())
+    {
+        Some(target) => {
+            let attempts = fetch_activity_attempts_for_material(
+                &state.pool,
+                &state.config.artifacts_root,
+                &session.learner_id,
+                &material.id,
+            )
+            .await?;
+            Some(build_proficiency_summary(target, &attempts))
+        }
+        None => None,
+    };
 
     Ok(CompleteActivityResponse {
         status: "ok".to_string(),
@@ -1882,6 +1928,7 @@ pub async fn complete_activity_instance(
             completion_reason: scored.completion_reason,
             weak_groups: scored.weak_groups,
         },
+        proficiency,
     })
 }
 
@@ -2710,6 +2757,7 @@ fn material_skill_pairs_for_session(library: &LibraryBundle, session: &PlaylistS
 
 async fn build_assigned_journeys(
     pool: &PgPool,
+    artifacts_root: &Path,
     library: &LibraryBundle,
     documents: &[LibraryDocument],
     learner_id: &str,
@@ -2717,7 +2765,15 @@ async fn build_assigned_journeys(
 ) -> anyhow::Result<Vec<crate::domain::LearnerAssignedJourneySummary>> {
     let mut journeys = Vec::new();
     for assignment in assignments {
-        let sessions = fetch_sessions(pool, library, documents, learner_id, Some(&assignment.assignment_id)).await?;
+        let sessions = fetch_sessions(
+            pool,
+            artifacts_root,
+            library,
+            documents,
+            learner_id,
+            Some(&assignment.assignment_id),
+        )
+        .await?;
         let journey = build_learner_journey(library, documents, assignment, &sessions);
         let continue_block = continue_block_for_sessions(&sessions);
         let current_session_id = continue_block
@@ -2896,6 +2952,7 @@ async fn fetch_next_session_for_assignment(
 
 async fn fetch_sessions(
     pool: &PgPool,
+    artifacts_root: &Path,
     library: &LibraryBundle,
     documents: &[LibraryDocument],
     learner_id: &str,
@@ -2940,7 +2997,8 @@ async fn fetch_sessions(
         material_rows = ensure_session_material_rows(pool, library, &row, material_rows).await?;
         order_session_material_rows(pool, library, &row, &mut material_rows).await?;
         let latest_evidence = fetch_latest_evidence_for_session(pool, &row.session_id).await?;
-        let materials = build_session_material_summaries(library, documents, material_rows);
+        let mut materials = build_session_material_summaries(library, documents, material_rows);
+        enrich_session_material_runtime_state(pool, artifacts_root, library, learner_id, &mut materials).await?;
         let dominant_kind = dominant_kind_for_materials(materials.iter().map(|material| material.kind.as_str()));
         let requires_adult_support = materials.iter().any(|material| material.audience == AUDIENCE_ADULT);
         let materials_by_kind = build_session_material_kind_groups(&materials);
@@ -3177,10 +3235,223 @@ fn build_session_material_summaries(
                     executable: true,
                 })
             }),
+            proficiency: None,
+            gate: None,
         });
     }
 
     summaries
+}
+
+async fn enrich_session_material_runtime_state(
+    pool: &PgPool,
+    artifacts_root: &Path,
+    library: &LibraryBundle,
+    learner_id: &str,
+    materials: &mut [SessionMaterialSummary],
+) -> anyhow::Result<()> {
+    for material in materials.iter_mut() {
+        let Some(document) = library.material(&material.material_id) else {
+            continue;
+        };
+        if let Some(runtime) = &document.runtime {
+            if let Some(target) = &runtime.proficiency {
+                let attempts =
+                    fetch_activity_attempts_for_material(pool, artifacts_root, learner_id, &material.material_id)
+                        .await?;
+                material.proficiency = Some(build_proficiency_summary(target, &attempts));
+            }
+            if let Some(gate) = &runtime.gate {
+                material.gate = Some(
+                    build_material_gate_summary(
+                        pool,
+                        artifacts_root,
+                        library,
+                        learner_id,
+                        &gate.requires_ready_material_id,
+                    )
+                    .await?,
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn build_material_gate_summary(
+    pool: &PgPool,
+    artifacts_root: &Path,
+    library: &LibraryBundle,
+    learner_id: &str,
+    prerequisite_material_id: &str,
+) -> anyhow::Result<SessionMaterialGateSummary> {
+    let prerequisite = library.material(prerequisite_material_id);
+    let prerequisite_title = prerequisite
+        .map(|material| material.title.clone())
+        .unwrap_or_else(|| prerequisite_material_id.to_string());
+    let proficiency = match prerequisite.and_then(|material| material.runtime.as_ref()) {
+        Some(runtime) => match &runtime.proficiency {
+            Some(target) => {
+                let attempts =
+                    fetch_activity_attempts_for_material(pool, artifacts_root, learner_id, prerequisite_material_id)
+                        .await?;
+                Some(build_proficiency_summary(target, &attempts))
+            }
+            None => None,
+        },
+        None => None,
+    };
+    let enabled = proficiency
+        .as_ref()
+        .map(|summary| summary.ready_to_move_on)
+        .unwrap_or(false);
+    let prerequisite_verdict = proficiency
+        .as_ref()
+        .map(|summary| summary.verdict.clone())
+        .unwrap_or_else(|| "not_configured".to_string());
+    let reason_label = if enabled {
+        "Assessment is unlocked.".to_string()
+    } else if let Some(summary) = proficiency {
+        format!(
+            "Unlocks when {} is ready to move on. {}",
+            prerequisite_title, summary.detail_label
+        )
+    } else {
+        format!("Unlocks when {} has a configured practice target.", prerequisite_title)
+    };
+
+    Ok(SessionMaterialGateSummary {
+        enabled,
+        prerequisite_material_id: prerequisite_material_id.to_string(),
+        prerequisite_title,
+        prerequisite_verdict,
+        reason_label,
+    })
+}
+
+async fn fetch_activity_attempts_for_material(
+    pool: &PgPool,
+    artifacts_root: &Path,
+    learner_id: &str,
+    material_id: &str,
+) -> anyhow::Result<Vec<ActivityAttemptSummary>> {
+    let rows = query_as::<_, (String,)>(
+        "select ea.storage_path
+         from evidence_artifact ea
+         join evidence e on e.evidence_id = ea.evidence_id
+         where ea.learner_id = $1 and ea.kind = 'activity_summary'
+         order by e.recorded_at desc",
+    )
+    .bind(learner_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut attempts = Vec::new();
+    for (storage_path,) in rows {
+        let payload_path = artifacts_root.join(storage_path);
+        let Ok(raw) = fs::read(&payload_path).await else {
+            continue;
+        };
+        let Ok(payload) = serde_json::from_slice::<JsonValue>(&raw) else {
+            continue;
+        };
+        if payload.get("material_id").and_then(JsonValue::as_str) != Some(material_id) {
+            continue;
+        }
+        let correct_count = payload.get("correct_count").and_then(JsonValue::as_u64).unwrap_or(0) as usize;
+        let item_count = payload.get("item_count").and_then(JsonValue::as_u64).unwrap_or(0) as usize;
+        let accuracy = payload.get("accuracy").and_then(JsonValue::as_f64).unwrap_or_else(|| {
+            if item_count == 0 {
+                0.0
+            } else {
+                correct_count as f64 / item_count as f64
+            }
+        });
+        attempts.push(ActivityAttemptSummary {
+            correct_count,
+            item_count,
+            accuracy,
+        });
+    }
+    Ok(attempts)
+}
+
+fn build_proficiency_summary(
+    target: &catalog::MaterialRuntimeProficiency,
+    attempts: &[ActivityAttemptSummary],
+) -> SessionMaterialProficiencySummary {
+    let window_size = target.window_size.max(1);
+    let min_attempts = target.min_attempts.max(1);
+    let consecutive_required = target.consecutive_passes.max(1);
+    let recent_attempts = attempts.iter().take(window_size).collect::<Vec<_>>();
+    let recent_attempt_count = recent_attempts.len();
+    let recent_average_accuracy = if recent_attempts.is_empty() {
+        0.0
+    } else {
+        recent_attempts.iter().map(|attempt| attempt.accuracy).sum::<f64>() / recent_attempts.len() as f64
+    };
+    let best_correct_count = attempts.iter().map(|attempt| attempt.correct_count).max().unwrap_or(0);
+    let mut consecutive_pass_count = 0usize;
+    for attempt in attempts {
+        if attempt_meets_proficiency(target, attempt) {
+            consecutive_pass_count += 1;
+        } else {
+            break;
+        }
+    }
+    let ready_to_move_on = attempts.len() >= min_attempts
+        && recent_attempt_count >= window_size.min(min_attempts)
+        && recent_average_accuracy >= target.target_accuracy
+        && consecutive_pass_count >= consecutive_required;
+    let nearly_secure = !ready_to_move_on
+        && (consecutive_pass_count + 1 >= consecutive_required
+            || (attempts.len() >= min_attempts / 2
+                && recent_average_accuracy >= (target.target_accuracy - 0.05).max(0.0)));
+    let (verdict, verdict_label) = if ready_to_move_on {
+        ("ready_to_move_on", "Ready to move on")
+    } else if nearly_secure {
+        ("nearly_secure", "Nearly secure")
+    } else {
+        ("keep_practising", "Keep practising")
+    };
+    let detail_label = format!(
+        "{} attempts, last {} average {:.0}%, {} pass{} in a row",
+        attempts.len(),
+        recent_attempt_count,
+        recent_average_accuracy * 100.0,
+        consecutive_pass_count,
+        if consecutive_pass_count == 1 { "" } else { "es" },
+    );
+
+    SessionMaterialProficiencySummary {
+        min_attempts,
+        window_size,
+        target_accuracy: target.target_accuracy,
+        consecutive_passes_required: consecutive_required,
+        target_correct_count: target.target_correct_count,
+        attempt_count: attempts.len(),
+        recent_attempt_count,
+        recent_average_accuracy,
+        consecutive_pass_count,
+        best_correct_count,
+        ready_to_move_on,
+        verdict: verdict.to_string(),
+        verdict_label: verdict_label.to_string(),
+        detail_label,
+    }
+}
+
+fn attempt_meets_proficiency(target: &catalog::MaterialRuntimeProficiency, attempt: &ActivityAttemptSummary) -> bool {
+    if attempt.item_count == 0 {
+        return false;
+    }
+    if attempt.accuracy < target.target_accuracy {
+        return false;
+    }
+    target
+        .target_correct_count
+        .map(|target_correct_count| attempt.correct_count >= target_correct_count)
+        .unwrap_or(true)
 }
 
 async fn load_session_row(pool: &PgPool, session_id: &str) -> anyhow::Result<SessionRow> {
@@ -3710,8 +3981,8 @@ mod tests {
     };
 
     use super::{
-        build_assigned_pathways, compile_bootstrap, continue_block_for_assigned_journeys,
-        learner_safe_workspace_summary, response_sessions_for_assigned_journeys,
+        ActivityAttemptSummary, build_assigned_pathways, build_proficiency_summary, compile_bootstrap,
+        continue_block_for_assigned_journeys, learner_safe_workspace_summary, response_sessions_for_assigned_journeys,
     };
 
     fn sample_session() -> SessionDetail {
@@ -3731,6 +4002,8 @@ mod tests {
             document_route_path: Some("library/documents/learner".to_string()),
             document_body: Some("Learner body".to_string()),
             runtime: None,
+            proficiency: None,
+            gate: None,
         };
         let teaching_material = SessionMaterialSummary {
             session_material_id: "sm-2".to_string(),
@@ -3749,6 +4022,8 @@ mod tests {
                 template_id: "template-1".to_string(),
                 executable: true,
             }),
+            proficiency: None,
+            gate: None,
         };
         SessionDetail {
             session_id: session_id.to_string(),
@@ -3961,6 +4236,30 @@ mod tests {
             playlist_ids,
             vec!["playlist-earliest", "playlist-middle", "playlist-latest"]
         );
+    }
+
+    #[test]
+    fn proficiency_target_requires_minimum_window_and_consecutive_passes() {
+        let target = catalog::MaterialRuntimeProficiency {
+            min_attempts: 20,
+            window_size: 20,
+            target_accuracy: 0.9,
+            consecutive_passes: 3,
+            target_correct_count: Some(13),
+        };
+        let attempts = (0..20)
+            .map(|_| ActivityAttemptSummary {
+                correct_count: 13,
+                item_count: 14,
+                accuracy: 13.0 / 14.0,
+            })
+            .collect::<Vec<_>>();
+
+        let summary = build_proficiency_summary(&target, &attempts);
+
+        assert!(summary.ready_to_move_on);
+        assert_eq!(summary.verdict, "ready_to_move_on");
+        assert_eq!(summary.consecutive_pass_count, 20);
     }
 
     #[test]

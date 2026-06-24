@@ -27,23 +27,12 @@ runtime:
   persistence:
     store_response_log: false
     store_summary: true
+  gate:
+    requires_ready_material_id: fact_families_to_10_drill
 ---
 
-# Fact Families Through 10 Check
+# Fact Families Through 10 Assessment
 
-Keep this short and calm.
-
-```text
-0 + 7 =
-5 + 3 =
-9 - 4 =
-10 - 0 =
-1 - 1 =
-6 + 0 =
-7 - 7 =
-2 + 6 =
-10 - 3 =
-4 + 4 =
-```
+This is a generated assessment. Unlock it after the learner is ready to move on from the fact-family drill.
 
 Passing guide: 8 or more quick correct answers means the learner is ready for the next anchor facts.

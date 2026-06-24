@@ -583,7 +583,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     SessionDetail session,
     SessionMaterial material,
   ) async {
-    if (!(material.runtime?.executable ?? false)) return;
+    if (!material.canStartActivity) return;
     setState(() {
       _busy = true;
       _errorMessage = null;

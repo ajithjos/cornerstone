@@ -22,6 +22,12 @@ runtime:
   persistence:
     store_response_log: false
     store_summary: true
+  proficiency:
+    min_attempts: 20
+    window_size: 20
+    target_accuracy: 0.9
+    consecutive_passes: 3
+    target_correct_count: 13
 ---
 
 # Doubles And Add 10 Drill

@@ -31,7 +31,7 @@ sessions:
     skill_ids:
       - partition_hundreds_tens_and_ones
       - compare_and_order_numbers_to_1000
-  - title: Quick check on place value and number sense
+  - title: Assessment on place value and number sense
     material_ids:
       - place_value_and_number_sense_check
     skill_ids:

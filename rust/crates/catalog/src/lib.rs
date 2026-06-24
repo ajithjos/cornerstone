@@ -180,6 +180,8 @@ pub struct MaterialRuntime {
     pub parameters: JsonValue,
     pub scoring: Option<MaterialRuntimeScoring>,
     pub persistence: Option<MaterialRuntimePersistence>,
+    pub proficiency: Option<MaterialRuntimeProficiency>,
+    pub gate: Option<MaterialRuntimeGate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,6 +196,20 @@ pub struct MaterialRuntimePersistence {
     pub store_response_log: bool,
     #[serde(default = "default_store_summary")]
     pub store_summary: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaterialRuntimeProficiency {
+    pub min_attempts: usize,
+    pub window_size: usize,
+    pub target_accuracy: f64,
+    pub consecutive_passes: usize,
+    pub target_correct_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaterialRuntimeGate {
+    pub requires_ready_material_id: String,
 }
 
 fn default_store_summary() -> bool {
@@ -1527,6 +1543,32 @@ fn validate_catalog(
                 material.id,
                 material.kind
             );
+        }
+        if let Some(runtime) = &material.runtime {
+            if let Some(proficiency) = &runtime.proficiency {
+                if proficiency.min_attempts == 0 || proficiency.window_size == 0 || proficiency.consecutive_passes == 0
+                {
+                    bail!(
+                        "material '{}' has a proficiency target with zero min_attempts, window_size, or consecutive_passes",
+                        material.id
+                    );
+                }
+                if !(0.0..=1.0).contains(&proficiency.target_accuracy) || proficiency.target_accuracy == 0.0 {
+                    bail!(
+                        "material '{}' has invalid proficiency target_accuracy {}",
+                        material.id,
+                        proficiency.target_accuracy
+                    );
+                }
+            }
+            if let Some(gate) = &runtime.gate {
+                ensure_contains(
+                    &material_ids,
+                    gate.requires_ready_material_id.as_str(),
+                    "assessment gate material",
+                    &material.id,
+                )?;
+            }
         }
         if material.skill_ids.is_empty() {
             bail!("material '{}' has no skills", material.id);

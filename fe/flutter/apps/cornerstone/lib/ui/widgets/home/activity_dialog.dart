@@ -108,6 +108,16 @@ class _ExecutableActivityDialogState extends State<_ExecutableActivityDialog> {
                       'Completed with ${result.activitySummary.correctCount}/${result.activitySummary.itemCount} correct (${(result.activitySummary.accuracy * 100).round()}%).',
                       style: theme.textTheme.bodyLarge,
                     ),
+                    if (result.proficiency != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${result.proficiency!.verdictLabel}: ${result.proficiency!.detailLabel}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,

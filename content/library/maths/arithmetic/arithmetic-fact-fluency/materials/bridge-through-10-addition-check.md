@@ -19,21 +19,12 @@ runtime:
   persistence:
     store_response_log: false
     store_summary: true
+  gate:
+    requires_ready_material_id: bridge_through_10_addition_drill
 ---
 
-# Bridge Through 10 Addition Check
+# Bridge Through 10 Addition Assessment
 
-```text
-8 + 5 =
-7 + 8 =
-9 + 4 =
-6 + 7 =
-9 + 8 =
-5 + 9 =
-8 + 7 =
-6 + 8 =
-7 + 6 =
-9 + 6 =
-```
+This is a generated assessment. Unlock it after the learner is ready to move on from the bridge-through-`10` addition drill.
 
 Passing guide: 8 or more quick correct answers means the learner can use make-`10` for addition in mixed order.

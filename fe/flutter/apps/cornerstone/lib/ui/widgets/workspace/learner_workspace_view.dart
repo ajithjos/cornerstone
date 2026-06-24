@@ -297,19 +297,33 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   if (primaryExecutable != null) ...[
                     const SizedBox(height: 12),
                     FilledButton.icon(
-                      onPressed: () =>
-                          onStartActivity(session, primaryExecutable),
+                      onPressed: primaryExecutable.canStartActivity
+                          ? () => onStartActivity(session, primaryExecutable)
+                          : null,
                       icon: Icon(
                         CornerstoneIcons.materialKind(primaryExecutable.kind),
                         size: 18,
                       ),
                       label: Text(
-                        _materialActionLabel(
-                          primaryExecutable.kind,
-                          repeat: isRepeatableRun,
-                        ),
+                        primaryExecutable.canStartActivity
+                            ? _materialActionLabel(
+                                primaryExecutable.kind,
+                                repeat: isRepeatableRun,
+                              )
+                            : 'Assessment locked',
                       ),
                     ),
+                    if (primaryExecutable.gate != null &&
+                        !primaryExecutable.gate!.enabled) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        primaryExecutable.gate!.reasonLabel,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 ],
               ),
@@ -1022,7 +1036,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
               Text('Practice lane', style: theme.textTheme.headlineSmall),
               const SizedBox(height: 6),
               Text(
-                'Open the learner-facing practice and check materials that are already inside your assigned route.',
+                'Open the practice and unlocked assessments that are already inside your assigned route.',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

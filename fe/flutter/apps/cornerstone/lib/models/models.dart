@@ -1458,6 +1458,8 @@ class SessionMaterial {
     this.documentRoutePath,
     this.documentBody,
     this.runtime,
+    this.proficiency,
+    this.gate,
   });
 
   factory SessionMaterial.fromJson(Map<String, dynamic> json) {
@@ -1479,6 +1481,16 @@ class SessionMaterial {
           : SessionMaterialRuntimeSummary.fromJson(
               json['runtime'] as Map<String, dynamic>,
             ),
+      proficiency: json['proficiency'] == null
+          ? null
+          : SessionMaterialProficiencySummary.fromJson(
+              json['proficiency'] as Map<String, dynamic>,
+            ),
+      gate: json['gate'] == null
+          ? null
+          : SessionMaterialGateSummary.fromJson(
+              json['gate'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -1493,10 +1505,13 @@ class SessionMaterial {
   final String? documentRoutePath;
   final String? documentBody;
   final SessionMaterialRuntimeSummary? runtime;
+  final SessionMaterialProficiencySummary? proficiency;
+  final SessionMaterialGateSummary? gate;
 
   bool get isAdultFacing => audience == 'adult';
   bool get isLearnerFacing => audience == 'learner';
   bool get isExecutable => runtime?.executable ?? false;
+  bool get canStartActivity => isExecutable && (gate?.enabled ?? true);
 }
 
 class SessionMaterialKindGroup {
@@ -1545,6 +1560,89 @@ class SessionMaterialRuntimeSummary {
   final String engineId;
   final String templateId;
   final bool executable;
+}
+
+class SessionMaterialProficiencySummary {
+  SessionMaterialProficiencySummary({
+    required this.minAttempts,
+    required this.windowSize,
+    required this.targetAccuracy,
+    required this.consecutivePassesRequired,
+    required this.attemptCount,
+    required this.recentAttemptCount,
+    required this.recentAverageAccuracy,
+    required this.consecutivePassCount,
+    required this.bestCorrectCount,
+    required this.readyToMoveOn,
+    required this.verdict,
+    required this.verdictLabel,
+    required this.detailLabel,
+    this.targetCorrectCount,
+  });
+
+  factory SessionMaterialProficiencySummary.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return SessionMaterialProficiencySummary(
+      minAttempts: (json['min_attempts'] as num).toInt(),
+      windowSize: (json['window_size'] as num).toInt(),
+      targetAccuracy: (json['target_accuracy'] as num).toDouble(),
+      consecutivePassesRequired: (json['consecutive_passes_required'] as num)
+          .toInt(),
+      targetCorrectCount: (json['target_correct_count'] as num?)?.toInt(),
+      attemptCount: (json['attempt_count'] as num).toInt(),
+      recentAttemptCount: (json['recent_attempt_count'] as num).toInt(),
+      recentAverageAccuracy: (json['recent_average_accuracy'] as num)
+          .toDouble(),
+      consecutivePassCount: (json['consecutive_pass_count'] as num).toInt(),
+      bestCorrectCount: (json['best_correct_count'] as num).toInt(),
+      readyToMoveOn: json['ready_to_move_on'] as bool? ?? false,
+      verdict: json['verdict'] as String,
+      verdictLabel: json['verdict_label'] as String,
+      detailLabel: json['detail_label'] as String,
+    );
+  }
+
+  final int minAttempts;
+  final int windowSize;
+  final double targetAccuracy;
+  final int consecutivePassesRequired;
+  final int? targetCorrectCount;
+  final int attemptCount;
+  final int recentAttemptCount;
+  final double recentAverageAccuracy;
+  final int consecutivePassCount;
+  final int bestCorrectCount;
+  final bool readyToMoveOn;
+  final String verdict;
+  final String verdictLabel;
+  final String detailLabel;
+}
+
+class SessionMaterialGateSummary {
+  SessionMaterialGateSummary({
+    required this.enabled,
+    required this.prerequisiteMaterialId,
+    required this.prerequisiteTitle,
+    required this.prerequisiteVerdict,
+    required this.reasonLabel,
+  });
+
+  factory SessionMaterialGateSummary.fromJson(Map<String, dynamic> json) {
+    return SessionMaterialGateSummary(
+      enabled: json['enabled'] as bool? ?? false,
+      prerequisiteMaterialId: json['prerequisite_material_id'] as String,
+      prerequisiteTitle: json['prerequisite_title'] as String,
+      prerequisiteVerdict: json['prerequisite_verdict'] as String,
+      reasonLabel: json['reason_label'] as String,
+    );
+  }
+
+  final bool enabled;
+  final String prerequisiteMaterialId;
+  final String prerequisiteTitle;
+  final String prerequisiteVerdict;
+  final String reasonLabel;
 }
 
 class EvidenceSummary {
@@ -2127,6 +2225,7 @@ class CompleteActivityResponse {
     required this.evidence,
     required this.updatedProgress,
     required this.activitySummary,
+    this.proficiency,
   });
 
   factory CompleteActivityResponse.fromJson(Map<String, dynamic> json) {
@@ -2144,6 +2243,11 @@ class CompleteActivityResponse {
       activitySummary: ActivitySummary.fromJson(
         json['activity_summary'] as Map<String, dynamic>,
       ),
+      proficiency: json['proficiency'] == null
+          ? null
+          : SessionMaterialProficiencySummary.fromJson(
+              json['proficiency'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -2151,6 +2255,7 @@ class CompleteActivityResponse {
   final EvidenceSummary evidence;
   final List<SkillProgressSummary> updatedProgress;
   final ActivitySummary activitySummary;
+  final SessionMaterialProficiencySummary? proficiency;
 }
 
 class ActivitySummary {

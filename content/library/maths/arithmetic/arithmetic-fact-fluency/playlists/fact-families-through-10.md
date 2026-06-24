@@ -28,7 +28,7 @@ sessions:
     skill_ids:
       - compose_numbers_to_10
       - subtract_within_10_from_known_facts
-  - title: Check that the families through 10 are secure
+  - title: Assessment on families through 10
     material_ids:
       - fact_families_to_10_check
     skill_ids:

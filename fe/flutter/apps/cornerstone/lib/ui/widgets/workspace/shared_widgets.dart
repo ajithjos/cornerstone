@@ -47,7 +47,7 @@ String _materialKindLabel(String kind) {
     case 'drill':
       return 'Drill';
     case 'quick_check':
-      return 'Quick check';
+      return 'Assessment';
     default:
       return _contractTermLabel(kind);
   }
@@ -64,7 +64,7 @@ String _materialActionLabel(String kind, {bool repeat = false}) {
     case 'drill':
       return repeat ? 'Practice again' : 'Start drill';
     case 'quick_check':
-      return repeat ? 'Try check again' : 'Start check';
+      return repeat ? 'Retake assessment' : 'Start assessment';
     default:
       return 'Open material';
   }
@@ -79,11 +79,34 @@ String _materialDocumentActionLabel(String kind) {
     case 'worksheet':
       return 'Open practice sheet';
     case 'drill':
+      return 'Open drill notes';
     case 'quick_check':
-      return 'Open details';
+      return 'Open assessment notes';
     default:
       return 'Open material';
   }
+}
+
+Color _proficiencyBackgroundColor(
+  ThemeData theme,
+  SessionMaterialProficiencySummary proficiency,
+) {
+  return switch (proficiency.verdict) {
+    'ready_to_move_on' => theme.colorScheme.secondaryContainer,
+    'nearly_secure' => theme.colorScheme.tertiaryContainer,
+    _ => theme.colorScheme.primary.withValues(alpha: 0.12),
+  };
+}
+
+Color _proficiencyForegroundColor(
+  ThemeData theme,
+  SessionMaterialProficiencySummary proficiency,
+) {
+  return switch (proficiency.verdict) {
+    'ready_to_move_on' => theme.colorScheme.onSecondaryContainer,
+    'nearly_secure' => theme.colorScheme.onTertiaryContainer,
+    _ => theme.colorScheme.primary,
+  };
 }
 
 Color _markdownCodeForegroundColor(ThemeData theme) {
@@ -233,11 +256,13 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
             final canStart =
                 session != null &&
                 onStartActivity != null &&
-                material.isExecutable;
+                material.canStartActivity;
             final isRepeatableRun =
                 canStart &&
                 (material.status == 'completed' ||
                     session?.status == 'completed');
+            final gate = material.gate;
+            final proficiency = material.proficiency;
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
@@ -267,6 +292,24 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                       ),
                       if (material.isExecutable)
                         _ContractChip(domain: 'status', value: 'live'),
+                      if (proficiency != null)
+                        _PillBadge(
+                          text: proficiency.verdictLabel,
+                          color: _proficiencyBackgroundColor(
+                            theme,
+                            proficiency,
+                          ),
+                          textColor: _proficiencyForegroundColor(
+                            theme,
+                            proficiency,
+                          ),
+                        ),
+                      if (gate != null && !gate.enabled)
+                        _PillBadge(
+                          text: 'locked',
+                          color: theme.colorScheme.errorContainer,
+                          textColor: theme.colorScheme.onErrorContainer,
+                        ),
                       if (isRepeatableRun)
                         _PillBadge(
                           text: 'repeat any time',
@@ -287,10 +330,31 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                       ),
                       child: SelectionArea(
                         child: MarkdownBody(
-                          data: material.documentBody!,
+                          data: gate != null && !gate.enabled
+                              ? gate.reasonLabel
+                              : material.documentBody!,
                           selectable: true,
                           styleSheet: _workspaceMarkdownStyle(theme),
                         ),
+                      ),
+                    ),
+                  ],
+                  if (proficiency != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      proficiency.detailLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  if (gate != null && !gate.enabled) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      gate.reasonLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],

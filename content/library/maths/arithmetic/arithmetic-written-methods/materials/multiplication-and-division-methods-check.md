@@ -11,9 +11,9 @@ skill_ids:
 estimated_minutes: 8
 ---
 
-# Multiplication And Division Methods Check
+# Multiplication And Division Methods Assessment
 
-Keep this check short and direct.
+Keep this assessment short and direct.
 
 1. `27 x 4 =`
 2. `36 x 3 =`

@@ -10,9 +10,9 @@ skill_ids:
 estimated_minutes: 8
 ---
 
-# Written Addition And Subtraction Check
+# Written Addition And Subtraction Assessment
 
-Do not help during the check except to read the question.
+Do not help during the assessment except to read the question.
 
 1. `58 + 27 =`
 2. `346 + 178 =`

@@ -24,7 +24,7 @@ sessions:
       - bridge_through_10_addition_drill
     skill_ids:
       - bridge_through_10_for_addition
-  - title: Check that bridge-through-10 addition is holding in mixed order
+  - title: Assessment on bridge-through-10 addition
     material_ids:
       - bridge_through_10_addition_check
     skill_ids:

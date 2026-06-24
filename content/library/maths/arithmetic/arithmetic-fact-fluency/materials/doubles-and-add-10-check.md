@@ -22,21 +22,12 @@ runtime:
   persistence:
     store_response_log: false
     store_summary: true
+  gate:
+    requires_ready_material_id: doubles_and_add_10_drill
 ---
 
-# Doubles And Add 10 Check
+# Doubles And Add 10 Assessment
 
-```text
-2 + 2 =
-10 + 6 =
-8 + 8 =
-10 + 3 =
-5 + 5 =
-10 + 9 =
-7 + 7 =
-10 + 1 =
-9 + 9 =
-10 + 4 =
-```
+This is a generated assessment. Unlock it after the learner is ready to move on from the doubles and add-`10` drill.
 
 Passing guide: 8 or more quick correct answers means the anchor facts are ready to support make-`10` work.
