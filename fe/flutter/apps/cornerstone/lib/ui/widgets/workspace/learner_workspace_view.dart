@@ -138,6 +138,25 @@ class _LearnerWorkspaceView extends StatelessWidget {
     final progressSnapshot = learnerSurface.progressSnapshot;
     final recentWins = learnerSurface.recentWins;
 
+    SessionMaterial? primaryExecutableMaterial(SessionDetail session) {
+      final learnerExecutables = session.materials
+          .where(
+            (material) => material.isLearnerFacing && material.isExecutable,
+          )
+          .toList(growable: false);
+      if (learnerExecutables.isEmpty) {
+        return null;
+      }
+      for (final kind in const ['drill', 'quick_check']) {
+        for (final material in learnerExecutables) {
+          if (material.kind == kind) {
+            return material;
+          }
+        }
+      }
+      return learnerExecutables.first;
+    }
+
     if (MediaQuery.sizeOf(context).width > 1080) {
       return _LearnerWorkspaceDesktop(
         viewer: viewer,
@@ -158,6 +177,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
       final adultGroups = session.materialsByKind
           .where((group) => group.audience == 'adult')
           .toList(growable: false);
+      final primaryExecutable = primaryExecutableMaterial(session);
+      final isRepeatableRun =
+          primaryExecutable != null && session.status == 'completed';
       return Container(
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(18),
@@ -249,22 +271,47 @@ class _LearnerWorkspaceView extends StatelessWidget {
             ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: session.materialsByKind
-                    .map(
-                      (group) => _PillBadge(
-                        text:
-                            'material_kind:${_contractTermLabel(group.kind)} · count:${group.materialCount}',
-                        color: _materialKindBackgroundColor(theme, group.kind),
-                        textColor: _materialKindForegroundColor(
-                          theme,
-                          group.kind,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: session.materialsByKind
+                        .map(
+                          (group) => _PillBadge(
+                            text:
+                                '${_materialKindLabel(group.kind)} · ${group.materialCount}',
+                            color: _materialKindBackgroundColor(
+                              theme,
+                              group.kind,
+                            ),
+                            textColor: _materialKindForegroundColor(
+                              theme,
+                              group.kind,
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                  if (primaryExecutable != null) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () =>
+                          onStartActivity(session, primaryExecutable),
+                      icon: Icon(
+                        CornerstoneIcons.materialKind(primaryExecutable.kind),
+                        size: 18,
+                      ),
+                      label: Text(
+                        _materialActionLabel(
+                          primaryExecutable.kind,
+                          repeat: isRepeatableRun,
                         ),
                       ),
-                    )
-                    .toList(growable: false),
+                    ),
+                  ],
+                ],
               ),
             ),
             children: [

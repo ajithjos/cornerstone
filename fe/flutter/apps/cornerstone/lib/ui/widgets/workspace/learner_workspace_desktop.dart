@@ -150,6 +150,23 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     };
   }
 
+  SessionMaterial? _primaryExecutableMaterial(SessionDetail session) {
+    final learnerExecutables = session.materials
+        .where((material) => material.isLearnerFacing && material.isExecutable)
+        .toList(growable: false);
+    if (learnerExecutables.isEmpty) {
+      return null;
+    }
+    for (final kind in const ['drill', 'quick_check']) {
+      for (final material in learnerExecutables) {
+        if (material.kind == kind) {
+          return material;
+        }
+      }
+    }
+    return learnerExecutables.first;
+  }
+
   void _selectSession(
     LearnerAssignedJourney assignedJourney,
     SessionDetail session,
@@ -517,6 +534,10 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
       return const SizedBox.shrink();
     }
 
+    final hasRepeatableActivity =
+        session.status == 'completed' &&
+        _primaryExecutableMaterial(session) != null;
+
     return Padding(
       padding: const EdgeInsets.only(left: 20, bottom: 2),
       child: Material(
@@ -595,6 +616,12 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                                 ? theme.colorScheme.onSurfaceVariant
                                 : theme.colorScheme.primary,
                           ),
+                          if (hasRepeatableActivity)
+                            _PillBadge(
+                              text: 'Repeat',
+                              color: theme.colorScheme.secondaryContainer,
+                              textColor: theme.colorScheme.onSecondaryContainer,
+                            ),
                         ],
                       ),
                     ],
@@ -868,6 +895,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     final adultGroups = session.materialsByKind
         .where((group) => group.audience == 'adult')
         .toList(growable: false);
+    final primaryExecutable = _primaryExecutableMaterial(session);
+    final isRepeatableRun =
+        primaryExecutable != null && session.status == 'completed';
     return _SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -907,6 +937,23 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
               ),
             ],
           ),
+          if (primaryExecutable != null) ...[
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: () =>
+                  widget.onStartActivity(session, primaryExecutable),
+              icon: Icon(
+                CornerstoneIcons.materialKind(primaryExecutable.kind),
+                size: 18,
+              ),
+              label: Text(
+                _materialActionLabel(
+                  primaryExecutable.kind,
+                  repeat: isRepeatableRun,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           if (learnerGroups.isEmpty)
             const _MissingLearnerContentNotice()

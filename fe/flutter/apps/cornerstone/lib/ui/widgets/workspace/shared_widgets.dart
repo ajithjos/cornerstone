@@ -36,20 +36,53 @@ Color _materialKindForegroundColor(ThemeData theme, String kind) {
 
 IconData _materialKindIcon(String kind) => CornerstoneIcons.materialKind(kind);
 
-String _materialActionLabel(String kind) {
+String _materialKindLabel(String kind) {
   switch (kind) {
     case 'lesson_note':
-      return 'Open lesson_note material';
+      return 'Lesson note';
     case 'teaching_note':
-      return 'Open teaching_note material';
+      return 'Teaching note';
     case 'worksheet':
-      return 'Open worksheet material';
+      return 'Practice sheet';
     case 'drill':
-      return 'Start drill material';
+      return 'Drill';
     case 'quick_check':
-      return 'Start quick_check material';
+      return 'Quick check';
     default:
-      return 'Open session_material';
+      return _contractTermLabel(kind);
+  }
+}
+
+String _materialActionLabel(String kind, {bool repeat = false}) {
+  switch (kind) {
+    case 'lesson_note':
+      return 'Read lesson';
+    case 'teaching_note':
+      return 'Open teaching note';
+    case 'worksheet':
+      return 'Open practice sheet';
+    case 'drill':
+      return repeat ? 'Practice again' : 'Start drill';
+    case 'quick_check':
+      return repeat ? 'Try check again' : 'Start check';
+    default:
+      return 'Open material';
+  }
+}
+
+String _materialDocumentActionLabel(String kind) {
+  switch (kind) {
+    case 'lesson_note':
+      return 'Read lesson';
+    case 'teaching_note':
+      return 'Open teaching note';
+    case 'worksheet':
+      return 'Open practice sheet';
+    case 'drill':
+    case 'quick_check':
+      return 'Open details';
+    default:
+      return 'Open material';
   }
 }
 
@@ -162,7 +195,7 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _contractTermLabel(group.kind),
+                      _materialKindLabel(group.kind),
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
@@ -201,6 +234,10 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                 session != null &&
                 onStartActivity != null &&
                 material.isExecutable;
+            final isRepeatableRun =
+                canStart &&
+                (material.status == 'completed' ||
+                    session?.status == 'completed');
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
@@ -230,6 +267,12 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                       ),
                       if (material.isExecutable)
                         _ContractChip(domain: 'status', value: 'live'),
+                      if (isRepeatableRun)
+                        _PillBadge(
+                          text: 'repeat any time',
+                          color: theme.colorScheme.secondaryContainer,
+                          textColor: theme.colorScheme.onSecondaryContainer,
+                        ),
                     ],
                   ),
                   if (showDocumentBodies && hasDocumentBody) ...[
@@ -265,7 +308,12 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                               CornerstoneIcons.materialKind(material.kind),
                               size: 18,
                             ),
-                            label: Text(_materialActionLabel(material.kind)),
+                            label: Text(
+                              _materialActionLabel(
+                                material.kind,
+                                repeat: isRepeatableRun,
+                              ),
+                            ),
                           ),
                         if (canOpenDocument)
                           TextButton.icon(
@@ -276,7 +324,9 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                               CornerstoneIcons.document,
                               size: 18,
                             ),
-                            label: Text(_materialActionLabel(material.kind)),
+                            label: Text(
+                              _materialDocumentActionLabel(material.kind),
+                            ),
                           ),
                       ],
                     ),

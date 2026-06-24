@@ -5,7 +5,10 @@ String _contractTermLabel(String value) {
   if (normalized.isEmpty) {
     return 'unknown';
   }
-  return normalized;
+  return normalized
+      .split(RegExp(r'[_\-\s]+'))
+      .where((part) => part.isNotEmpty)
+      .join(' ');
 }
 
 class _ContractChip extends StatelessWidget {

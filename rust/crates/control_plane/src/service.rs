@@ -1578,7 +1578,7 @@ async fn load_learner_detail_payload(
         .flatten();
     let assigned_journeys =
         build_assigned_journeys(&state.pool, &library, &documents, learner_id, &assignments).await?;
-    let assigned_pathways = build_assigned_pathways(&assigned_journeys);
+    let assigned_pathways = build_assigned_pathways(&library, &assigned_journeys);
     let workspace = build_learner_workspace(
         &library,
         active_assignment.as_ref(),
@@ -2510,11 +2510,12 @@ fn build_learner_workspace(
     let mut practice_lane = workspace_sessions
         .iter()
         .filter(|session| {
-            session.status != "completed"
-                && session
-                    .materials_by_kind
-                    .iter()
-                    .any(|group| matches!(group.kind.as_str(), WORKSHEET_KIND | DRILL_KIND | QUICK_CHECK_KIND))
+            session.materials_by_kind.iter().any(|group| {
+                (group.kind == WORKSHEET_KIND && session.status != "completed")
+                    || (matches!(group.kind.as_str(), DRILL_KIND | QUICK_CHECK_KIND)
+                        && (session.status != "completed"
+                            || group.materials.iter().any(|material| material.runtime.is_some())))
+            })
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -2740,6 +2741,7 @@ async fn build_assigned_journeys(
 }
 
 fn build_assigned_pathways(
+    library: &LibraryBundle,
     assigned_journeys: &[crate::domain::LearnerAssignedJourneySummary],
 ) -> Vec<LearnerAssignedPathwaySummary> {
     let mut pathways: Vec<LearnerAssignedPathwaySummary> = Vec::new();
@@ -2779,7 +2781,44 @@ fn build_assigned_pathways(
         });
     }
 
+    for pathway in &mut pathways {
+        pathway.assigned_playlists.sort_by(|left, right| {
+            playlist_pathway_order(library, pathway.pathway_id.as_deref(), &left.journey.playlist_id)
+                .cmp(&playlist_pathway_order(
+                    library,
+                    pathway.pathway_id.as_deref(),
+                    &right.journey.playlist_id,
+                ))
+                .then_with(|| left.assignment.start_date.cmp(&right.assignment.start_date))
+                .then_with(|| left.journey.playlist_title.cmp(&right.journey.playlist_title))
+                .then_with(|| left.assignment.assignment_id.cmp(&right.assignment.assignment_id))
+        });
+    }
+    pathways.sort_by(|left, right| {
+        pathway_library_order(library, left.pathway_id.as_deref())
+            .cmp(&pathway_library_order(library, right.pathway_id.as_deref()))
+            .then_with(|| left.pathway_title.cmp(&right.pathway_title))
+    });
+
     pathways
+}
+
+fn pathway_library_order(library: &LibraryBundle, pathway_id: Option<&str>) -> usize {
+    pathway_id
+        .and_then(|id| library.pathways.iter().position(|pathway| pathway.pathway_id == id))
+        .unwrap_or(usize::MAX)
+}
+
+fn playlist_pathway_order(library: &LibraryBundle, pathway_id: Option<&str>, playlist_id: &str) -> usize {
+    pathway_id
+        .and_then(|id| library.pathways.iter().find(|pathway| pathway.pathway_id == id))
+        .and_then(|pathway| {
+            pathway
+                .playlist_ids
+                .iter()
+                .position(|candidate| candidate == playlist_id)
+        })
+        .unwrap_or(usize::MAX)
 }
 
 async fn fetch_assignments_for_learner(pool: &PgPool, learner_id: &str) -> anyhow::Result<Vec<AssignmentSummary>> {
@@ -2899,6 +2938,7 @@ async fn fetch_sessions(
         .fetch_all(pool)
         .await?;
         material_rows = ensure_session_material_rows(pool, library, &row, material_rows).await?;
+        order_session_material_rows(pool, library, &row, &mut material_rows).await?;
         let latest_evidence = fetch_latest_evidence_for_session(pool, &row.session_id).await?;
         let materials = build_session_material_summaries(library, documents, material_rows);
         let dominant_kind = dominant_kind_for_materials(materials.iter().map(|material| material.kind.as_str()));
@@ -2928,6 +2968,70 @@ async fn fetch_sessions(
         });
     }
     Ok(sessions)
+}
+
+async fn order_session_material_rows(
+    pool: &PgPool,
+    library: &LibraryBundle,
+    session_row: &SessionRow,
+    rows: &mut [SessionMaterialRow],
+) -> anyhow::Result<()> {
+    let material_order = authored_material_order_for_session(pool, library, session_row).await?;
+    rows.sort_by(|left, right| {
+        material_order
+            .get(&left.material_id)
+            .copied()
+            .unwrap_or(usize::MAX)
+            .cmp(&material_order.get(&right.material_id).copied().unwrap_or(usize::MAX))
+            .then_with(|| left.material_id.cmp(&right.material_id))
+            .then_with(|| left.skill_id.cmp(&right.skill_id))
+            .then_with(|| left.session_material_id.cmp(&right.session_material_id))
+    });
+    Ok(())
+}
+
+async fn authored_material_order_for_session(
+    pool: &PgPool,
+    library: &LibraryBundle,
+    session_row: &SessionRow,
+) -> anyhow::Result<BTreeMap<String, usize>> {
+    if session_row.assignment_id.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    let playlist_id = query_scalar::<_, String>("select playlist_id from assignment where assignment_id = $1")
+        .bind(&session_row.assignment_id)
+        .fetch_optional(pool)
+        .await?;
+    let Some(playlist_id) = playlist_id else {
+        return Ok(BTreeMap::new());
+    };
+    let Some(playlist) = library.playlist(&playlist_id) else {
+        return Ok(BTreeMap::new());
+    };
+
+    let authored_session = playlist
+        .session_pattern
+        .sessions
+        .iter()
+        .find(|session| session.day_offset == session_row.day_offset && session.title == session_row.title)
+        .or_else(|| {
+            playlist
+                .session_pattern
+                .sessions
+                .iter()
+                .find(|session| session.day_offset == session_row.day_offset)
+        });
+    let Some(authored_session) = authored_session else {
+        return Ok(BTreeMap::new());
+    };
+
+    Ok(authored_session
+        .material_ids
+        .iter()
+        .enumerate()
+        .map(|(index, material_id)| (material_id.clone(), index))
+        .collect())
 }
 
 async fn ensure_session_material_rows(
@@ -3596,7 +3700,7 @@ fn session_workspace_order(left: &SessionDetail, right: &SessionDetail) -> Order
 
 #[cfg(test)]
 mod tests {
-    use catalog::{BootstrapMembership, BootstrapTeam, BootstrapUser, IdentityBootstrap};
+    use catalog::{BootstrapMembership, BootstrapTeam, BootstrapUser, IdentityBootstrap, LibraryBundle, Pathway};
     use chrono::NaiveDate;
 
     use crate::domain::{
@@ -3768,26 +3872,30 @@ mod tests {
 
     #[test]
     fn assigned_pathways_group_playlists_under_their_pathway() {
-        let grouped = build_assigned_pathways(&[
-            sample_assigned_journey_in_pathway(
-                "assignment-1",
-                "pathway-addition",
-                "Addition Foundations",
-                sample_session_on(2026, 1, 2, "session-1", "Session 1"),
-            ),
-            sample_assigned_journey_in_pathway(
-                "assignment-2",
-                "pathway-addition",
-                "Addition Foundations",
-                sample_session_on(2026, 1, 3, "session-2", "Session 2"),
-            ),
-            sample_assigned_journey_in_pathway(
-                "assignment-3",
-                "pathway-subtraction",
-                "Subtraction Foundations",
-                sample_session_on(2026, 1, 4, "session-3", "Session 3"),
-            ),
-        ]);
+        let library = sample_library_with_pathways(vec![]);
+        let grouped = build_assigned_pathways(
+            &library,
+            &[
+                sample_assigned_journey_in_pathway(
+                    "assignment-1",
+                    "pathway-addition",
+                    "Addition Foundations",
+                    sample_session_on(2026, 1, 2, "session-1", "Session 1"),
+                ),
+                sample_assigned_journey_in_pathway(
+                    "assignment-2",
+                    "pathway-addition",
+                    "Addition Foundations",
+                    sample_session_on(2026, 1, 3, "session-2", "Session 2"),
+                ),
+                sample_assigned_journey_in_pathway(
+                    "assignment-3",
+                    "pathway-subtraction",
+                    "Subtraction Foundations",
+                    sample_session_on(2026, 1, 4, "session-3", "Session 3"),
+                ),
+            ],
+        );
 
         assert_eq!(grouped.len(), 2);
         assert_eq!(grouped[0].pathway_title, "Addition Foundations");
@@ -3795,6 +3903,64 @@ mod tests {
         assert_eq!(grouped[0].assigned_playlists.len(), 2);
         assert_eq!(grouped[1].pathway_title, "Subtraction Foundations");
         assert_eq!(grouped[1].playlist_count, 1);
+    }
+
+    #[test]
+    fn assigned_pathways_preserve_authored_playlist_order() {
+        let library = sample_library_with_pathways(vec![Pathway {
+            pathway_id: "pathway-addition".to_string(),
+            title: "Addition Foundations".to_string(),
+            subject_id: "maths".to_string(),
+            area_id: "arithmetic".to_string(),
+            recommended_age_min: 7,
+            recommended_age_max: 10,
+            stage_ids: vec![],
+            playlist_ids: vec![
+                "playlist-earliest".to_string(),
+                "playlist-middle".to_string(),
+                "playlist-latest".to_string(),
+            ],
+            entry_points: Default::default(),
+            description: String::new(),
+            source_path: String::new(),
+        }]);
+        let grouped = build_assigned_pathways(
+            &library,
+            &[
+                sample_assigned_journey_for_playlist(
+                    "assignment-latest",
+                    "playlist-latest",
+                    "pathway-addition",
+                    "Addition Foundations",
+                    sample_session_on(2026, 1, 4, "session-3", "Session 3"),
+                ),
+                sample_assigned_journey_for_playlist(
+                    "assignment-earliest",
+                    "playlist-earliest",
+                    "pathway-addition",
+                    "Addition Foundations",
+                    sample_session_on(2026, 1, 2, "session-1", "Session 1"),
+                ),
+                sample_assigned_journey_for_playlist(
+                    "assignment-middle",
+                    "playlist-middle",
+                    "pathway-addition",
+                    "Addition Foundations",
+                    sample_session_on(2026, 1, 3, "session-2", "Session 2"),
+                ),
+            ],
+        );
+
+        let playlist_ids = grouped[0]
+            .assigned_playlists
+            .iter()
+            .map(|journey| journey.journey.playlist_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            playlist_ids,
+            vec!["playlist-earliest", "playlist-middle", "playlist-latest"]
+        );
     }
 
     #[test]
@@ -3973,10 +4139,26 @@ mod tests {
         pathway_title: &str,
         session: SessionDetail,
     ) -> LearnerAssignedJourneySummary {
+        sample_assigned_journey_for_playlist(
+            assignment_id,
+            &format!("playlist-{assignment_id}"),
+            pathway_id,
+            pathway_title,
+            session,
+        )
+    }
+
+    fn sample_assigned_journey_for_playlist(
+        assignment_id: &str,
+        playlist_id: &str,
+        pathway_id: &str,
+        pathway_title: &str,
+        session: SessionDetail,
+    ) -> LearnerAssignedJourneySummary {
         LearnerAssignedJourneySummary {
             assignment: AssignmentSummary {
                 assignment_id: assignment_id.to_string(),
-                playlist_id: format!("playlist-{assignment_id}"),
+                playlist_id: playlist_id.to_string(),
                 title: format!("Playlist {assignment_id}"),
                 start_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
                 end_date: NaiveDate::from_ymd_opt(2026, 1, 4).expect("valid date"),
@@ -3990,7 +4172,7 @@ mod tests {
                 pathway_title: Some(pathway_title.to_string()),
                 pathway_description: Some("Description".to_string()),
                 pathway_route_path: None,
-                playlist_id: format!("playlist-{assignment_id}"),
+                playlist_id: playlist_id.to_string(),
                 playlist_title: format!("Playlist {assignment_id}"),
                 playlist_description: "Description".to_string(),
                 playlist_route_path: None,
@@ -4012,6 +4194,18 @@ mod tests {
                 session: session.clone(),
             }),
             sessions: vec![session],
+        }
+    }
+
+    fn sample_library_with_pathways(pathways: Vec<Pathway>) -> LibraryBundle {
+        LibraryBundle {
+            subjects: vec![],
+            areas: vec![],
+            pathways,
+            skills: vec![],
+            stages: vec![],
+            playlists: vec![],
+            materials: vec![],
         }
     }
 }
