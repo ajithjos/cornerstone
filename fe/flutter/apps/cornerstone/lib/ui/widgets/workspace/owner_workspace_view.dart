@@ -19,6 +19,8 @@ class _OwnerWorkspaceView extends StatelessWidget {
     required this.onOpenLibraryWorkspace,
     required this.onRecordSession,
     required this.onStartActivity,
+    this.onSetProficiencyOverride,
+    this.onClearProficiencyOverride,
   });
 
   final ViewerUser? viewer;
@@ -40,6 +42,10 @@ class _OwnerWorkspaceView extends StatelessWidget {
   final VoidCallback onRecordSession;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
+  final Future<void> Function(SessionMaterial material)?
+  onSetProficiencyOverride;
+  final Future<void> Function(SessionMaterial material)?
+  onClearProficiencyOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -618,6 +624,10 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         showDocumentBodies: true,
                                         onOpenLibraryRoute: onOpenLibraryRoute,
                                         onStartActivity: onStartActivity,
+                                        onSetProficiencyOverride:
+                                            onSetProficiencyOverride,
+                                        onClearProficiencyOverride:
+                                            onClearProficiencyOverride,
                                       ),
                                     )
                                   : Padding(
@@ -650,6 +660,10 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         showDocumentBodies: true,
                                         onOpenLibraryRoute: onOpenLibraryRoute,
                                         onStartActivity: onStartActivity,
+                                        onSetProficiencyOverride:
+                                            onSetProficiencyOverride,
+                                        onClearProficiencyOverride:
+                                            onClearProficiencyOverride,
                                       ),
                                     )
                                   : Padding(

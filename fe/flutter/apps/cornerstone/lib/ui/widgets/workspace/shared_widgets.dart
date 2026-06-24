@@ -170,6 +170,8 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
     this.viewerCanReadLibrary = false,
     this.onOpenLibraryRoute,
     this.onStartActivity,
+    this.onSetProficiencyOverride,
+    this.onClearProficiencyOverride,
   });
 
   final SessionMaterialKindGroup group;
@@ -179,6 +181,10 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
   final ValueChanged<String>? onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)?
   onStartActivity;
+  final Future<void> Function(SessionMaterial material)?
+  onSetProficiencyOverride;
+  final Future<void> Function(SessionMaterial material)?
+  onClearProficiencyOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -342,11 +348,27 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                   if (proficiency != null) ...[
                     const SizedBox(height: 10),
                     Text(
-                      proficiency.detailLabel,
+                      [
+                        proficiency.detailLabel,
+                        if (proficiency.maxDurationSeconds != null)
+                          'target time ${proficiency.maxDurationSeconds}s',
+                        if (proficiency.overrideApplied) 'custom target',
+                      ].join(' / '),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
+                    if (proficiency.overrideApplied &&
+                        proficiency.overrideReason.trim().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        proficiency.overrideReason,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ],
                   if (gate != null && !gate.enabled) ...[
                     const SizedBox(height: 10),
@@ -391,6 +413,29 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                             label: Text(
                               _materialDocumentActionLabel(material.kind),
                             ),
+                          ),
+                        if (proficiency != null &&
+                            onSetProficiencyOverride != null)
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                onSetProficiencyOverride!(material),
+                            icon: const Icon(Icons.tune_rounded, size: 18),
+                            label: Text(
+                              proficiency.overrideApplied
+                                  ? 'Edit target'
+                                  : 'Custom target',
+                            ),
+                          ),
+                        if (proficiency?.overrideApplied == true &&
+                            onClearProficiencyOverride != null)
+                          TextButton.icon(
+                            onPressed: () =>
+                                onClearProficiencyOverride!(material),
+                            icon: const Icon(
+                              Icons.settings_backup_restore,
+                              size: 18,
+                            ),
+                            label: const Text('Use default target'),
                           ),
                       ],
                     ),
@@ -501,6 +546,8 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
     required this.showDocumentBodies,
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
+    this.onSetProficiencyOverride,
+    this.onClearProficiencyOverride,
   });
 
   final String title;
@@ -514,6 +561,10 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
   final ValueChanged<String> onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
+  final Future<void> Function(SessionMaterial material)?
+  onSetProficiencyOverride;
+  final Future<void> Function(SessionMaterial material)?
+  onClearProficiencyOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -574,6 +625,8 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
                 showDocumentBodies: showDocumentBodies,
                 onOpenLibraryRoute: onOpenLibraryRoute,
                 onStartActivity: onStartActivity,
+                onSetProficiencyOverride: onSetProficiencyOverride,
+                onClearProficiencyOverride: onClearProficiencyOverride,
               ),
             ),
         ],

@@ -447,6 +447,9 @@ pub struct SessionMaterialProficiencySummary {
     pub target_accuracy: f64,
     pub consecutive_passes_required: usize,
     pub target_correct_count: Option<usize>,
+    pub max_duration_seconds: Option<u32>,
+    pub override_applied: bool,
+    pub override_reason: String,
     pub attempt_count: usize,
     pub recent_attempt_count: usize,
     pub recent_average_accuracy: f64,
@@ -465,6 +468,26 @@ pub struct SessionMaterialGateSummary {
     pub prerequisite_title: String,
     pub prerequisite_verdict: String,
     pub reason_label: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProficiencyOverrideRequest {
+    pub material_id: String,
+    pub min_attempts: i32,
+    pub window_size: i32,
+    pub target_accuracy: f64,
+    pub consecutive_passes: i32,
+    pub target_correct_count: Option<i32>,
+    pub max_duration_seconds: Option<i32>,
+    #[serde(default)]
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProficiencyOverrideResponse {
+    pub status: String,
+    pub learner_id: String,
+    pub material_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -550,6 +573,7 @@ pub struct ActivityInstance {
     pub template_id: String,
     pub instructions: String,
     pub estimated_minutes: u16,
+    pub started_at: DateTime<Utc>,
     pub scoring: ActivityScoringSummary,
     pub items: Vec<ActivityItem>,
 }
@@ -557,7 +581,7 @@ pub struct ActivityInstance {
 #[derive(Debug, Clone, Serialize)]
 pub struct ActivityScoringSummary {
     pub pass_accuracy: Option<f64>,
-    pub soft_time_limit_seconds: Option<u32>,
+    pub max_duration_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -598,6 +622,9 @@ pub struct ActivitySummary {
     pub accuracy: f64,
     pub passed: bool,
     pub completion_reason: String,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: DateTime<Utc>,
+    pub duration_seconds: i32,
     pub weak_groups: Vec<String>,
 }
 

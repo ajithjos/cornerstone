@@ -187,7 +187,7 @@ pub struct MaterialRuntime {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaterialRuntimeScoring {
     pub pass_accuracy: Option<f64>,
-    pub soft_time_limit_seconds: Option<u32>,
+    pub max_duration_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,6 +205,7 @@ pub struct MaterialRuntimeProficiency {
     pub target_accuracy: f64,
     pub consecutive_passes: usize,
     pub target_correct_count: Option<usize>,
+    pub max_duration_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1558,6 +1559,12 @@ fn validate_catalog(
                         "material '{}' has invalid proficiency target_accuracy {}",
                         material.id,
                         proficiency.target_accuracy
+                    );
+                }
+                if proficiency.max_duration_seconds == Some(0) {
+                    bail!(
+                        "material '{}' has invalid proficiency max_duration_seconds 0",
+                        material.id
                     );
                 }
             }

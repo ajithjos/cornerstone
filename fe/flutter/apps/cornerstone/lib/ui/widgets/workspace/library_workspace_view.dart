@@ -300,7 +300,7 @@ class _LibraryWorkspaceView extends StatelessWidget {
                                           0)
                                         _PillBadge(
                                           text:
-                                              '${playlist.deliveryShape.quickCheckCount} quick checks',
+                                              '${playlist.deliveryShape.quickCheckCount} assessments',
                                           color: _materialKindBackgroundColor(
                                             theme,
                                             'quick_check',

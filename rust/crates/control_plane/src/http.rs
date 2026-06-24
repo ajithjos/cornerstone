@@ -4,7 +4,7 @@ use anyhow::{Error, anyhow};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
@@ -22,11 +22,12 @@ use crate::domain::{
     ViewerSessionResponse,
 };
 use crate::service::{
-    AppState, apply_bootstrap, complete_activity_instance, create_assignment, delete_viewer_session,
-    fetch_auth_options, fetch_dashboard, fetch_learner_detail, fetch_learner_workspace, fetch_library,
-    fetch_library_document, fetch_library_workspace, fetch_viewer_session, finish_google_oauth_flow, list_learners,
-    list_library_documents, rebuild_review_items, record_session, reload_library, resolve_session_context,
-    start_google_oauth_flow, start_session_material_activity, switch_active_team, switch_active_user,
+    AppState, apply_bootstrap, clear_proficiency_override, complete_activity_instance, create_assignment,
+    delete_viewer_session, fetch_auth_options, fetch_dashboard, fetch_learner_detail, fetch_learner_workspace,
+    fetch_library, fetch_library_document, fetch_library_workspace, fetch_viewer_session, finish_google_oauth_flow,
+    list_learners, list_library_documents, rebuild_review_items, record_session, reload_library,
+    resolve_session_context, set_proficiency_override, start_google_oauth_flow, start_session_material_activity,
+    switch_active_team, switch_active_user,
 };
 
 const SESSION_COOKIE_NAME: &str = "cornerstone_session";
@@ -150,6 +151,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/learners", get(get_learners))
         .route("/api/v1/learners/{learner_id}", get(get_learner_detail))
         .route("/api/v1/learners/{learner_id}/workspace", get(get_learner_workspace))
+        .route(
+            "/api/v1/learners/{learner_id}/proficiency-overrides",
+            post(post_proficiency_override),
+        )
+        .route(
+            "/api/v1/learners/{learner_id}/proficiency-overrides/{material_id}",
+            delete(delete_proficiency_override),
+        )
         .route("/api/v1/assignments", post(post_assignment))
         .route("/api/v1/sessions/{session_id}/record", post(post_record_session))
         .route(
@@ -351,6 +360,29 @@ async fn post_assignment(
 ) -> Result<Json<crate::domain::AssignmentResponse>, ApiError> {
     let context = session_context_from_jar(&jar, &state).await?;
     Ok(Json(create_assignment(&state, &context, request).await?))
+}
+
+async fn post_proficiency_override(
+    Path(learner_id): Path<String>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<crate::domain::ProficiencyOverrideRequest>,
+) -> Result<Json<crate::domain::ProficiencyOverrideResponse>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        set_proficiency_override(&state, &context, &learner_id, request).await?,
+    ))
+}
+
+async fn delete_proficiency_override(
+    Path((learner_id, material_id)): Path<(String, String)>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<crate::domain::ProficiencyOverrideResponse>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        clear_proficiency_override(&state, &context, &learner_id, &material_id).await?,
+    ))
 }
 
 async fn post_record_session(

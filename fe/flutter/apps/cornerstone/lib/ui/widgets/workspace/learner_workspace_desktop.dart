@@ -9,6 +9,8 @@ class _LearnerWorkspaceDesktop extends StatefulWidget {
     required this.viewerCanReadLibrary,
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
+    this.onSetProficiencyOverride,
+    this.onClearProficiencyOverride,
   });
 
   final ViewerUser? viewer;
@@ -17,6 +19,10 @@ class _LearnerWorkspaceDesktop extends StatefulWidget {
   final ValueChanged<String> onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
+  final Future<void> Function(SessionMaterial material)?
+  onSetProficiencyOverride;
+  final Future<void> Function(SessionMaterial material)?
+  onClearProficiencyOverride;
 
   @override
   State<_LearnerWorkspaceDesktop> createState() =>
@@ -987,6 +993,8 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
               showDocumentBodies: true,
               onOpenLibraryRoute: widget.onOpenLibraryRoute,
               onStartActivity: widget.onStartActivity,
+              onSetProficiencyOverride: widget.onSetProficiencyOverride,
+              onClearProficiencyOverride: widget.onClearProficiencyOverride,
             ),
           if (_isSupportView) ...[
             const SizedBox(height: 12),
@@ -1002,6 +1010,8 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
               showDocumentBodies: true,
               onOpenLibraryRoute: widget.onOpenLibraryRoute,
               onStartActivity: widget.onStartActivity,
+              onSetProficiencyOverride: widget.onSetProficiencyOverride,
+              onClearProficiencyOverride: widget.onClearProficiencyOverride,
             ),
           ],
         ],

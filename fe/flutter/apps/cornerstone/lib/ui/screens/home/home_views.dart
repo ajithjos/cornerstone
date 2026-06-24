@@ -114,6 +114,41 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
     );
   }
 
+  List<SessionMaterial> _profileProgressMaterials(
+    LearnerWorkspacePayload? workspace,
+  ) {
+    if (workspace == null) return const <SessionMaterial>[];
+    final seenMaterialIds = <String>{};
+    final materials = <SessionMaterial>[];
+    for (final journey in workspace.assignedJourneys) {
+      for (final session in journey.sessions) {
+        for (final material in session.materials) {
+          if (material.proficiency == null ||
+              !seenMaterialIds.add(material.materialId)) {
+            continue;
+          }
+          materials.add(material);
+        }
+      }
+    }
+    for (final session in workspace.sessions) {
+      for (final material in session.materials) {
+        if (material.proficiency == null ||
+            !seenMaterialIds.add(material.materialId)) {
+          continue;
+        }
+        materials.add(material);
+      }
+    }
+    materials.sort((left, right) {
+      final leftReady = left.proficiency?.readyToMoveOn ?? false;
+      final rightReady = right.proficiency?.readyToMoveOn ?? false;
+      if (leftReady != rightReady) return leftReady ? 1 : -1;
+      return left.title.compareTo(right.title);
+    });
+    return materials;
+  }
+
   Widget _buildAccountView(BuildContext context, DashboardPayload dashboard) {
     final theme = Theme.of(context);
     final username = _shellUsername();
@@ -123,6 +158,8 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
     final switchableUsers =
         _viewerSession?.availableUsers ?? const <ViewerUser>[];
     final currentTeam = dashboard.team ?? _viewerSession?.team;
+    final profileWorkspace = _learnerWorkspace;
+    final progressMaterials = _profileProgressMaterials(profileWorkspace);
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
       children: [
@@ -343,6 +380,141 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                   icon: const Icon(Icons.logout_rounded, size: 18),
                   label: const Text('Log out'),
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+        if (profileWorkspace != null) ...[
+          _SurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Progress', style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 8),
+                Text(
+                  '${profileWorkspace.learner.displayName} can see what is secure, what needs more practice, and which targets are custom.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _PillBadge(
+                      text:
+                          '${profileWorkspace.workspace.progressSnapshot.secureCount} secure',
+                      color: theme.colorScheme.secondaryContainer,
+                      textColor: theme.colorScheme.onSecondaryContainer,
+                    ),
+                    _PillBadge(
+                      text:
+                          '${profileWorkspace.workspace.progressSnapshot.developingCount} developing',
+                      color: theme.colorScheme.tertiaryContainer,
+                      textColor: theme.colorScheme.onTertiaryContainer,
+                    ),
+                    _PillBadge(
+                      text:
+                          '${profileWorkspace.workspace.progressSnapshot.pendingSessionCount} sessions left',
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                      textColor: theme.colorScheme.primary,
+                    ),
+                    _PillBadge(
+                      text:
+                          '${profileWorkspace.workspace.progressSnapshot.reviewItemCount} review',
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      textColor: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+                if (profileWorkspace.workspace.recentWins.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  Text('Recent wins', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  ...profileWorkspace.workspace.recentWins
+                      .take(3)
+                      .map(
+                        (win) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.check_circle_rounded,
+                            color: theme.colorScheme.primary,
+                          ),
+                          title: Text(win.sessionTitle),
+                          subtitle: Text(
+                            win.notes.isEmpty ? win.recordedAt : win.notes,
+                          ),
+                          trailing: _PillBadge(
+                            text: win.scoreLabel,
+                            color: theme.colorScheme.secondaryContainer,
+                            textColor: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ),
+                ],
+                if (progressMaterials.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  Text('Practice targets', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  ...progressMaterials.map((material) {
+                    final proficiency = material.proficiency!;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.42),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  material.title,
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                              ),
+                              _PillBadge(
+                                text: proficiency.verdictLabel,
+                                color: _proficiencyBackgroundColor(
+                                  theme,
+                                  proficiency,
+                                ),
+                                textColor: _proficiencyForegroundColor(
+                                  theme,
+                                  proficiency,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            [
+                              proficiency.detailLabel,
+                              'best ${proficiency.bestCorrectCount}',
+                              if (proficiency.targetCorrectCount != null)
+                                'target ${proficiency.targetCorrectCount}',
+                              if (proficiency.maxDurationSeconds != null)
+                                '${proficiency.maxDurationSeconds}s target',
+                              if (proficiency.overrideApplied) 'custom',
+                            ].join(' / '),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
               ],
             ),
           ),

@@ -15,7 +15,7 @@ runtime:
     difficulty: advanced
   scoring:
     pass_accuracy: 0.8
-    soft_time_limit_seconds: 120
+    max_duration_seconds: 120
   persistence:
     store_response_log: false
     store_summary: true
@@ -25,6 +25,6 @@ runtime:
 
 # Bridge Through 10 Subtraction Assessment
 
-This is a generated assessment. Unlock it after the learner is ready to move on from the bridge-through-`10` subtraction drill.
+This assessment opens after the practice target is ready. Work steadily and carefully.
 
 Passing guide: 8 or more quick correct answers means the learner can use bridge-through-`10` subtraction in mixed order.

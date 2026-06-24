@@ -5,11 +5,12 @@ use std::sync::Arc;
 
 use anyhow::{Context, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use catalog::MaterialRuntimeProficiency;
 use catalog::{
     BootstrapMembership, BootstrapUser, IdentityBootstrap, LibraryBundle, LibraryDocument, LibraryValidationReport,
     PlaylistSession, load_bootstrap, load_library_content,
 };
-use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
 use learning_activity_runtime::{self as runtime, GeneratedActivity, ScoredActivity};
 use reqwest::Url;
 use serde_json::{Value as JsonValue, json};
@@ -30,11 +31,12 @@ use crate::domain::{
     LearnerWorkspaceSummary, LibraryDocumentPayload, LibraryDocumentSummary, LibraryReloadResponse,
     LibraryWorkspaceResponse, MaterialWorkspaceSummary, PathwayEntryPointSummary, PathwayWorkspaceSummary,
     PlaylistAssignmentTargetSummary, PlaylistDeliveryShapeSummary, PlaylistSessionWorkspaceSummary,
-    PlaylistWorkspaceSummary, RecordSessionRequest, RecordSessionResponse, ReviewItemRow, ReviewItemSummary,
-    ReviewRebuildResponse, SessionDetail, SessionMaterialGateSummary, SessionMaterialKindGroupSummary,
-    SessionMaterialProficiencySummary, SessionMaterialRow, SessionMaterialRuntimeSummary, SessionMaterialSummary,
-    SessionRow, SessionSummary, SkillProgressRow, SkillProgressSummary, StageProgress, TeamMemberRow,
-    TeamMemberSummary, TeamRow, TeamSummary, ViewerSessionResponse, WorkspaceMaterialKindGroupSummary,
+    PlaylistWorkspaceSummary, ProficiencyOverrideRequest, ProficiencyOverrideResponse, RecordSessionRequest,
+    RecordSessionResponse, ReviewItemRow, ReviewItemSummary, ReviewRebuildResponse, SessionDetail,
+    SessionMaterialGateSummary, SessionMaterialKindGroupSummary, SessionMaterialProficiencySummary, SessionMaterialRow,
+    SessionMaterialRuntimeSummary, SessionMaterialSummary, SessionRow, SessionSummary, SkillProgressRow,
+    SkillProgressSummary, StageProgress, TeamMemberRow, TeamMemberSummary, TeamRow, TeamSummary, ViewerSessionResponse,
+    WorkspaceMaterialKindGroupSummary,
 };
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -72,6 +74,7 @@ struct ActivityAttemptSummary {
     correct_count: usize,
     item_count: usize,
     accuracy: f64,
+    duration_seconds: i32,
 }
 
 #[derive(Clone)]
@@ -1717,6 +1720,101 @@ pub async fn create_assignment(
     })
 }
 
+pub async fn set_proficiency_override(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    learner_id: &str,
+    request: ProficiencyOverrideRequest,
+) -> anyhow::Result<ProficiencyOverrideResponse> {
+    ensure_viewer_can_manage_team(&context.active_user)?;
+    ensure_viewer_can_access_learner(&context.active_user, learner_id)?;
+    if request.min_attempts <= 0 || request.window_size <= 0 || request.consecutive_passes <= 0 {
+        bail!("override counts must be greater than zero");
+    }
+    if !(0.0..=1.0).contains(&request.target_accuracy) || request.target_accuracy <= 0.0 {
+        bail!("target accuracy must be between 0 and 1");
+    }
+    if request.target_correct_count.unwrap_or(0) < 0 || request.max_duration_seconds.unwrap_or(1) <= 0 {
+        bail!("target correct count and max duration must not be negative");
+    }
+    let library = state.library.read().await.clone();
+    let material = library
+        .material(&request.material_id)
+        .ok_or_else(|| anyhow!("material '{}' not found", request.material_id))?;
+    if material
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.proficiency.as_ref())
+        .is_none()
+    {
+        bail!("material '{}' does not have a proficiency target", material.id);
+    }
+
+    let now = Utc::now();
+    query(
+        "insert into learner_material_proficiency_override (
+            learner_id, material_id, min_attempts, window_size, target_accuracy, consecutive_passes,
+            target_correct_count, max_duration_seconds, enabled, reason, created_by_user_id, created_at, updated_at, disabled_at
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $11, null)
+        on conflict (learner_id, material_id) do update
+        set min_attempts = excluded.min_attempts,
+            window_size = excluded.window_size,
+            target_accuracy = excluded.target_accuracy,
+            consecutive_passes = excluded.consecutive_passes,
+            target_correct_count = excluded.target_correct_count,
+            max_duration_seconds = excluded.max_duration_seconds,
+            enabled = true,
+            reason = excluded.reason,
+            updated_at = excluded.updated_at,
+            disabled_at = null",
+    )
+    .bind(learner_id)
+    .bind(&request.material_id)
+    .bind(request.min_attempts)
+    .bind(request.window_size)
+    .bind(request.target_accuracy)
+    .bind(request.consecutive_passes)
+    .bind(request.target_correct_count)
+    .bind(request.max_duration_seconds)
+    .bind(request.reason.trim())
+    .bind(&context.active_user.user_id)
+    .bind(now)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(ProficiencyOverrideResponse {
+        status: "ok".to_string(),
+        learner_id: learner_id.to_string(),
+        material_id: request.material_id,
+    })
+}
+
+pub async fn clear_proficiency_override(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    learner_id: &str,
+    material_id: &str,
+) -> anyhow::Result<ProficiencyOverrideResponse> {
+    ensure_viewer_can_manage_team(&context.active_user)?;
+    ensure_viewer_can_access_learner(&context.active_user, learner_id)?;
+    query(
+        "update learner_material_proficiency_override
+         set enabled = false, updated_at = $3, disabled_at = $3
+         where learner_id = $1 and material_id = $2",
+    )
+    .bind(learner_id)
+    .bind(material_id)
+    .bind(Utc::now())
+    .execute(&state.pool)
+    .await?;
+    Ok(ProficiencyOverrideResponse {
+        status: "ok".to_string(),
+        learner_id: learner_id.to_string(),
+        material_id: material_id.to_string(),
+    })
+}
+
 pub async fn record_session(
     state: &Arc<AppState>,
     context: &SessionContext,
@@ -1793,6 +1891,7 @@ pub async fn start_session_material_activity(
             bail!("{}", gate_summary.reason_label);
         }
     }
+    let started_at = Utc::now();
     let generated =
         runtime::generate_activity(material, runtime::activity_seed()).context("failed to generate activity")?;
 
@@ -1814,6 +1913,7 @@ pub async fn start_session_material_activity(
             activity_instance_id: runtime::build_activity_instance_id(
                 &session_material.session_material_id,
                 generated.seed,
+                started_at.timestamp_millis(),
             ),
             session_id: session.session_id,
             session_material_id: session_material.session_material_id.clone(),
@@ -1824,9 +1924,10 @@ pub async fn start_session_material_activity(
             template_id: generated.template_id,
             instructions: generated.instructions,
             estimated_minutes: material.estimated_minutes,
+            started_at,
             scoring: ActivityScoringSummary {
                 pass_accuracy: generated.pass_accuracy,
-                soft_time_limit_seconds: generated.soft_time_limit_seconds,
+                max_duration_seconds: generated.max_duration_seconds,
             },
             items: generated
                 .items
@@ -1847,7 +1948,13 @@ pub async fn complete_activity_instance(
     activity_instance_id: &str,
     request: CompleteActivityRequest,
 ) -> anyhow::Result<CompleteActivityResponse> {
-    let (session_material_id, seed) = runtime::parse_activity_instance_id(activity_instance_id)?;
+    let (session_material_id, seed, started_at_millis) = runtime::parse_activity_instance_id(activity_instance_id)?;
+    let completed_at = Utc::now();
+    let started_at = started_at_millis.and_then(|millis| Utc.timestamp_millis_opt(millis).single());
+    let measured_duration_seconds = started_at
+        .map(|started_at| completed_at.signed_duration_since(started_at).num_seconds().max(1) as i32)
+        .unwrap_or_else(|| request.duration_seconds.max(1));
+    let duration_seconds = measured_duration_seconds.max(request.duration_seconds.max(1));
     let session_material = load_session_material_row(&state.pool, &session_material_id).await?;
     let session = load_session_row(&state.pool, &session_material.session_id).await?;
     ensure_viewer_can_access_learner(&context.active_user, &session.learner_id)?;
@@ -1867,6 +1974,16 @@ pub async fn complete_activity_instance(
         .collect::<Vec<_>>();
     let scored =
         runtime::score_activity(material, &generated, &runtime_responses).context("failed to score activity")?;
+    let duration_passed = generated
+        .max_duration_seconds
+        .map(|max_seconds| duration_seconds as u32 <= max_seconds)
+        .unwrap_or(true);
+    let activity_passed = scored.passed && duration_passed;
+    let completion_reason = if !duration_passed {
+        "completed_over_time_limit".to_string()
+    } else {
+        scored.completion_reason.clone()
+    };
     let (_, materials) = load_session_and_material_rows(&state.pool, &session.session_id).await?;
 
     let notes = build_activity_notes(&material.title, &scored, &request.notes);
@@ -1880,7 +1997,11 @@ pub async fn complete_activity_instance(
         material,
         &generated,
         &scored,
-        request.duration_seconds,
+        started_at,
+        completed_at,
+        duration_seconds,
+        activity_passed,
+        &completion_reason,
     );
     let persisted = persist_session_result(
         state,
@@ -1889,7 +2010,7 @@ pub async fn complete_activity_instance(
         SessionResultRecord {
             score: scored.correct_count as f64,
             max_score: scored.item_count as f64,
-            duration_minutes: duration_minutes_from_seconds(request.duration_seconds),
+            duration_minutes: duration_minutes_from_seconds(duration_seconds),
             notes,
             artifact_kind: "activity_summary",
             artifact_summary,
@@ -1903,6 +2024,8 @@ pub async fn complete_activity_instance(
         .and_then(|runtime| runtime.proficiency.as_ref())
     {
         Some(target) => {
+            let (target, override_applied, override_reason) =
+                effective_proficiency_target(&state.pool, &session.learner_id, &material.id, target).await?;
             let attempts = fetch_activity_attempts_for_material(
                 &state.pool,
                 &state.config.artifacts_root,
@@ -1910,7 +2033,12 @@ pub async fn complete_activity_instance(
                 &material.id,
             )
             .await?;
-            Some(build_proficiency_summary(target, &attempts))
+            Some(build_proficiency_summary(
+                &target,
+                &attempts,
+                override_applied,
+                &override_reason,
+            ))
         }
         None => None,
     };
@@ -1924,8 +2052,11 @@ pub async fn complete_activity_instance(
             correct_count: scored.correct_count,
             item_count: scored.item_count,
             accuracy: scored.accuracy,
-            passed: scored.passed,
-            completion_reason: scored.completion_reason,
+            passed: activity_passed,
+            completion_reason,
+            started_at,
+            completed_at,
+            duration_seconds,
             weak_groups: scored.weak_groups,
         },
         proficiency,
@@ -3256,10 +3387,17 @@ async fn enrich_session_material_runtime_state(
         };
         if let Some(runtime) = &document.runtime {
             if let Some(target) = &runtime.proficiency {
+                let (target, override_applied, override_reason) =
+                    effective_proficiency_target(pool, learner_id, &material.material_id, target).await?;
                 let attempts =
                     fetch_activity_attempts_for_material(pool, artifacts_root, learner_id, &material.material_id)
                         .await?;
-                material.proficiency = Some(build_proficiency_summary(target, &attempts));
+                material.proficiency = Some(build_proficiency_summary(
+                    &target,
+                    &attempts,
+                    override_applied,
+                    &override_reason,
+                ));
             }
             if let Some(gate) = &runtime.gate {
                 material.gate = Some(
@@ -3292,10 +3430,17 @@ async fn build_material_gate_summary(
     let proficiency = match prerequisite.and_then(|material| material.runtime.as_ref()) {
         Some(runtime) => match &runtime.proficiency {
             Some(target) => {
+                let (target, override_applied, override_reason) =
+                    effective_proficiency_target(pool, learner_id, prerequisite_material_id, target).await?;
                 let attempts =
                     fetch_activity_attempts_for_material(pool, artifacts_root, learner_id, prerequisite_material_id)
                         .await?;
-                Some(build_proficiency_summary(target, &attempts))
+                Some(build_proficiency_summary(
+                    &target,
+                    &attempts,
+                    override_applied,
+                    &override_reason,
+                ))
             }
             None => None,
         },
@@ -3313,11 +3458,14 @@ async fn build_material_gate_summary(
         "Assessment is unlocked.".to_string()
     } else if let Some(summary) = proficiency {
         format!(
-            "Unlocks when {} is ready to move on. {}",
+            "Keep practising {}. This assessment opens when that practice is ready. {}",
             prerequisite_title, summary.detail_label
         )
     } else {
-        format!("Unlocks when {} has a configured practice target.", prerequisite_title)
+        format!(
+            "Keep practising {}. This assessment opens after practice has a target.",
+            prerequisite_title
+        )
     };
 
     Ok(SessionMaterialGateSummary {
@@ -3367,18 +3515,22 @@ async fn fetch_activity_attempts_for_material(
                 correct_count as f64 / item_count as f64
             }
         });
+        let duration_seconds = payload.get("duration_seconds").and_then(JsonValue::as_i64).unwrap_or(0) as i32;
         attempts.push(ActivityAttemptSummary {
             correct_count,
             item_count,
             accuracy,
+            duration_seconds,
         });
     }
     Ok(attempts)
 }
 
 fn build_proficiency_summary(
-    target: &catalog::MaterialRuntimeProficiency,
+    target: &MaterialRuntimeProficiency,
     attempts: &[ActivityAttemptSummary],
+    override_applied: bool,
+    override_reason: &str,
 ) -> SessionMaterialProficiencySummary {
     let window_size = target.window_size.max(1);
     let min_attempts = target.min_attempts.max(1);
@@ -3429,6 +3581,9 @@ fn build_proficiency_summary(
         target_accuracy: target.target_accuracy,
         consecutive_passes_required: consecutive_required,
         target_correct_count: target.target_correct_count,
+        max_duration_seconds: target.max_duration_seconds,
+        override_applied,
+        override_reason: override_reason.to_string(),
         attempt_count: attempts.len(),
         recent_attempt_count,
         recent_average_accuracy,
@@ -3441,17 +3596,65 @@ fn build_proficiency_summary(
     }
 }
 
-fn attempt_meets_proficiency(target: &catalog::MaterialRuntimeProficiency, attempt: &ActivityAttemptSummary) -> bool {
+fn attempt_meets_proficiency(target: &MaterialRuntimeProficiency, attempt: &ActivityAttemptSummary) -> bool {
     if attempt.item_count == 0 {
         return false;
     }
     if attempt.accuracy < target.target_accuracy {
         return false;
     }
+    if let Some(max_duration_seconds) = target.max_duration_seconds {
+        if attempt.duration_seconds <= 0 || attempt.duration_seconds as u32 > max_duration_seconds {
+            return false;
+        }
+    }
     target
         .target_correct_count
         .map(|target_correct_count| attempt.correct_count >= target_correct_count)
         .unwrap_or(true)
+}
+
+async fn effective_proficiency_target(
+    pool: &PgPool,
+    learner_id: &str,
+    material_id: &str,
+    authored: &MaterialRuntimeProficiency,
+) -> anyhow::Result<(MaterialRuntimeProficiency, bool, String)> {
+    let row = query_as::<_, (i32, i32, f64, i32, Option<i32>, Option<i32>, String)>(
+        "select min_attempts, window_size, target_accuracy, consecutive_passes, target_correct_count, max_duration_seconds, reason
+         from learner_material_proficiency_override
+         where learner_id = $1 and material_id = $2 and enabled = true",
+    )
+    .bind(learner_id)
+    .bind(material_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some((
+        min_attempts,
+        window_size,
+        target_accuracy,
+        consecutive_passes,
+        target_correct_count,
+        max_duration_seconds,
+        reason,
+    )) = row
+    else {
+        return Ok((authored.clone(), false, String::new()));
+    };
+
+    Ok((
+        MaterialRuntimeProficiency {
+            min_attempts: min_attempts.max(1) as usize,
+            window_size: window_size.max(1) as usize,
+            target_accuracy,
+            consecutive_passes: consecutive_passes.max(1) as usize,
+            target_correct_count: target_correct_count.map(|value| value.max(0) as usize),
+            max_duration_seconds: max_duration_seconds.map(|value| value.max(1) as u32),
+        },
+        true,
+        reason,
+    ))
 }
 
 async fn load_session_row(pool: &PgPool, session_id: &str) -> anyhow::Result<SessionRow> {
@@ -3528,7 +3731,11 @@ fn build_activity_artifact_payload(
     material: &catalog::MaterialDocument,
     generated: &GeneratedActivity,
     scored: &ScoredActivity,
+    started_at: Option<DateTime<Utc>>,
+    completed_at: DateTime<Utc>,
     duration_seconds: i32,
+    passed: bool,
+    completion_reason: &str,
 ) -> JsonValue {
     let mut payload = json!({
         "session_id": session.session_id,
@@ -3543,10 +3750,13 @@ fn build_activity_artifact_payload(
         "correct_count": scored.correct_count,
         "item_count": scored.item_count,
         "accuracy": scored.accuracy,
-        "passed": scored.passed,
-        "completion_reason": scored.completion_reason,
+        "passed": passed,
+        "completion_reason": completion_reason,
         "weak_groups": scored.weak_groups,
+        "started_at": started_at.map(|value| value.to_rfc3339()),
+        "completed_at": completed_at.to_rfc3339(),
         "duration_seconds": duration_seconds.max(0),
+        "max_duration_seconds": generated.max_duration_seconds,
         "recording_mode": "activity",
     });
     if generated.store_response_log {
@@ -4246,16 +4456,18 @@ mod tests {
             target_accuracy: 0.9,
             consecutive_passes: 3,
             target_correct_count: Some(13),
+            max_duration_seconds: None,
         };
         let attempts = (0..20)
             .map(|_| ActivityAttemptSummary {
                 correct_count: 13,
                 item_count: 14,
                 accuracy: 13.0 / 14.0,
+                duration_seconds: 60,
             })
             .collect::<Vec<_>>();
 
-        let summary = build_proficiency_summary(&target, &attempts);
+        let summary = build_proficiency_summary(&target, &attempts, false, "");
 
         assert!(summary.ready_to_move_on);
         assert_eq!(summary.verdict, "ready_to_move_on");

@@ -597,18 +597,19 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       setState(() {
         _busy = false;
       });
-      await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => _ExecutableActivityDialog(
-          activity: activity,
-          onComplete: (answers, durationSeconds, notes) =>
-              _completeExecutableActivity(
-                activity,
-                answers,
-                durationSeconds,
-                notes,
-              ),
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (context) => _ExecutableActivityPage(
+            activity: activity,
+            onComplete: (answers, durationSeconds, notes) =>
+                _completeExecutableActivity(
+                  activity,
+                  answers,
+                  durationSeconds,
+                  notes,
+                ),
+          ),
         ),
       );
     } catch (error) {
@@ -648,6 +649,257 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         });
       }
       rethrow;
+    }
+  }
+
+  Future<void> _setProficiencyOverrideForMaterial(
+    SessionMaterial material,
+  ) async {
+    if (!_viewerCanManage) return;
+    final learnerId =
+        _selectedLearnerId ?? _learnerWorkspace?.learner.learnerId;
+    final proficiency = material.proficiency;
+    if (learnerId == null || proficiency == null) return;
+    final supportsHardTimeTarget = material.kind == 'quick_check';
+
+    final minAttemptsController = TextEditingController(
+      text: proficiency.minAttempts.toString(),
+    );
+    final windowSizeController = TextEditingController(
+      text: proficiency.windowSize.toString(),
+    );
+    final targetAccuracyController = TextEditingController(
+      text: (proficiency.targetAccuracy * 100).round().toString(),
+    );
+    final consecutiveController = TextEditingController(
+      text: proficiency.consecutivePassesRequired.toString(),
+    );
+    final targetCorrectController = TextEditingController(
+      text: proficiency.targetCorrectCount?.toString() ?? '',
+    );
+    final maxDurationController = TextEditingController(
+      text: supportsHardTimeTarget
+          ? proficiency.maxDurationSeconds?.toString() ?? ''
+          : '',
+    );
+    final reasonController = TextEditingController(
+      text: proficiency.overrideReason,
+    );
+
+    try {
+      final request = await showDialog<Map<String, Object?>>(
+        context: context,
+        builder: (context) {
+          String? errorMessage;
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              int? optionalInt(String value) {
+                final trimmed = value.trim();
+                return trimmed.isEmpty ? null : int.tryParse(trimmed);
+              }
+
+              return AlertDialog(
+                title: Text('Custom target for ${material.title}'),
+                content: SizedBox(
+                  width: 460,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: minAttemptsController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Minimum attempts',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: windowSizeController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Recent window size',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: targetAccuracyController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Target accuracy percent',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: consecutiveController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Consecutive passing runs',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: targetCorrectController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Target correct count',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (supportsHardTimeTarget) ...[
+                          TextField(
+                            controller: maxDurationController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Max seconds',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        TextField(
+                          controller: reasonController,
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: 'Reason',
+                          ),
+                        ),
+                        if (errorMessage != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            errorMessage!,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      final minAttempts = int.tryParse(
+                        minAttemptsController.text.trim(),
+                      );
+                      final windowSize = int.tryParse(
+                        windowSizeController.text.trim(),
+                      );
+                      final targetAccuracyPercent = int.tryParse(
+                        targetAccuracyController.text.trim(),
+                      );
+                      final consecutivePasses = int.tryParse(
+                        consecutiveController.text.trim(),
+                      );
+                      final targetCorrectCount = optionalInt(
+                        targetCorrectController.text,
+                      );
+                      final maxDurationSeconds = supportsHardTimeTarget
+                          ? optionalInt(maxDurationController.text)
+                          : null;
+                      final invalid =
+                          minAttempts == null ||
+                          minAttempts <= 0 ||
+                          windowSize == null ||
+                          windowSize <= 0 ||
+                          targetAccuracyPercent == null ||
+                          targetAccuracyPercent <= 0 ||
+                          targetAccuracyPercent > 100 ||
+                          consecutivePasses == null ||
+                          consecutivePasses <= 0 ||
+                          (targetCorrectCount != null &&
+                              targetCorrectCount < 0) ||
+                          (maxDurationSeconds != null &&
+                              maxDurationSeconds <= 0);
+                      if (invalid) {
+                        setDialogState(() {
+                          errorMessage =
+                              'Use positive numbers; accuracy must be 1-100.';
+                        });
+                        return;
+                      }
+                      Navigator.of(context).pop(<String, Object?>{
+                        'minAttempts': minAttempts,
+                        'windowSize': windowSize,
+                        'targetAccuracy':
+                            targetAccuracyPercent.toDouble() / 100,
+                        'consecutivePasses': consecutivePasses,
+                        'targetCorrectCount': targetCorrectCount,
+                        'maxDurationSeconds': maxDurationSeconds,
+                        'reason': reasonController.text.trim(),
+                      });
+                    },
+                    child: const Text('Save target'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (request == null) return;
+      setState(() {
+        _busy = true;
+        _errorMessage = null;
+      });
+      await _apiClient.setProficiencyOverride(
+        learnerId: learnerId,
+        materialId: material.materialId,
+        minAttempts: request['minAttempts']! as int,
+        windowSize: request['windowSize']! as int,
+        targetAccuracy: request['targetAccuracy']! as double,
+        consecutivePasses: request['consecutivePasses']! as int,
+        targetCorrectCount: request['targetCorrectCount'] as int?,
+        maxDurationSeconds: request['maxDurationSeconds'] as int?,
+        reason: request['reason']! as String,
+      );
+      await _loadAll();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorMessage = error.toString();
+      });
+    } finally {
+      minAttemptsController.dispose();
+      windowSizeController.dispose();
+      targetAccuracyController.dispose();
+      consecutiveController.dispose();
+      targetCorrectController.dispose();
+      maxDurationController.dispose();
+      reasonController.dispose();
+    }
+  }
+
+  Future<void> _clearProficiencyOverrideForMaterial(
+    SessionMaterial material,
+  ) async {
+    if (!_viewerCanManage) return;
+    final learnerId =
+        _selectedLearnerId ?? _learnerWorkspace?.learner.learnerId;
+    if (learnerId == null) return;
+    setState(() {
+      _busy = true;
+      _errorMessage = null;
+    });
+    try {
+      await _apiClient.clearProficiencyOverride(
+        learnerId: learnerId,
+        materialId: material.materialId,
+      );
+      await _loadAll();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorMessage = error.toString();
+      });
     }
   }
 
@@ -1524,6 +1776,12 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       onOpenLibraryWorkspace: () => _setDestination(_ShellDestination.library),
       onRecordSession: _recordCurrentSession,
       onStartActivity: _startActivityForMaterial,
+      onSetProficiencyOverride: _viewerCanManage
+          ? _setProficiencyOverrideForMaterial
+          : null,
+      onClearProficiencyOverride: _viewerCanManage
+          ? _clearProficiencyOverrideForMaterial
+          : null,
     );
   }
 
@@ -1534,6 +1792,12 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       viewerCanReadLibrary: _viewerCanReadLibrary,
       onOpenLibraryRoute: _selectLibraryDocument,
       onStartActivity: _startActivityForMaterial,
+      onSetProficiencyOverride: _viewerCanManage
+          ? _setProficiencyOverrideForMaterial
+          : null,
+      onClearProficiencyOverride: _viewerCanManage
+          ? _clearProficiencyOverrideForMaterial
+          : null,
     );
   }
 

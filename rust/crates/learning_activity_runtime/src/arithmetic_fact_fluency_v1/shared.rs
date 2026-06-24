@@ -58,10 +58,10 @@ pub(super) fn build_generated_activity(
         instructions,
         items,
         pass_accuracy: runtime.scoring.as_ref().and_then(|scoring| scoring.pass_accuracy),
-        soft_time_limit_seconds: runtime
+        max_duration_seconds: runtime
             .scoring
             .as_ref()
-            .and_then(|scoring| scoring.soft_time_limit_seconds),
+            .and_then(|scoring| scoring.max_duration_seconds),
         store_response_log: runtime
             .persistence
             .as_ref()

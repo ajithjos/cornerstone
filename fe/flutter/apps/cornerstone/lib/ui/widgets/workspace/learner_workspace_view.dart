@@ -7,6 +7,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
     required this.viewerCanReadLibrary,
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
+    this.onSetProficiencyOverride,
+    this.onClearProficiencyOverride,
   });
 
   final ViewerUser? viewer;
@@ -15,6 +17,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
   final ValueChanged<String> onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
+  final Future<void> Function(SessionMaterial material)?
+  onSetProficiencyOverride;
+  final Future<void> Function(SessionMaterial material)?
+  onClearProficiencyOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -164,6 +170,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
         viewerCanReadLibrary: viewerCanReadLibrary,
         onOpenLibraryRoute: onOpenLibraryRoute,
         onStartActivity: onStartActivity,
+        onSetProficiencyOverride: onSetProficiencyOverride,
+        onClearProficiencyOverride: onClearProficiencyOverride,
       );
     }
 
@@ -347,6 +355,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   showDocumentBodies: true,
                   onOpenLibraryRoute: onOpenLibraryRoute,
                   onStartActivity: onStartActivity,
+                  onSetProficiencyOverride: onSetProficiencyOverride,
+                  onClearProficiencyOverride: onClearProficiencyOverride,
                 ),
               if (isSupportView && adultGroups.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -363,6 +373,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   showDocumentBodies: true,
                   onOpenLibraryRoute: onOpenLibraryRoute,
                   onStartActivity: onStartActivity,
+                  onSetProficiencyOverride: onSetProficiencyOverride,
+                  onClearProficiencyOverride: onClearProficiencyOverride,
                 ),
               ],
             ],
@@ -906,6 +918,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
                           showDocumentBodies: true,
                           onOpenLibraryRoute: onOpenLibraryRoute,
                           onStartActivity: onStartActivity,
+                          onSetProficiencyOverride: onSetProficiencyOverride,
+                          onClearProficiencyOverride:
+                              onClearProficiencyOverride,
                         ),
                         if (isSupportView && adultGroups.isNotEmpty) ...[
                           const SizedBox(height: 12),
@@ -922,6 +937,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
                             showDocumentBodies: true,
                             onOpenLibraryRoute: onOpenLibraryRoute,
                             onStartActivity: onStartActivity,
+                            onSetProficiencyOverride: onSetProficiencyOverride,
+                            onClearProficiencyOverride:
+                                onClearProficiencyOverride,
                           ),
                         ],
                       ],

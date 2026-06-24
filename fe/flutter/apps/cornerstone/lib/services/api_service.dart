@@ -187,6 +187,46 @@ class CornerstoneApiClient {
     return CompleteActivityResponse.fromJson(_decode(response));
   }
 
+  Future<void> setProficiencyOverride({
+    required String learnerId,
+    required String materialId,
+    required int minAttempts,
+    required int windowSize,
+    required double targetAccuracy,
+    required int consecutivePasses,
+    int? targetCorrectCount,
+    int? maxDurationSeconds,
+    required String reason,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learners/$learnerId/proficiency-overrides'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'material_id': materialId,
+        'min_attempts': minAttempts,
+        'window_size': windowSize,
+        'target_accuracy': targetAccuracy,
+        'consecutive_passes': consecutivePasses,
+        'target_correct_count': ?targetCorrectCount,
+        'max_duration_seconds': ?maxDurationSeconds,
+        'reason': reason,
+      }),
+    );
+    _decode(response);
+  }
+
+  Future<void> clearProficiencyOverride({
+    required String learnerId,
+    required String materialId,
+  }) async {
+    final response = await _client.delete(
+      Uri.parse(
+        '$baseUrl/api/v1/learners/$learnerId/proficiency-overrides/$materialId',
+      ),
+    );
+    _decode(response);
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 400) {

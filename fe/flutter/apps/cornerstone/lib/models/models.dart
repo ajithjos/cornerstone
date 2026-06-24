@@ -1578,6 +1578,9 @@ class SessionMaterialProficiencySummary {
     required this.verdictLabel,
     required this.detailLabel,
     this.targetCorrectCount,
+    this.maxDurationSeconds,
+    this.overrideApplied = false,
+    this.overrideReason = '',
   });
 
   factory SessionMaterialProficiencySummary.fromJson(
@@ -1590,6 +1593,9 @@ class SessionMaterialProficiencySummary {
       consecutivePassesRequired: (json['consecutive_passes_required'] as num)
           .toInt(),
       targetCorrectCount: (json['target_correct_count'] as num?)?.toInt(),
+      maxDurationSeconds: (json['max_duration_seconds'] as num?)?.toInt(),
+      overrideApplied: json['override_applied'] as bool? ?? false,
+      overrideReason: json['override_reason'] as String? ?? '',
       attemptCount: (json['attempt_count'] as num).toInt(),
       recentAttemptCount: (json['recent_attempt_count'] as num).toInt(),
       recentAverageAccuracy: (json['recent_average_accuracy'] as num)
@@ -1608,6 +1614,9 @@ class SessionMaterialProficiencySummary {
   final double targetAccuracy;
   final int consecutivePassesRequired;
   final int? targetCorrectCount;
+  final int? maxDurationSeconds;
+  final bool overrideApplied;
+  final String overrideReason;
   final int attemptCount;
   final int recentAttemptCount;
   final double recentAverageAccuracy;
@@ -2088,17 +2097,17 @@ class MaterialRuntimeInfo {
 }
 
 class MaterialRuntimeScoringInfo {
-  MaterialRuntimeScoringInfo({this.passAccuracy, this.softTimeLimitSeconds});
+  MaterialRuntimeScoringInfo({this.passAccuracy, this.maxDurationSeconds});
 
   factory MaterialRuntimeScoringInfo.fromJson(Map<String, dynamic> json) {
     return MaterialRuntimeScoringInfo(
       passAccuracy: (json['pass_accuracy'] as num?)?.toDouble(),
-      softTimeLimitSeconds: (json['soft_time_limit_seconds'] as num?)?.toInt(),
+      maxDurationSeconds: (json['max_duration_seconds'] as num?)?.toInt(),
     );
   }
 
   final double? passAccuracy;
-  final int? softTimeLimitSeconds;
+  final int? maxDurationSeconds;
 }
 
 class MaterialRuntimePersistenceInfo {
@@ -2146,6 +2155,7 @@ class ActivityInstance {
     required this.templateId,
     required this.instructions,
     required this.estimatedMinutes,
+    required this.startedAt,
     required this.scoring,
     required this.items,
   });
@@ -2162,6 +2172,7 @@ class ActivityInstance {
       templateId: json['template_id'] as String,
       instructions: json['instructions'] as String,
       estimatedMinutes: (json['estimated_minutes'] as num).toInt(),
+      startedAt: DateTime.parse(json['started_at'] as String),
       scoring: ActivityScoringSummary.fromJson(
         json['scoring'] as Map<String, dynamic>,
       ),
@@ -2181,22 +2192,23 @@ class ActivityInstance {
   final String templateId;
   final String instructions;
   final int estimatedMinutes;
+  final DateTime startedAt;
   final ActivityScoringSummary scoring;
   final List<ActivityItem> items;
 }
 
 class ActivityScoringSummary {
-  ActivityScoringSummary({this.passAccuracy, this.softTimeLimitSeconds});
+  ActivityScoringSummary({this.passAccuracy, this.maxDurationSeconds});
 
   factory ActivityScoringSummary.fromJson(Map<String, dynamic> json) {
     return ActivityScoringSummary(
       passAccuracy: (json['pass_accuracy'] as num?)?.toDouble(),
-      softTimeLimitSeconds: (json['soft_time_limit_seconds'] as num?)?.toInt(),
+      maxDurationSeconds: (json['max_duration_seconds'] as num?)?.toInt(),
     );
   }
 
   final double? passAccuracy;
-  final int? softTimeLimitSeconds;
+  final int? maxDurationSeconds;
 }
 
 class ActivityItem {
@@ -2266,7 +2278,10 @@ class ActivitySummary {
     required this.accuracy,
     required this.passed,
     required this.completionReason,
+    required this.completedAt,
+    required this.durationSeconds,
     required this.weakGroups,
+    this.startedAt,
   });
 
   factory ActivitySummary.fromJson(Map<String, dynamic> json) {
@@ -2277,6 +2292,11 @@ class ActivitySummary {
       accuracy: (json['accuracy'] as num).toDouble(),
       passed: json['passed'] as bool,
       completionReason: json['completion_reason'] as String,
+      startedAt: json['started_at'] == null
+          ? null
+          : DateTime.parse(json['started_at'] as String),
+      completedAt: DateTime.parse(json['completed_at'] as String),
+      durationSeconds: (json['duration_seconds'] as num).toInt(),
       weakGroups: (json['weak_groups'] as List<dynamic>)
           .map((item) => item as String)
           .toList(),
@@ -2289,5 +2309,8 @@ class ActivitySummary {
   final double accuracy;
   final bool passed;
   final String completionReason;
+  final DateTime? startedAt;
+  final DateTime completedAt;
+  final int durationSeconds;
   final List<String> weakGroups;
 }

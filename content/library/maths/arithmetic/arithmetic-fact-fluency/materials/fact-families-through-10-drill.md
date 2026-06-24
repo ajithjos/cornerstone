@@ -23,7 +23,6 @@ runtime:
     allow_zero: true
   scoring:
     pass_accuracy: 0.85
-    soft_time_limit_seconds: 150
   persistence:
     store_response_log: false
     store_summary: true

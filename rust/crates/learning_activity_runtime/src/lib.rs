@@ -29,7 +29,7 @@ pub struct GeneratedActivity {
     pub instructions: String,
     pub items: Vec<GeneratedActivityItem>,
     pub pass_accuracy: Option<f64>,
-    pub soft_time_limit_seconds: Option<u32>,
+    pub max_duration_seconds: Option<u32>,
     pub store_response_log: bool,
 }
 
@@ -66,16 +66,27 @@ pub fn activity_seed() -> u64 {
     (raw as u64) ^ ((raw >> 64) as u64)
 }
 
-pub fn build_activity_instance_id(session_material_id: &str, seed: u64) -> String {
-    format!("{session_material_id}:{seed}")
+pub fn build_activity_instance_id(session_material_id: &str, seed: u64, started_at_millis: i64) -> String {
+    format!("{session_material_id}:{seed}:{started_at_millis}")
 }
 
-pub fn parse_activity_instance_id(activity_instance_id: &str) -> anyhow::Result<(String, u64)> {
-    let (session_material_id, seed) = activity_instance_id
-        .rsplit_once(':')
-        .ok_or_else(|| anyhow!("invalid activity instance id"))?;
+pub fn parse_activity_instance_id(activity_instance_id: &str) -> anyhow::Result<(String, u64, Option<i64>)> {
+    let parts = activity_instance_id.split(':').collect::<Vec<_>>();
+    let (session_material_id, seed, started_at_millis) = match parts.as_slice() {
+        [session_material_id, seed] => ((*session_material_id).to_string(), *seed, None),
+        [session_material_id, seed, started_at_millis] => (
+            (*session_material_id).to_string(),
+            *seed,
+            Some(
+                started_at_millis
+                    .parse::<i64>()
+                    .context("invalid activity instance start time")?,
+            ),
+        ),
+        _ => bail!("invalid activity instance id"),
+    };
     let parsed_seed = seed.parse::<u64>().context("invalid activity instance seed")?;
-    Ok((session_material_id.to_string(), parsed_seed))
+    Ok((session_material_id, parsed_seed, started_at_millis))
 }
 
 pub fn generate_activity(material: &MaterialDocument, seed: u64) -> anyhow::Result<GeneratedActivity> {
