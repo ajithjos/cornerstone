@@ -6,7 +6,7 @@ sequence: 1
 
 # Place Value And Number Sense
 
-This stage teaches the learner to read numbers as structured amounts made of hundreds, tens, and ones.
+This stage teaches the learner to read numbers as structured amounts made of place-value parts.
 
 ## Plain-Language Meaning
 
@@ -14,10 +14,10 @@ The digits in a number matter because of where they stand, not only because of w
 
 ## Skills In This Stage
 
-- `read_and_build_numbers_to_1000`
-- `partition_hundreds_tens_and_ones`
-- `compare_and_order_numbers_to_1000`
+- `read_and_build_whole_numbers_by_place_value`
+- `partition_whole_numbers_by_place_value`
+- `compare_and_order_whole_numbers`
 
 ## Secure Performance
 
-The learner can read, build, partition, compare, and order numbers through `1000` and explain the value of each digit in place-value language.
+The learner can read, build, partition, compare, and order whole numbers by place value and extend the ones, tens, hundreds, thousands pattern to larger numbers.

@@ -1,48 +1,48 @@
 ---
 id: written_addition_and_subtraction
-title: Written Addition And Subtraction
+title: Column Addition And Subtraction
 stage_ids:
   - written_addition_and_subtraction
 skill_ids:
-  - add_two_and_three_digit_numbers
-  - subtract_two_and_three_digit_numbers
+  - add_whole_numbers_with_column_method
+  - subtract_whole_numbers_with_column_method
   - explain_exchange_in_written_methods
 recommended_age_min: 7
 recommended_age_max: 10
 sessions:
-  - title: Teach aligned columns and meaningful exchange
+  - title: Teach column addition, column subtraction, and meaningful exchange
     material_ids:
       - written_addition_and_subtraction_lesson_note
       - written_methods_teaching_note
     skill_ids:
-      - add_two_and_three_digit_numbers
-      - subtract_two_and_three_digit_numbers
+      - add_whole_numbers_with_column_method
+      - subtract_whole_numbers_with_column_method
       - explain_exchange_in_written_methods
-  - title: Practise written addition and subtraction
+  - title: Practise column addition and subtraction
     material_ids:
       - written_addition_and_subtraction_practice
     skill_ids:
-      - add_two_and_three_digit_numbers
-      - subtract_two_and_three_digit_numbers
+      - add_whole_numbers_with_column_method
+      - subtract_whole_numbers_with_column_method
       - explain_exchange_in_written_methods
   - title: Repeat the exchange questions and error checks
     material_ids:
       - written_addition_and_subtraction_practice
     skill_ids:
-      - subtract_two_and_three_digit_numbers
+      - subtract_whole_numbers_with_column_method
       - explain_exchange_in_written_methods
-  - title: Assessment on written addition and subtraction
+  - title: Assessment on column addition and subtraction
     material_ids:
       - written_addition_and_subtraction_check
     skill_ids:
-      - add_two_and_three_digit_numbers
-      - subtract_two_and_three_digit_numbers
+      - add_whole_numbers_with_column_method
+      - subtract_whole_numbers_with_column_method
       - explain_exchange_in_written_methods
 ---
 
-# Written Addition And Subtraction
+# Column Addition And Subtraction
 
-This playlist turns place-value understanding into clear written methods on paper.
+This playlist turns place-value understanding into column addition and column subtraction that scale to larger whole numbers.
 
 ## Completion Rule
 

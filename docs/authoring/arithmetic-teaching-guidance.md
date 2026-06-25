@@ -89,13 +89,20 @@ This keeps the route honest. The learner sees the idea, practises it, and proves
 ### Written addition and subtraction
 
 - align columns by place value
-- explain exchange clearly
+- explain exchange clearly as a place-value trade
+- teach column addition and column subtraction as repeatable whole-number methods that scale to thousands and beyond
+- include examples with zeros in the top number for subtraction once basic exchange is secure
 - check whether answers are sensible
 
 ### Multiplication and division
 
 - teach equal groups, arrays, sharing, and grouping
 - connect multiplication and division as inverse operations
+- memorise multiplication facts through `10 x 10`; do not treat division facts as a disconnected second table
+- derive exact division facts from multiplication fact families
+- teach short multiplication before long multiplication, then make partial products explicit by place value
+- teach short division before long division when the divisor has one digit, then use long division for multi-digit divisors
+- require division checks in the form `divisor x quotient + remainder = dividend`
 - use fact fluency to support larger calculations
 
 ## Tone For Adult And Learner Materials

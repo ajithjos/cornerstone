@@ -4,64 +4,96 @@ type: lesson_note
 stage_ids:
   - written_addition_and_subtraction
 skill_ids:
-  - add_two_and_three_digit_numbers
-  - subtract_two_and_three_digit_numbers
+  - add_whole_numbers_with_column_method
+  - subtract_whole_numbers_with_column_method
   - explain_exchange_in_written_methods
-estimated_minutes: 14
+estimated_minutes: 15
 ---
 
-# Written Addition And Subtraction Lesson Note
+# Column Addition And Subtraction Lesson Note
 
-Written methods work because the columns match place value.
+Column methods work because the columns match place value.
 
 Line up:
 
 - ones under ones
 - tens under tens
 - hundreds under hundreds
+- thousands under thousands
 
-## Addition with exchange
+Start in the ones column and move left.
 
-Example: `47 + 36`
+## Column addition with exchange
 
-1. Add the ones: `7 + 6 = 13`
-2. `13` ones is `1` ten and `3` ones
-3. Write `3` in the ones column and exchange `1` ten
-4. Add the tens: `4 tens + 3 tens + 1 exchanged ten = 8 tens`
-5. The answer is `83`
+Example: `3,758 + 486`
 
-You did not hide a number. You traded `10` ones for `1` ten.
+```text
+  3,758
++   486
+```
 
-## Subtraction with exchange
+1. Ones: `8 + 6 = 14`. Write `4` ones and exchange `1` ten.
+2. Tens: `5 + 8 + 1 = 14` tens. Write `4` tens and exchange `1` hundred.
+3. Hundreds: `7 + 4 + 1 = 12` hundreds. Write `2` hundreds and exchange `1` thousand.
+4. Thousands: `3 + 1 = 4` thousands.
 
-Example: `83 - 27`
+```text
+  3,758
++   486
+  4,244
+```
 
-1. In the ones column, `3` ones cannot take away `7` ones
-2. Exchange `1` ten from the `8` tens
-3. Now you have `7` tens and `13` ones
-4. `13 - 7 = 6`
-5. `7 tens - 2 tens = 5 tens`
-6. The answer is `56`
+The small exchanged `1` is not magic. It means `10` of one place became `1` of the next larger place.
 
-Again, the exchange is a trade: `1` ten became `10` ones.
+## Column subtraction with exchange
 
-## Three-digit example
+Example: `4,203 - 587`
 
-Example: `368 + 157`
+```text
+  4,203
+-   587
+```
 
-- ones: `8 + 7 = 15`, so write `5` ones and exchange `1` ten
-- tens: `6 + 5 + 1 = 12` tens, so write `2` tens and exchange `1` hundred
-- hundreds: `3 + 1 + 1 = 5` hundreds
-- answer: `525`
+1. Ones: `3` ones cannot take away `7` ones.
+2. The tens place has `0`, so exchange from the hundreds place.
+3. `2` hundreds becomes `1` hundred and `10` tens.
+4. Exchange `1` of those tens into `10` ones. Now the tens place has `9` tens and the ones place has `13` ones.
+5. Ones: `13 - 7 = 6`.
+6. Tens: `9 - 8 = 1`.
+7. Hundreds: `1 - 5` cannot be done, so exchange `1` thousand.
+8. Thousands: `4` thousands becomes `3` thousands, and the hundreds place becomes `11` hundreds.
+9. Hundreds: `11 - 5 = 6`.
+10. Thousands: `3 - 0 = 3`.
+
+```text
+  4,203
+-   587
+  3,616
+```
+
+Subtraction exchange means one of a larger place is traded for ten of the next smaller place.
+
+## The method scales
+
+The same steps work for larger whole numbers.
+
+```text
+  82,709
++  7,846
+  90,555
+```
+
+The number of columns changes. The rule does not.
 
 ## Good learner self-talk
 
 - `Which column am I in?`
-- `Am I exchanging ten ones for one ten, or one ten for ten ones?`
+- `Are the place values lined up?`
+- `What did I exchange, and what did it become?`
 - `Does my answer look sensible for the size of the numbers?`
 
 ## Quick spoken practice
 
-1. Why must `47 + 36` line up by place value?
-2. In `83 - 27`, why do you exchange one ten?
+1. Why must `3,758 + 486` line up by place value?
+2. In `4,203 - 587`, why do you exchange across the zero?
 3. What does the exchanged `1` represent in addition?

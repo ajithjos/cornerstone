@@ -1,12 +1,12 @@
-# Addition And Subtraction Foundations Brief
+# Arithmetic Fact Fluency Foundations Brief
 
 This is a worked example of the [Curriculum slice brief template](../curriculum-slice-brief-template.md).
 
 It is an example brief, not the canonical product architecture. For the object model and source-format guidance, read [Planning, authoring, and runtime](../../architecture/planning-authoring-and-runtime.md).
 
-Use this as the working brief for the first addition and subtraction route in Cornerstone.
+Use this as the working brief for the first arithmetic fact-fluency route in Cornerstone.
 
-The goal is not to cover all of arithmetic at once. The goal is to give a parent or coach one direct route for teaching addition and subtraction facts through `20` from a small set of memorised anchors.
+The goal is not to cover all written arithmetic. The goal is to give a parent or coach one direct route for teaching addition and subtraction facts through `20`, multiplication facts through `10 x 10`, and exact division facts from those same multiplication families.
 
 ## Identity
 
@@ -17,15 +17,17 @@ The goal is not to cover all of arithmetic at once. The goal is to give a parent
 
 ## Learner Context
 
-- Target age range: 7 to 9
+- Target age range: 7 to 10
 - Typical current level: can count and solve some written sums, but core facts are not yet automatic
-- Why this area matters now: secure anchor facts make later written arithmetic much easier and reduce frustration in daily work
+- Why this area matters now: secure anchor facts and table facts make later written arithmetic much easier and reduce frustration in daily work
 - Common learner mistakes or blockers:
   - counting in ones instead of recalling facts
   - weak fact families through `10`
   - confusion between addition and subtraction as inverse operations
   - no secure memory for doubles or `10 + n`
   - no clear method for `8 + 7` or `15 - 8`
+  - multiplication facts known only as a chant, not as usable mixed facts
+  - division facts treated as guessing instead of the reverse of multiplication
 
 ## Desired Outcome
 
@@ -33,15 +35,18 @@ The goal is not to cover all of arithmetic at once. The goal is to give a parent
   - recall the fact families for totals through `10`
   - recall doubles through `20` and `10 + n` facts without hesitation
   - derive the remaining addition and subtraction facts through `20` by bridging through `10`
+  - recall multiplication facts through `10 x 10`
+  - derive exact division facts from multiplication fact families
   - move from paper practice to short computer-based drills without confusion
 - What should a parent or coach notice in real life?
   - the learner answers familiar facts faster
   - the learner stalls less often during written arithmetic
   - the learner can explain relationships such as `7 + 3 = 10`, `10 - 3 = 7`, and `8 + 7 = 8 + 2 + 5`
+  - the learner can explain relationships such as `7 x 8 = 56`, `56 / 7 = 8`, and `56 / 8 = 7`
 - What counts as weak, partial, or secure performance?
-  - weak: still counts most facts one by one, misses anchor facts, or cannot explain a bridge-through-`10` step
+  - weak: still counts most facts one by one, misses anchor facts, cannot explain a bridge-through-`10` step, or guesses division facts without multiplication
   - partial: succeeds in grouped practice but slows down or breaks down in mixed review
-  - secure: answers most facts accurately in mixed sets, with only occasional hesitation, and can explain the method sensibly
+  - secure: answers most facts accurately in mixed sets, with only occasional hesitation, and can explain the method or fact family sensibly
 
 ## Candidate Stages
 
@@ -70,6 +75,20 @@ The goal is not to cover all of arithmetic at once. The goal is to give a parent
 - What it means in plain language: the learner can solve subtraction facts through `20` by stepping back to `10` first
 - Skills that belong inside it:
   - bridge through `10` for subtraction
+
+### Stage: Multiplication Tables Through 10
+
+- What it means in plain language: the learner memorises multiplication facts through `10 x 10` and understands them as equal groups or arrays
+- Skills that belong inside it:
+  - recall multiplication facts to `10`
+  - use commutativity for multiplication
+
+### Stage: Division Facts From Tables
+
+- What it means in plain language: the learner derives exact division facts from known multiplication facts
+- Skills that belong inside it:
+  - derive division facts from multiplication
+  - check division facts with multiplication
 
 ## Candidate Skills
 
@@ -109,6 +128,28 @@ The goal is not to cover all of arithmetic at once. The goal is to give a parent
   - likely mistakes or misconceptions: counts backward in ones or chooses the wrong first step to reach `10`
   - out of scope: regrouping in written subtraction
 
+### Multiplication Tables Through 10
+
+- Skill title: Recall multiplication facts to `10`
+  - successful performance: answers multiplication facts from `0 x 0` through `10 x 10` accurately in mixed order
+  - likely mistakes or misconceptions: uses slow skip-counting for every fact or confuses nearby table facts
+  - out of scope: written multiplication with multi-digit partial products
+- Skill title: Use commutativity for multiplication
+  - successful performance: recognises that `4 x 7` and `7 x 4` have the same product
+  - likely mistakes or misconceptions: relearns both orders as unrelated facts
+  - out of scope: formal algebraic property language
+
+### Division Facts From Tables
+
+- Skill title: Derive division facts from multiplication
+  - successful performance: uses a known multiplication fact to answer the matching exact division facts
+  - likely mistakes or misconceptions: guesses a quotient without naming the related multiplication fact
+  - out of scope: division with remainders and long division
+- Skill title: Check division facts with multiplication
+  - successful performance: checks an exact division answer by multiplying the divisor and quotient
+  - likely mistakes or misconceptions: accepts a division answer without checking
+  - out of scope: written division checks with remainders
+
 ## Materials And Delivery
 
 - likely material types:
@@ -126,7 +167,7 @@ The goal is not to cover all of arithmetic at once. The goal is to give a parent
   - 1 mixed review or check session
 - where review or recap should appear:
   - every playlist should include one mixed review session before moving on
-  - weak anchor facts should reappear in later sessions even after a stage looks mostly secure
+  - weak anchor facts and table facts should reappear in later sessions even after a stage looks mostly secure
 - notes that a parent, teacher, or coach will need during delivery:
   - stop a session before frustration climbs too high
   - prefer speed after accuracy, not before it
@@ -150,7 +191,7 @@ The goal is not to cover all of arithmetic at once. The goal is to give a parent
 
 - vocabulary or tone constraints:
   - use direct parent-facing language
-  - prefer `fact families`, `anchor facts`, `make 10`, and `bridge through 10`
+  - prefer `fact families`, `anchor facts`, `make 10`, `bridge through 10`, `equal groups`, `arrays`, and `multiply back to check`
   - avoid vague discovery language; teach directly and name the exact facts to memorise
 - family, classroom, or accessibility constraints:
   - this is parent-led or coach-led teaching, not a classroom program
@@ -158,9 +199,10 @@ The goal is not to cover all of arithmetic at once. The goal is to give a parent
   - no voice input or handwriting recognition is required for MVP
 - anything that must not be generated:
   - long abstract explanations
-  - oversized playlists that try to cover all arithmetic at once
+  - oversized playlists that try to cover all written arithmetic at once
   - tightly coupled gamification or reward mechanics
 - unresolved questions that need answers before authoring continues:
   - do you want a later follow-on pathway for near-doubles as a named strategy, or is that sufficiently covered by the bridge-through-`10` route?
   - should advanced checks later include the commuted form `n + 10`, or should the taught memorised list stay only as `10 + n`?
   - how aggressively should a ten-year-old be allowed to skip ahead after the first two checks?
+  - should multiplication fact drills later become executable runtime drills like the existing addition and subtraction drills?

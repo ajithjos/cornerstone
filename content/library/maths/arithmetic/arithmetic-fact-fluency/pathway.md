@@ -1,7 +1,7 @@
 ---
 id: arithmetic_fact_fluency
 slug: pathway
-title: Addition And Subtraction Foundations
+title: Arithmetic Fact Fluency Foundations
 subject_id: maths
 area_id: arithmetic
 status: active
@@ -13,30 +13,36 @@ stage_ids:
   - doubles_and_add_10
   - bridge_through_10_addition
   - bridge_through_10_subtraction
+  - multiplication_tables_to_10
+  - division_facts_from_tables
 playlist_ids:
   - fact_families_to_10
   - doubles_and_add_10
   - bridge_through_10_addition
   - bridge_through_10_subtraction
+  - multiplication_tables_to_10
+  - division_facts_from_tables
 entry_points:
   age_7: fact_families_to_10
   age_10: fact_families_to_10
 ---
 
-# Addition And Subtraction Foundations
+# Arithmetic Fact Fluency Foundations
 
-This route teaches one clear foundation for early arithmetic.
+This route teaches the facts that should become quick enough to support written arithmetic.
 
-The learner memorises only a small set of anchor facts:
+The learner first secures addition and subtraction anchors:
 
 - all addition facts by total from `1` to `10`
 - the matching subtraction facts from the same families
 - doubles from `1 + 1` to `10 + 10`
 - `10 + 1` through `10 + 9`
 
-Everything else in this route is then derived from those anchors by bridging through `10`.
+The learner then uses those anchors to derive addition and subtraction facts through `20` by bridging through `10`.
 
-That means the learner is not asked to memorise every fact through `20` as a disconnected list. The learner is taught a small secure base and then shown how to use it.
+After that, the learner memorises multiplication facts through `10 x 10` and reads the matching division facts from the same multiplication families.
+
+That means the learner is not asked to treat each operation as a disconnected pile. The route teaches a secure base, then shows how each fact family gives more than one useful fact.
 
 ## Why This Pathway Exists
 
@@ -48,8 +54,10 @@ The usual problems are simple:
 - subtraction is treated as a separate topic rather than the reverse of addition
 - `8 + 7` and `15 - 8` feel like new problems instead of facts that can be derived from `10`
 - the learner has no short list of anchor facts that can be practised to fluency
+- multiplication is treated as chanting only, with no clear connection to equal groups
+- division is treated as guesswork instead of the reverse of multiplication
 
-This pathway fixes that by teaching a direct order: facts to `10`, doubles, `10 + n`, bridge-through-`10` addition, and bridge-through-`10` subtraction.
+This pathway fixes that by teaching a direct order: facts to `10`, doubles, `10 + n`, bridge-through-`10` addition, bridge-through-`10` subtraction, multiplication tables through `10 x 10`, and the matching division facts.
 
 ## What Secure Progress Looks Like
 
@@ -59,13 +67,17 @@ At the end of this route, the learner should be able to:
 - recall doubles through `20` and `10 + n` facts without delay
 - derive addition facts through `20` by making `10`
 - derive subtraction facts through `20` by stepping back to `10`
+- recall multiplication facts through `10 x 10`
+- derive exact division facts from known multiplication facts
 - answer mixed addition and subtraction prompts through `20` without heavy finger counting
+- answer common multiplication and division prompts without rebuilding every group from scratch
 
 For a parent or coach, the visible signs are straightforward:
 
 - less one-by-one counting
 - quicker recovery after a mistake
 - more explanation such as `I made 10 first` or `I went back to 10`
+- more explanation such as `7 x 8 = 56, so 56 / 7 = 8`
 
 ## Daily Delivery Shape
 
@@ -79,11 +91,13 @@ Teach for understanding first, then accuracy, then speed.
 
 ## What This Pathway Covers And What It Does Not
 
-This route is only for addition and subtraction foundations through `20`.
+This route covers whole-number fact fluency:
 
-It does not try to cover multiplication in the same sequence. For written methods, pair this route later with [Arithmetic Written Methods](../arithmetic-written-methods/pathway.md).
+- addition and subtraction facts through `20`
+- multiplication facts through `10 x 10`
+- exact division facts from those multiplication tables
 
-## The Route
+It does not teach the full written algorithms for large numbers. For column addition, column subtraction, long multiplication, and long division, pair this route with [Arithmetic Written Methods](../arithmetic-written-methods/pathway.md).
 
 ### 1. [Fact Families Through 10](./playlists/fact-families-through-10.md)
 
@@ -125,11 +139,31 @@ What changes here:
 - subtraction becomes a structured method instead of backward counting
 - mixed subtraction through `20` becomes steadier and quicker
 
+### 5. [Multiplication Tables Through 10](./playlists/multiplication-tables-to-10.md)
+
+The learner memorises the multiplication table facts that will support written multiplication and division.
+
+What changes here:
+
+- multiplication facts are tied to equal groups and arrays
+- commuted facts are recognised instead of relearned separately
+- facts through `10 x 10` become available for short and long multiplication
+
+### 6. [Division Facts From Tables](./playlists/division-facts-from-tables.md)
+
+The learner reads division facts from known multiplication facts.
+
+What changes here:
+
+- division stops feeling like a separate table to guess
+- exact division facts are checked with multiplication
+- the learner is prepared for written division with remainders
+
 ## Entry Guidance
 
 Both the seven-year-old and the ten-year-old entry point start at [Fact Families Through 10](./playlists/fact-families-through-10.md).
 
-An older learner may move faster, but the first check should still confirm that the anchor facts are truly secure.
+An older learner may move faster, but the first check should still confirm that the anchor facts are truly secure. Do not rush a learner into long multiplication if the table facts are still too slow to use.
 
 ## How To Move On
 
@@ -144,6 +178,8 @@ This pathway is secure when the learner can:
 - answer most mixed addition and subtraction facts through `20` correctly
 - explain a bridge-through-`10` method for both addition and subtraction
 - use the memorised anchors instead of restarting from `1`
+- recall multiplication facts through `10 x 10`
+- derive division facts from multiplication fact families
 - move into written arithmetic with the facts supporting the work rather than blocking it
 
 ## Maintainer Notes

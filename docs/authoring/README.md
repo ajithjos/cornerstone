@@ -28,6 +28,7 @@ Architecture decisions about planning objects and runtime surfaces live under `.
 5. [Curriculum slice brief template](./curriculum-slice-brief-template.md)
 6. [Planning, authoring, and runtime](../architecture/planning-authoring-and-runtime.md) if you need the whole-system mental model
 7. [Arithmetic fact fluency brief](./examples/arithmetic-fact-fluency-brief.md) for a concrete first curriculum slice
+8. [Arithmetic written methods brief](./examples/arithmetic-written-methods-brief.md) for the scalable whole-number algorithms route
 
 ## How To Use This Directory
 

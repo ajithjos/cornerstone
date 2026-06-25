@@ -4,9 +4,9 @@ type: lesson_note
 stage_ids:
   - place_value_and_number_sense
 skill_ids:
-  - read_and_build_numbers_to_1000
-  - partition_hundreds_tens_and_ones
-  - compare_and_order_numbers_to_1000
+  - read_and_build_whole_numbers_by_place_value
+  - partition_whole_numbers_by_place_value
+  - compare_and_order_whole_numbers
 estimated_minutes: 12
 ---
 
@@ -14,78 +14,93 @@ estimated_minutes: 12
 
 Every digit has a job because of where it stands.
 
-In a three-digit number, the places are:
+The first places are:
 
-- hundreds
-- tens
-- ones
+```text
+thousands | hundreds | tens | ones
+```
+
+The same pattern keeps extending left:
+
+```text
+hundred-thousands | ten-thousands | thousands | hundreds | tens | ones
+```
 
 ## Read the structure
 
-`347` means:
+`4,372` means:
 
+- `4` thousands
 - `3` hundreds
-- `4` tens
-- `7` ones
+- `7` tens
+- `2` ones
 
-It does not mean `3`, `4`, and `7` as separate little numbers. It means one whole amount built from place-value parts.
+It does not mean four separate digits. It means one whole amount built from place-value parts.
 
 ## Partition the number
 
-You can split a number into its parts.
+You can split a number into its place-value parts.
 
-- `347 = 300 + 40 + 7`
-- `582 = 500 + 80 + 2`
-- `406 = 400 + 0 + 6`
+- `4,372 = 4,000 + 300 + 70 + 2`
+- `50,608 = 50,000 + 600 + 8`
+- `203,040 = 200,000 + 3,000 + 40`
 
-Notice that `0` still matters. It tells you there are no tens in `406`.
+Zero still matters. It keeps the other digits in the correct places.
 
 ## Exchange idea
 
 - `10` ones can be exchanged for `1` ten
 - `10` tens can be exchanged for `1` hundred
+- `10` hundreds can be exchanged for `1` thousand
+- `10` thousands can be exchanged for `1` ten-thousand
 
-That exchange idea will matter later for written addition and subtraction.
+This exchange idea is the basis of column addition, column subtraction, multiplication, and division.
 
 ## Compare numbers
 
-To compare two numbers, check the biggest place first.
+To compare two whole numbers, check the biggest place first.
 
-Example: compare `347` and `372`.
+Example: compare `4,372` and `4,327`.
 
+- thousands are both `4`
 - hundreds are both `3`
-- compare tens: `4` tens is less than `7` tens
-- so `347 < 372`
+- compare tens: `7` tens is greater than `2` tens
+- so `4,372 > 4,327`
 
 ## Worked examples
 
-### Example 1: Build `264`
+### Example 1: Build `6,204`
 
+- `6` thousands
 - `2` hundreds
-- `6` tens
+- `0` tens
 - `4` ones
 
-### Example 2: What is `530`?
+### Example 2: What is `80,530`?
 
+- `8` ten-thousands
+- `0` thousands
 - `5` hundreds
 - `3` tens
 - `0` ones
 
-### Example 3: Which is greater, `608` or `680`?
+### Example 3: Which is greater, `12,608` or `12,680`?
 
-- both have `6` hundreds
+- ten-thousands and thousands are the same
+- hundreds are both `6`
 - compare tens: `0` tens is less than `8` tens
-- so `608 < 680`
+- so `12,608 < 12,680`
 
 ## Good learner self-talk
 
 - `Which place am I reading?`
-- `How many hundreds, tens, and ones are there?`
+- `What is this digit worth?`
+- `Do any zeros hold a place?`
 - `Compare the biggest place first.`
 
 ## Quick spoken practice
 
-1. Say the value of the `5` in `452`
-2. Partition `318`
-3. Which is greater: `490` or `409`?
-4. Build `702` with hundreds, tens, and ones
+1. Say the value of the `5` in `45,209`.
+2. Partition `8,316`.
+3. Which is greater: `49,020` or `49,200`?
+4. Build `70,204` with place-value parts.
