@@ -22,14 +22,16 @@ Adult guide: keep this beside the learner page. The aim is not to say more words
 
 ## The short memorisation list
 
-These are the facts to memorise exactly:
+These are the facts to memorise or derive fluently:
 
 ```text
-- the addition pairs for each whole from 1 to 10
-- the matching subtraction facts from those same families
+- memorise the addition pairs for each whole from 1 to 10
+- derive and practise the matching subtraction facts from those same families
 - the doubles from 1 + 1 to 10 + 10
 - the 10 + n facts from 10 + 1 to 10 + 9
 ```
+
+Subtraction is practised, but it should come from the addition family. It should not become a separate random list.
 
 Everything else in this pathway is derived from those anchors.
 
@@ -38,8 +40,9 @@ Everything else in this pathway is derived from those anchors.
 1. Teach the relationship first, not speed first.
 2. Say the matching subtraction whenever you teach an addition family.
 3. Correct equations immediately and plainly. For example, `1 - 0 = 1` and `1 - 1 = 0`.
-4. Use paper before screen. Use the live drill only after the learner understands the page.
-5. When a learner stalls, return to the last secure anchor fact instead of letting the session collapse into guessing.
+4. Use the lesson note's addition-family and derived-subtraction reference tables before mixed practice.
+5. Use paper before screen. Use the live drill only after the learner understands the page.
+6. When a learner stalls, return to the last secure anchor fact instead of letting the session collapse into guessing.
 
 ## Useful adult language
 

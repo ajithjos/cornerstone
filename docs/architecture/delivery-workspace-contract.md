@@ -78,9 +78,9 @@ Do not create one naming scheme for authoring and another naming scheme for UI.
 
 Recommended default kind set:
 
-- `lesson_note`: learner-facing explanation, model, table, worked example, or reference artifact for the thing being learned
+- `lesson_note`: learner-facing explanation, model, table, worked example, or durable reference artifact for the thing being learned; this is the textbook/notebook page the learner can return to later
 - `teaching_note`: adult-facing prompts, misconceptions, adaptation notes, and delivery guidance
-- `worksheet`: learner practice artifact for paper or offline work
+- `worksheet`: learner practice artifact for paper or offline work; this should prompt retrieval, solving, explanation, or checking rather than duplicate the full reference page
 - `drill`: repetitive or live learner practice
 - `quick_check`: short learner check or stop point
 

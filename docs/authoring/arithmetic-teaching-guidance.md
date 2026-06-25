@@ -22,6 +22,8 @@ That means:
 - explicit instruction for new content
 - concise explanation tied to a real arithmetic job
 - worked examples before independent practice
+- lesson notes that act as durable reference pages for facts, tables, models, and written methods
+- worksheets that prompt retrieval and practice without duplicating the whole reference page
 - deliberate practice in small sets before mixed review
 - cumulative review after new teaching
 - fast error correction and reteaching when a weak pattern appears
@@ -33,6 +35,7 @@ That means:
 
 - long discovery-first sequences before the learner has seen a clear explanation
 - abstract theory that does not help the learner answer or explain arithmetic more accurately
+- practice pages that merely duplicate the lesson note instead of asking the learner to retrieve, solve, explain, or check
 - motivational filler, performative praise, or soft language that hides weak work
 - drills or quick checks as the learner's first exposure to a skill
 - too many strategies for the same small fact set
@@ -77,6 +80,10 @@ This keeps the route honest. The learner sees the idea, practises it, and proves
 ### Early fact work
 
 - teach number bonds and fact families directly
+- memorise addition facts, then derive subtraction facts from the same families
+- practise subtraction for fluency, but do not present it as an unrelated second table
+- keep the complete addition family and derived-subtraction reference tables in the lesson note
+- use the worksheet for writing families from memory, deriving subtraction, and mixed recall
 - move quickly into mixed recall
 - correct weak patterns early instead of letting them harden
 
@@ -99,7 +106,9 @@ This keeps the route honest. The learner sees the idea, practises it, and proves
 - teach equal groups, arrays, sharing, and grouping
 - connect multiplication and division as inverse operations
 - memorise multiplication facts through `10 x 10`; do not treat division facts as a disconnected second table
-- derive exact division facts from multiplication fact families
+- derive exact division facts from multiplication fact families and practise them with multiplication checks
+- keep full multiplication and exact-division reference tables in lesson notes
+- use worksheets for retrieval, reconstruction from memory, mixed practice, and explanation
 - teach short multiplication before long multiplication, then make partial products explicit by place value
 - teach short division before long division when the divisor has one digit, then use long division for multi-digit divisors
 - require division checks in the form `divisor x quotient + remainder = dividend`

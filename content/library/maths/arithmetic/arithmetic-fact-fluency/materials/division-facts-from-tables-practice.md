@@ -6,38 +6,72 @@ stage_ids:
 skill_ids:
   - derive_division_facts_from_multiplication
   - check_division_facts_with_multiplication
-estimated_minutes: 16
+estimated_minutes: 14
 ---
 
 # Division Facts From Tables Practice
 
-## Part A: Complete the fact family
+Use the lesson note as the reference page. This page is for deriving and checking division facts.
 
-1. `4 x 7 = 28`, so `28 / 4 = ___` and `28 / 7 = ___`.
-2. `6 x 8 = 48`, so `48 / 6 = ___` and `48 / 8 = ___`.
-3. `9 x 5 = 45`, so `45 / 9 = ___` and `45 / 5 = ___`.
-4. `10 x 3 = 30`, so `30 / 10 = ___` and `30 / 3 = ___`.
+For each answer, say the multiplication check.
 
-## Part B: Mixed exact division facts
+Example:
 
-5. `56 / 7 =`
-6. `72 / 8 =`
-7. `81 / 9 =`
-8. `42 / 6 =`
-9. `64 / 8 =`
-10. `35 / 5 =`
-11. `90 / 10 =`
-12. `0 / 6 =`
+```text
+42 / 7 = 6 because 7 x 6 = 42.
+```
 
-## Part C: Multiply back to check
+## Part A: Write division facts from memory
 
-13. Check `48 / 6 = 8`.
-14. Check `63 / 9 = 7`.
-15. Check `54 / 6 = 9`.
+Choose two divisors. Write the ordered facts from the lesson note, then check and correct.
 
-## Part D: Explain
+```text
+Divide by ___:
 
-16. Which multiplication fact proves `36 / 4 = 9`?
-17. Why is `56 / 7 = 6` wrong?
+Divide by ___:
+```
 
-Coach check: the learner should name the related multiplication fact. If the learner only guesses, return to the multiplication table family.
+## Part B: Complete the fact family
+
+```text
+4 x 7 = 28, so 28 / 4 = ___ and 28 / 7 = ___.
+6 x 8 = 48, so 48 / 6 = ___ and 48 / 8 = ___.
+9 x 5 = 45, so 45 / 9 = ___ and 45 / 5 = ___.
+10 x 3 = 30, so 30 / 10 = ___ and 30 / 3 = ___.
+```
+
+## Part C: Mixed exact division facts
+
+```text
+56 / 7 =
+72 / 8 =
+81 / 9 =
+42 / 6 =
+64 / 8 =
+35 / 5 =
+90 / 10 =
+0 / 6 =
+48 / 6 =
+63 / 9 =
+54 / 6 =
+36 / 4 =
+```
+
+## Part D: Multiply back to check
+
+```text
+Check 48 / 6 = 8.
+Check 63 / 9 = 7.
+Check 54 / 6 = 9.
+Check 56 / 7 = 8.
+```
+
+## Part E: Explain
+
+```text
+Which multiplication fact proves 36 / 4 = 9?
+Why is 56 / 7 = 6 wrong?
+Why do we not divide by zero?
+```
+
+Coach check: the learner should name the related multiplication fact. If the learner only guesses, return to the multiplication table family in the lesson note.

@@ -81,7 +81,11 @@ Good skills are specific enough to practise, assess, and revisit.
 
 A material is one reusable artifact such as a `lesson_note`, `teaching_note`, `worksheet`, `drill`, or `quick_check`.
 
-Use `lesson_note` for learner-facing explanation or reference, and use `teaching_note` for adult-facing delivery guidance.
+Use `lesson_note` for the learner-facing durable reference: the textbook or notebook page the learner can return to after the session. It should contain the taught idea, reference tables or models when needed, worked examples, and the correct language for the skill.
+
+Use `worksheet` for consumable learner practice. It should ask the learner to retrieve, write, solve, explain, or check, without duplicating the whole reference page.
+
+Use `teaching_note` for adult-facing delivery guidance.
 
 Each material should point back to real `skill_ids` and `stage_ids`.
 

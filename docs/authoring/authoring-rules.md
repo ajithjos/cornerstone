@@ -93,6 +93,8 @@ Do not reintroduce old aliases such as `capability`, `milestone`, `resource`, `p
 - Materials should be usable in a real session by a parent, teacher, or coach.
 - Prefer concrete prompts, examples, checks, and adaptations over abstract guidance.
 - Write for repeatable use, not for a one-time demo activity.
+- Treat `lesson_note` as the durable learner reference or textbook page. It may include full fact tables, models, definitions, and worked examples when those are what the learner needs to revisit.
+- Treat `worksheet` as consumable practice. It should be lighter than the lesson note and should not duplicate the full reference content unless the task is explicitly to copy or reconstruct it from memory.
 - Keep material metadata in the material file itself. Do not duplicate it in a separate material index.
 - Make review and recap deliberate when the slice needs them; do not leave reinforcement to chance.
 - For arithmetic, every material should make the teaching move clear: what is being taught directly, what is being practised, what counts as secure, and what mistake pattern should trigger reteaching.
@@ -101,9 +103,9 @@ Do not reintroduce old aliases such as `capability`, `milestone`, `resource`, `p
 ## Required Material Kind Contract
 
 - Use canonical material kind names exactly in authored content and downstream APIs.
-- `lesson_note` is the learner-facing explanation or reference material for what is being learned.
+- `lesson_note` is the learner-facing explanation and durable reference material for what is being learned.
 - `teaching_note` is adult-facing guidance for prompts, misconceptions, and delivery choices.
-- `worksheet` is learner practice for paper or offline work.
+- `worksheet` is learner practice for paper or offline work; it is not the primary reference page.
 - `drill` is repetitive or live learner practice.
 - `quick_check` is a short learner check or stop point.
 - Do not use `teaching_note` as a substitute for learner-facing instruction.

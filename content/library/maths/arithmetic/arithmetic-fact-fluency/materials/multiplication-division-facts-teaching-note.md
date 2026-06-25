@@ -18,7 +18,13 @@ Adult guide: teach meaning briefly, then put most of the time into accurate reca
 
 ## The memorisation target
 
-The learner should know the multiplication facts from `0 x 0` through `10 x 10`.
+The learner should know:
+
+```text
+0 and 1 multiplication facts
+the 2 through 10 multiplication tables
+the exact division facts that can be derived from those tables
+```
 
 The division facts are not a separate table to chant. They are read from the multiplication families.
 
@@ -36,8 +42,10 @@ Example:
 1. Teach equal groups and arrays before expecting recall.
 2. Practise one table in order, then in mixed order, then mixed with older tables.
 3. Say the commuted fact: `6 x 8` and `8 x 6` have the same product.
-4. For division, always ask for the multiplication check.
-5. Correct clustered mistakes immediately. A weak `7` table must be retaught, not hidden inside a larger mixed page.
+4. Do not skip the ordered table page. The learner should write and say the full table before mixed drills.
+5. For division, practise one divisor at a time only after the matching multiplication table is known.
+6. For every division fact, ask for the multiplication check.
+7. Correct clustered mistakes immediately. A weak `7` table must be retaught, not hidden inside a larger mixed page.
 
 ## Useful adult language
 
@@ -47,6 +55,28 @@ How many in each group?
 What is the product?
 Which multiplication fact proves that division?
 Multiply back to check.
+```
+
+## Daily routine
+
+Use this order:
+
+```text
+1. Say the table in order.
+2. Write the table in order.
+3. Correct mistakes immediately.
+4. Cover the answers and write it again.
+5. Practise the same facts in mixed order.
+6. Add older tables back into review.
+```
+
+For division:
+
+```text
+1. Say the division fact.
+2. Say the multiplication fact that proves it.
+3. Write the answer.
+4. Check that the product returns to the starting number.
 ```
 
 ## Stop rule

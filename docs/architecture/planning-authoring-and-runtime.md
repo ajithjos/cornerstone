@@ -176,8 +176,8 @@ When a drill needs live execution, keep that runtime contract on the material it
 
 Recommended material kinds:
 
+- lesson_note
 - teaching_note
-- practice_routine
 - worksheet
 - drill
 - quick_check
@@ -186,6 +186,8 @@ That gives one clean rule:
 
 - pathway, playlist, and session decide sequence
 - material kind decides what the learner actually does
+
+Use `lesson_note` as the durable learner reference, including tables, models, definitions, and worked examples when useful. Use `worksheet` for consumable practice prompts that ask the learner to retrieve or apply that reference.
 
 ## Recommended Authoring Flow
 

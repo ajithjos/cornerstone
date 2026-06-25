@@ -11,9 +11,44 @@ estimated_minutes: 12
 
 # Fact Families Through 10 Practice
 
-Say the addition fact first. Then say the matching subtraction fact.
+Use the lesson note as the reference page. This page is for retrieval practice.
 
-## Part A: Addition facts by total
+## Part A: Write the family
+
+Write all addition facts and the derived subtraction facts for two wholes. Use the lesson note to check afterward.
+
+```text
+Whole ___:
+
+Whole ___:
+```
+
+## Part B: Addition retrieval
+
+```text
+Whole 5 addition facts:
+
+Whole 6 addition facts:
+
+Whole 7 addition facts:
+```
+
+## Part C: Derive subtraction from the family
+
+For each one, say the matching addition fact first.
+
+```text
+6 - 1 =
+6 - 5 =
+8 - 3 =
+8 - 8 =
+10 - 4 =
+10 - 10 =
+7 - 0 =
+1 - 1 =
+```
+
+## Part D: Mixed recall
 
 ```text
 0 + 4 =
@@ -28,24 +63,12 @@ Say the addition fact first. Then say the matching subtraction fact.
 3 + 7 =
 ```
 
-## Part B: Matching subtraction facts
+## Part E: Explain
 
 ```text
-6 - 1 =
-6 - 5 =
-8 - 3 =
-8 - 8 =
-10 - 4 =
-10 - 10 =
-7 - 0 =
-1 - 1 =
+Which addition fact proves 9 - 4 = 5?
+Which addition fact proves 10 - 7 = 3?
+Why is subtraction not a separate random table?
 ```
 
-## Part C: Fact-family speaking
-
-```text
-Write two addition facts and two subtraction facts for the whole 5.
-Write two addition facts and two subtraction facts for the whole 9.
-```
-
-Coach check: if the learner gets an addition fact but misses the matching subtraction, stay in this playlist another day.
+Coach check: if the learner gets an addition fact but misses the matching subtraction, return to the fact family in the lesson note before doing more mixed recall.
