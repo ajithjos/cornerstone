@@ -87,6 +87,36 @@ String _materialDocumentActionLabel(String kind) {
   }
 }
 
+LearningMaterialPrintPayload _learningMaterialPrintPayload({
+  required SessionDetail? session,
+  required SessionMaterial material,
+  required String body,
+}) {
+  return LearningMaterialPrintPayload(
+    sessionTitle: session?.title ?? 'Learning',
+    materialTitle: material.title,
+    kindLabel: _materialKindLabel(material.kind),
+    estimatedMinutes: material.estimatedMinutes,
+    body: body,
+  );
+}
+
+Future<void> _runPrintAction(
+  BuildContext context,
+  Future<void> Function() action,
+) async {
+  try {
+    await action();
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Unable to open print preview: $error')),
+    );
+  }
+}
+
 Color _proficiencyBackgroundColor(
   ThemeData theme,
   SessionMaterialProficiencySummary proficiency,
@@ -168,6 +198,7 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
     required this.showDocumentBodies,
     this.session,
     this.viewerCanReadLibrary = false,
+    this.allowPrinting = false,
     this.onOpenLibraryRoute,
     this.onStartActivity,
     this.onSetProficiencyOverride,
@@ -178,6 +209,7 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
   final SessionDetail? session;
   final bool viewerCanReadLibrary;
   final bool showDocumentBodies;
+  final bool allowPrinting;
   final ValueChanged<String>? onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)?
   onStartActivity;
@@ -255,6 +287,14 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
             final hasDocumentBody = (material.documentBody ?? '')
                 .trim()
                 .isNotEmpty;
+            final gate = material.gate;
+            final canPrintDocument =
+                allowPrinting &&
+                learningMaterialPrintingSupported &&
+                showDocumentBodies &&
+                hasDocumentBody &&
+                material.printable &&
+                (gate?.enabled ?? true);
             final canOpenDocument =
                 viewerCanReadLibrary &&
                 onOpenLibraryRoute != null &&
@@ -267,7 +307,6 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                 canStart &&
                 (material.status == 'completed' ||
                     session?.status == 'completed');
-            final gate = material.gate;
             final proficiency = material.proficiency;
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -380,7 +419,7 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (canStart || canOpenDocument) ...[
+                  if (canStart || canOpenDocument || canPrintDocument) ...[
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 10,
@@ -413,6 +452,21 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                             label: Text(
                               _materialDocumentActionLabel(material.kind),
                             ),
+                          ),
+                        if (canPrintDocument)
+                          OutlinedButton.icon(
+                            onPressed: () => _runPrintAction(
+                              context,
+                              () => printLearningMaterial(
+                                _learningMaterialPrintPayload(
+                                  session: session,
+                                  material: material,
+                                  body: material.documentBody!,
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(CornerstoneIcons.print, size: 18),
+                            label: const Text('Print'),
                           ),
                         if (proficiency != null &&
                             onSetProficiencyOverride != null)
@@ -544,6 +598,7 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
     required this.session,
     required this.viewerCanReadLibrary,
     required this.showDocumentBodies,
+    this.allowPrinting = false,
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
     this.onSetProficiencyOverride,
@@ -558,6 +613,7 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
   final SessionDetail session;
   final bool viewerCanReadLibrary;
   final bool showDocumentBodies;
+  final bool allowPrinting;
   final ValueChanged<String> onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
@@ -569,6 +625,18 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final printableMaterials =
+        allowPrinting && learningMaterialPrintingSupported && showDocumentBodies
+        ? groups
+              .expand((group) => group.materials)
+              .where(
+                (material) =>
+                    material.printable &&
+                    (material.gate?.enabled ?? true) &&
+                    (material.documentBody ?? '').trim().isNotEmpty,
+              )
+              .toList(growable: false)
+        : const <SessionMaterial>[];
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -606,6 +674,34 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
                   ],
                 ),
               ),
+              if (printableMaterials.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () => _runPrintAction(
+                    context,
+                    () => printLearningMaterialSet(
+                      LearningMaterialPrintSetPayload(
+                        title: '$title - ${session.title}',
+                        materials: printableMaterials
+                            .map(
+                              (material) => _learningMaterialPrintPayload(
+                                session: session,
+                                material: material,
+                                body: material.documentBody!,
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(CornerstoneIcons.print, size: 18),
+                  label: Text(
+                    printableMaterials.length == 1
+                        ? 'Print material'
+                        : 'Print materials',
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -623,6 +719,7 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
                 session: session,
                 viewerCanReadLibrary: viewerCanReadLibrary,
                 showDocumentBodies: showDocumentBodies,
+                allowPrinting: allowPrinting,
                 onOpenLibraryRoute: onOpenLibraryRoute,
                 onStartActivity: onStartActivity,
                 onSetProficiencyOverride: onSetProficiencyOverride,

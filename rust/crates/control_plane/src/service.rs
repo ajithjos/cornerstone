@@ -472,6 +472,11 @@ fn material_audience(kind: &str) -> &'static str {
     }
 }
 
+fn material_printable(kind: &str, document_body: Option<&str>) -> bool {
+    matches!(kind, LESSON_NOTE_KIND | WORKSHEET_KIND)
+        && document_body.map(|body| !body.trim().is_empty()).unwrap_or(false)
+}
+
 fn dominant_kind_for_materials<'a>(kinds: impl IntoIterator<Item = &'a str>) -> String {
     let kind_set: BTreeSet<&str> = kinds.into_iter().collect();
     for kind in DOMINANT_KIND_ORDER {
@@ -3358,6 +3363,9 @@ fn build_session_material_summaries(
             status,
             document_route_path: document_route_path_for_kind(documents, "material", &material_id),
             document_body: material.map(|item| item.body.clone()),
+            printable: material
+                .map(|item| material_printable(&item.kind, Some(item.body.as_str())))
+                .unwrap_or(false),
             runtime: material.and_then(|item| {
                 item.runtime.as_ref().map(|runtime| SessionMaterialRuntimeSummary {
                     runtime_id: runtime::build_runtime_id(&runtime.engine_id, &runtime.template_id),
@@ -4211,6 +4219,7 @@ mod tests {
             status: "scheduled".to_string(),
             document_route_path: Some("library/documents/learner".to_string()),
             document_body: Some("Learner body".to_string()),
+            printable: true,
             runtime: None,
             proficiency: None,
             gate: None,
@@ -4226,6 +4235,7 @@ mod tests {
             status: "scheduled".to_string(),
             document_route_path: Some("library/documents/adult".to_string()),
             document_body: Some("Adult body".to_string()),
+            printable: false,
             runtime: Some(SessionMaterialRuntimeSummary {
                 runtime_id: "runtime-1".to_string(),
                 engine_id: "engine-1".to_string(),

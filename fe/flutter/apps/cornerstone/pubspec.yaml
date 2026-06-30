@@ -13,8 +13,10 @@ dependencies:
   flutter_markdown_plus: ^1.0.7
   google_fonts: ^6.2.1
   http: ^1.4.0
+  markdown: ^7.3.1
   shared_preferences: ^2.5.3
   url_launcher: ^6.3.2
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:

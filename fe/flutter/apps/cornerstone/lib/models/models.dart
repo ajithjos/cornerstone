@@ -1455,6 +1455,7 @@ class SessionMaterial {
     required this.estimatedMinutes,
     required this.skillIds,
     required this.status,
+    required this.printable,
     this.documentRoutePath,
     this.documentBody,
     this.runtime,
@@ -1474,6 +1475,7 @@ class SessionMaterial {
           .map((item) => item as String)
           .toList(),
       status: json['status'] as String,
+      printable: json['printable'] as bool? ?? false,
       documentRoutePath: json['document_route_path'] as String?,
       documentBody: json['document_body'] as String?,
       runtime: json['runtime'] == null
@@ -1502,6 +1504,7 @@ class SessionMaterial {
   final int estimatedMinutes;
   final List<String> skillIds;
   final String status;
+  final bool printable;
   final String? documentRoutePath;
   final String? documentBody;
   final SessionMaterialRuntimeSummary? runtime;

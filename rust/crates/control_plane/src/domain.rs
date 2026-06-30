@@ -419,6 +419,7 @@ pub struct SessionMaterialSummary {
     pub status: String,
     pub document_route_path: Option<String>,
     pub document_body: Option<String>,
+    pub printable: bool,
     pub runtime: Option<SessionMaterialRuntimeSummary>,
     pub proficiency: Option<SessionMaterialProficiencySummary>,
     pub gate: Option<SessionMaterialGateSummary>,

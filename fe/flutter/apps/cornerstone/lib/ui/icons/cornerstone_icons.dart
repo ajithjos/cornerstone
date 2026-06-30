@@ -38,6 +38,7 @@ abstract final class CornerstoneIcons {
 
   // Documents and material kinds
   static const IconData document = Icons.description_rounded;
+  static const IconData print = Icons.print_rounded;
   static const IconData lessonNote = Icons.menu_book_rounded;
   static const IconData teachingNote = Icons.record_voice_over_rounded;
   static const IconData worksheet = Icons.edit_note_rounded;

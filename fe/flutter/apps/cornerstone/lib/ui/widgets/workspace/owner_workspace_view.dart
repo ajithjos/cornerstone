@@ -622,6 +622,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         viewerCanReadLibrary:
                                             viewer?.canReadLibrary ?? false,
                                         showDocumentBodies: true,
+                                        allowPrinting: true,
                                         onOpenLibraryRoute: onOpenLibraryRoute,
                                         onStartActivity: onStartActivity,
                                         onSetProficiencyOverride:
@@ -658,6 +659,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         viewerCanReadLibrary:
                                             viewer?.canReadLibrary ?? false,
                                         showDocumentBodies: true,
+                                        allowPrinting: true,
                                         onOpenLibraryRoute: onOpenLibraryRoute,
                                         onStartActivity: onStartActivity,
                                         onSetProficiencyOverride:
