@@ -50,6 +50,12 @@ class _LibraryDocumentReader extends StatelessWidget {
 
     final activeDocument = document!;
     final resolvedMaterialKind = _materialKindFromDocument(activeDocument);
+    final canPrintDocument =
+        learningMaterialPrintingSupported &&
+        activeDocument.kind == 'material' &&
+        (resolvedMaterialKind == 'lesson_note' ||
+            resolvedMaterialKind == 'worksheet') &&
+        activeDocument.body.trim().isNotEmpty;
 
     final markdownStyle = MarkdownStyleSheet.fromTheme(theme).copyWith(
       p: theme.textTheme.bodyLarge?.copyWith(height: 1.75),
@@ -134,6 +140,25 @@ class _LibraryDocumentReader extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 16),
+            if (canPrintDocument) ...[
+              OutlinedButton.icon(
+                onPressed: () => _runPrintAction(
+                  context,
+                  () => printLearningMaterial(
+                    LearningMaterialPrintPayload(
+                      sessionTitle: 'Library',
+                      materialTitle: activeDocument.title,
+                      kindLabel: _materialKindLabel(resolvedMaterialKind),
+                      estimatedMinutes: 0,
+                      body: activeDocument.body,
+                    ),
+                  ),
+                ),
+                icon: const Icon(CornerstoneIcons.print, size: 18),
+                label: const Text('Print'),
+              ),
+              const SizedBox(width: 10),
+            ],
             FilledButton.tonalIcon(
               onPressed: () async {
                 await Clipboard.setData(
