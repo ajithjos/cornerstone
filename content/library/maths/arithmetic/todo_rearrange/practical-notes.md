@@ -1,0 +1,5 @@
+# Expectation from parents
+
+1. Parents, you should be in a position to spend some time to set up this and to start this flow working. Meaning they will never spend time unless you really insist on it so if that is not the native way of your lifestyle you should be spending some time to enforce it at least for this learning practices. I mean, with our destructor, it might be even, you know, an entertainment or an out day out, but it has to happen and it has to be your priority and their priority
+
+2. About paper writing, for the items that need to be memorized, that has to be practiced on a paper. So the best way is to take a printout of the lesson note, for example, the addition facts or the multiplication times table, and just give a copy to them and ask them to repeat. So when you repeat, you should consistently repeat it maybe at least five times in each row. For example, repeat the times table for two, three and four five times each. I would say it should be ten times each and it may take some time initially but it will make things move quick.
