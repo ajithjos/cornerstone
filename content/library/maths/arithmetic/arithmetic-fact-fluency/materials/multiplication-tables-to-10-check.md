@@ -7,21 +7,28 @@ skill_ids:
   - recall_multiplication_facts_to_10
   - use_commutativity_for_multiplication
 estimated_minutes: 8
+runtime:
+  engine_id: arithmetic_fact_fluency.v1
+  spec_version: 1
+  template_id: multiplication_tables_to_10
+  parameters:
+    question_count: 10
+    table_min: 2
+    table_max: 10
+    max_multiplier: 10
+    include_zero_facts: true
+    include_one_facts: true
+    allow_commuted: true
+  scoring:
+    pass_accuracy: 0.8
+    max_duration_seconds: 120
+  persistence:
+    store_response_log: false
+    store_summary: true
+  gate:
+    requires_ready_material_id: multiplication_tables_to_10_drill
 ---
 
 # Multiplication Tables Through 10 Assessment
 
-Do this in mixed order. Keep the pace steady but do not rush weak recall into guessing.
-
-1. `6 x 7 =`
-2. `8 x 4 =`
-3. `9 x 9 =`
-4. `3 x 8 =`
-5. `10 x 6 =`
-6. `0 x 7 =`
-7. `7 x 8 =`
-8. `9 x 6 =`
-9. If `4 x 8 = 32`, what is `8 x 4`?
-10. Explain what `5 x 6` means.
-
-Passing guide: 8 or more secure answers means the learner can move into division facts from the same tables. If the learner misses clustered facts, reteach that table before moving on.
+Start the live assessment after the drill target is ready.

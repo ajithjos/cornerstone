@@ -28,6 +28,4 @@ runtime:
 
 # Bridge Through 10 Subtraction Drill
 
-Use this after the learner can already explain the step back to `10` on paper.
-
-Keep the drill short and mixed so the learner has to recognise the stopping point quickly.
+Start the live drill after the paper practice is secure.

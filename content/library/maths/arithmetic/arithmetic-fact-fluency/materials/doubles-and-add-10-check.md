@@ -28,6 +28,4 @@ runtime:
 
 # Doubles And Add 10 Assessment
 
-This assessment opens after the practice target is ready. Work steadily and carefully.
-
-Passing guide: 8 or more quick correct answers means the anchor facts are ready to support make-`10` work.
+Start the live assessment after the drill target is ready.

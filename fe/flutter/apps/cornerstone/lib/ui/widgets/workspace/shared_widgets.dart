@@ -87,6 +87,17 @@ String _materialDocumentActionLabel(String kind) {
   }
 }
 
+bool _showInlineSessionMaterialBody(SessionMaterial material) {
+  return !material.isExecutable;
+}
+
+bool _canOpenSessionMaterialReference(
+  SessionMaterial material, {
+  required bool supportMode,
+}) {
+  return !material.isExecutable || supportMode;
+}
+
 LearningMaterialPrintPayload _learningMaterialPrintPayload({
   required SessionDetail? session,
   required SessionMaterial material,
@@ -199,6 +210,7 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
     this.session,
     this.viewerCanReadLibrary = false,
     this.allowPrinting = false,
+    this.supportMode = false,
     this.onOpenLibraryRoute,
     this.onStartActivity,
     this.onSetProficiencyOverride,
@@ -210,6 +222,7 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
   final bool viewerCanReadLibrary;
   final bool showDocumentBodies;
   final bool allowPrinting;
+  final bool supportMode;
   final ValueChanged<String>? onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)?
   onStartActivity;
@@ -288,17 +301,25 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                 .trim()
                 .isNotEmpty;
             final gate = material.gate;
+            final showInlineDocumentBody =
+                showDocumentBodies &&
+                hasDocumentBody &&
+                _showInlineSessionMaterialBody(material);
             final canPrintDocument =
                 allowPrinting &&
                 learningMaterialPrintingSupported &&
-                showDocumentBodies &&
+                showInlineDocumentBody &&
                 hasDocumentBody &&
                 material.printable &&
                 (gate?.enabled ?? true);
             final canOpenDocument =
                 viewerCanReadLibrary &&
                 onOpenLibraryRoute != null &&
-                material.documentRoutePath != null;
+                material.documentRoutePath != null &&
+                _canOpenSessionMaterialReference(
+                  material,
+                  supportMode: supportMode,
+                );
             final canStart =
                 session != null &&
                 onStartActivity != null &&
@@ -308,12 +329,24 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                 (material.status == 'completed' ||
                     session?.status == 'completed');
             final proficiency = material.proficiency;
+            final materialCardColor = material.isExecutable
+                ? theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.72,
+                  )
+                : backgroundColor.withValues(alpha: 0.28);
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: backgroundColor.withValues(alpha: 0.28),
+                color: materialCardColor,
                 borderRadius: BorderRadius.circular(16),
+                border: material.isExecutable
+                    ? Border.all(
+                        color: theme.colorScheme.outlineVariant.withValues(
+                          alpha: 0.82,
+                        ),
+                      )
+                    : null,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -363,7 +396,7 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                         ),
                     ],
                   ),
-                  if (showDocumentBodies && hasDocumentBody) ...[
+                  if (showInlineDocumentBody) ...[
                     const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
@@ -598,6 +631,7 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
     required this.session,
     required this.viewerCanReadLibrary,
     required this.showDocumentBodies,
+    required this.supportMode,
     this.allowPrinting = false,
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
@@ -613,6 +647,7 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
   final SessionDetail session;
   final bool viewerCanReadLibrary;
   final bool showDocumentBodies;
+  final bool supportMode;
   final bool allowPrinting;
   final ValueChanged<String> onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
@@ -720,6 +755,7 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
                 viewerCanReadLibrary: viewerCanReadLibrary,
                 showDocumentBodies: showDocumentBodies,
                 allowPrinting: allowPrinting,
+                supportMode: supportMode,
                 onOpenLibraryRoute: onOpenLibraryRoute,
                 onStartActivity: onStartActivity,
                 onSetProficiencyOverride: onSetProficiencyOverride,

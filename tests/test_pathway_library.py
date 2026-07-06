@@ -17,6 +17,7 @@ SUPPORTED_MATERIAL_KINDS = {
 }
 LEARNER_FACING_KINDS = {"lesson_note", "worksheet", "drill", "quick_check"}
 PRACTICE_KINDS = {"worksheet", "drill"}
+FACT_FLUENCY_PATHWAY_ID = "arithmetic_fact_fluency"
 
 
 def load_yaml(path: Path) -> dict:
@@ -136,6 +137,38 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
         assert has_lesson_note, f"playlist {playlist['id']} is missing a lesson note"
         assert has_practice, f"playlist {playlist['id']} is missing practice material"
         assert has_quick_check, f"playlist {playlist['id']} is missing a quick check"
+
+        if pathway["id"] == FACT_FLUENCY_PATHWAY_ID:
+            drill_material_ids = [
+                material_id
+                for session in playlist["sessions"]
+                for material_id in session["material_ids"]
+                if materials[material_id]["type"] == "drill"
+            ]
+            quick_check_material_ids = [
+                material_id
+                for session in playlist["sessions"]
+                for material_id in session["material_ids"]
+                if materials[material_id]["type"] == "quick_check"
+            ]
+
+            assert drill_material_ids, f"fact-fluency playlist {playlist['id']} is missing a drill session"
+            for material_id in drill_material_ids:
+                assert "runtime" in materials[material_id], (
+                    f"fact-fluency drill {material_id} in playlist {playlist['id']} is missing a runtime block"
+                )
+            for material_id in quick_check_material_ids:
+                runtime = materials[material_id].get("runtime")
+                assert runtime is not None, (
+                    f"fact-fluency quick check {material_id} in playlist {playlist['id']} is missing a runtime block"
+                )
+                gate = runtime.get("gate")
+                assert gate is not None, (
+                    f"fact-fluency quick check {material_id} in playlist {playlist['id']} is missing a gate"
+                )
+                assert gate["requires_ready_material_id"] in drill_material_ids, (
+                    f"fact-fluency quick check {material_id} in playlist {playlist['id']} must gate on that playlist's drill"
+                )
 
     assert set(stages) <= stage_ids_from_skills | stage_ids_from_materials | playlist_stage_ids
     assert set(skills) <= skill_ids_in_materials | playlist_skill_ids

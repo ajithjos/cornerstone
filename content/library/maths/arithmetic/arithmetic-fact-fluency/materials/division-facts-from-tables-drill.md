@@ -1,18 +1,22 @@
 ---
-id: bridge_through_10_addition_drill
+id: division_facts_from_tables_drill
 type: drill
 stage_ids:
-  - bridge_through_10_addition
+  - division_facts_from_tables
 skill_ids:
-  - bridge_through_10_for_addition
+  - derive_division_facts_from_multiplication
+  - check_division_facts_with_multiplication
 estimated_minutes: 7
 runtime:
   engine_id: arithmetic_fact_fluency.v1
   spec_version: 1
-  template_id: bridge_through_10_addition
+  template_id: division_facts_from_tables
   parameters:
     question_count: 14
-    difficulty: basic
+    divisor_min: 2
+    divisor_max: 10
+    max_quotient: 10
+    include_zero_dividend: true
   scoring:
     pass_accuracy: 0.85
   persistence:
@@ -26,6 +30,6 @@ runtime:
     target_correct_count: 13
 ---
 
-# Bridge Through 10 Addition Drill
+# Division Facts From Tables Drill
 
 Start the live drill after the paper practice is secure.

@@ -22,9 +22,9 @@ sessions:
     skill_ids:
       - recall_multiplication_facts_to_10
       - use_commutativity_for_multiplication
-  - title: Repeat weak tables and commuted facts
+  - title: Run a short mixed drill on weak tables and commuted facts
     material_ids:
-      - multiplication_tables_to_10_practice
+      - multiplication_tables_to_10_drill
     skill_ids:
       - recall_multiplication_facts_to_10
       - use_commutativity_for_multiplication

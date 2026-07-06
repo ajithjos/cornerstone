@@ -777,6 +777,7 @@ pub async fn initialize_state(config: AppConfig, run_startup_bootstrap: bool) ->
         .with_context(|| format!("failed to create {}", config.exports_root.display()))?;
 
     let library_content = load_library_content(&config.content_root)?;
+    validate_supported_material_runtimes(&library_content.bundle)?;
     let pool = PgPoolOptions::new()
         .max_connections(8)
         .connect(&config.database_url)
@@ -1097,6 +1098,7 @@ pub async fn reload_library(state: &Arc<AppState>, context: &SessionContext) -> 
     ensure_viewer_can_manage_team(&context.authenticated_user)?;
 
     let library_content = load_library_content(&state.config.content_root)?;
+    validate_supported_material_runtimes(&library_content.bundle)?;
     {
         let mut library_guard = state.library.write().await;
         *library_guard = library_content.bundle;
@@ -1110,6 +1112,22 @@ pub async fn reload_library(state: &Arc<AppState>, context: &SessionContext) -> 
         *report_guard = library_content.report;
     }
     Ok(library_report_response(&*state.library_report.read().await))
+}
+
+fn validate_supported_material_runtimes(library: &LibraryBundle) -> anyhow::Result<()> {
+    for material in &library.materials {
+        let Some(runtime_config) = material.runtime.as_ref() else {
+            continue;
+        };
+        runtime::resolve_program(runtime_config).with_context(|| {
+            format!(
+                "material '{}' references unsupported runtime '{}'",
+                material.id,
+                runtime::build_runtime_id(&runtime_config.engine_id, &runtime_config.template_id),
+            )
+        })?;
+    }
+    Ok(())
 }
 
 pub async fn apply_bootstrap(state: &Arc<AppState>) -> anyhow::Result<BootstrapApplyResponse> {
@@ -4189,8 +4207,12 @@ fn session_workspace_order(left: &SessionDetail, right: &SessionDetail) -> Order
 
 #[cfg(test)]
 mod tests {
-    use catalog::{BootstrapMembership, BootstrapTeam, BootstrapUser, IdentityBootstrap, LibraryBundle, Pathway};
+    use catalog::{
+        BootstrapMembership, BootstrapTeam, BootstrapUser, IdentityBootstrap, LibraryBundle, MaterialDocument,
+        MaterialRuntime, Pathway,
+    };
     use chrono::NaiveDate;
+    use serde_json::json;
 
     use crate::domain::{
         AssignmentSummary, EvidenceSummary, LearnerAssignedJourneySummary, LearnerContinueBlock, LearnerJourneySummary,
@@ -4201,6 +4223,7 @@ mod tests {
     use super::{
         ActivityAttemptSummary, build_assigned_pathways, build_proficiency_summary, compile_bootstrap,
         continue_block_for_assigned_journeys, learner_safe_workspace_summary, response_sessions_for_assigned_journeys,
+        validate_supported_material_runtimes,
     };
 
     fn sample_session() -> SessionDetail {
@@ -4482,6 +4505,51 @@ mod tests {
         assert!(summary.ready_to_move_on);
         assert_eq!(summary.verdict, "ready_to_move_on");
         assert_eq!(summary.consecutive_pass_count, 20);
+    }
+
+    #[test]
+    fn library_reload_validation_rejects_unsupported_runtime_templates() {
+        let library = LibraryBundle {
+            subjects: vec![],
+            areas: vec![],
+            pathways: vec![],
+            skills: vec![],
+            stages: vec![],
+            playlists: vec![],
+            materials: vec![MaterialDocument {
+                id: "unsupported_material".to_string(),
+                kind: "drill".to_string(),
+                subject_id: "maths".to_string(),
+                area_id: "arithmetic".to_string(),
+                skill_ids: vec!["skill".to_string()],
+                stage_ids: vec!["stage".to_string()],
+                recommended_age: 8,
+                difficulty: "core".to_string(),
+                estimated_minutes: 5,
+                runtime: Some(MaterialRuntime {
+                    engine_id: "arithmetic_fact_fluency.v1".to_string(),
+                    spec_version: 1,
+                    template_id: "not_registered".to_string(),
+                    parameters: json!({}),
+                    scoring: None,
+                    persistence: None,
+                    proficiency: None,
+                    gate: None,
+                }),
+                title: "Unsupported".to_string(),
+                body: String::new(),
+                source_path: "content/library/test.md".to_string(),
+            }],
+        };
+
+        let error = validate_supported_material_runtimes(&library).expect_err("validation should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("material 'unsupported_material' references unsupported runtime"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

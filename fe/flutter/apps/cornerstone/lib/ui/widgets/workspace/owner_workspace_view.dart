@@ -622,6 +622,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         viewerCanReadLibrary:
                                             viewer?.canReadLibrary ?? false,
                                         showDocumentBodies: true,
+                                        supportMode: true,
                                         allowPrinting: true,
                                         onOpenLibraryRoute: onOpenLibraryRoute,
                                         onStartActivity: onStartActivity,
@@ -659,6 +660,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         viewerCanReadLibrary:
                                             viewer?.canReadLibrary ?? false,
                                         showDocumentBodies: true,
+                                        supportMode: true,
                                         allowPrinting: true,
                                         onOpenLibraryRoute: onOpenLibraryRoute,
                                         onStartActivity: onStartActivity,

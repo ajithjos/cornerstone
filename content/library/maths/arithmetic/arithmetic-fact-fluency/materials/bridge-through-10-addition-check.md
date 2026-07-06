@@ -25,6 +25,4 @@ runtime:
 
 # Bridge Through 10 Addition Assessment
 
-This assessment opens after the practice target is ready. Work steadily and carefully.
-
-Passing guide: 8 or more quick correct answers means the learner can use make-`10` for addition in mixed order.
+Start the live assessment after the drill target is ready.

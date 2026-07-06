@@ -33,6 +33,4 @@ runtime:
 
 # Fact Families Through 10 Assessment
 
-This assessment opens after the practice target is ready. Work steadily and carefully.
-
-Passing guide: 8 or more quick correct answers means the learner is ready for the next anchor facts.
+Start the live assessment after the drill target is ready.

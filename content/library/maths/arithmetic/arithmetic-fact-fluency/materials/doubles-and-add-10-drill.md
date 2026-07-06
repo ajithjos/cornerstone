@@ -31,6 +31,4 @@ runtime:
 
 # Doubles And Add 10 Drill
 
-Use this once the learner can already say the facts from the page.
-
-Keep the drill short. The point is immediate recognition of anchor facts, not long endurance work.
+Start the live drill after the paper practice is secure.

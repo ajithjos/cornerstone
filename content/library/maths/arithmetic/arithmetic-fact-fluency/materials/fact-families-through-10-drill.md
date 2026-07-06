@@ -36,6 +36,4 @@ runtime:
 
 # Fact Families Through 10 Drill
 
-Use this once the learner can already say most facts on paper.
-
-The drill should mix addition and subtraction through `10`, including zero facts, so the learner must recognise the family instead of following a chant.
+Start the live drill after the paper practice is secure.

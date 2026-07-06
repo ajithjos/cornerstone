@@ -22,9 +22,9 @@ sessions:
     skill_ids:
       - derive_division_facts_from_multiplication
       - check_division_facts_with_multiplication
-  - title: Repeat mixed multiplication and division family checks
+  - title: Run a short mixed drill on exact division fact families
     material_ids:
-      - division_facts_from_tables_practice
+      - division_facts_from_tables_drill
     skill_ids:
       - derive_division_facts_from_multiplication
       - check_division_facts_with_multiplication

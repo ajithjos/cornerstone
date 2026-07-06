@@ -7,21 +7,26 @@ skill_ids:
   - derive_division_facts_from_multiplication
   - check_division_facts_with_multiplication
 estimated_minutes: 8
+runtime:
+  engine_id: arithmetic_fact_fluency.v1
+  spec_version: 1
+  template_id: division_facts_from_tables
+  parameters:
+    question_count: 10
+    divisor_min: 2
+    divisor_max: 10
+    max_quotient: 10
+    include_zero_dividend: true
+  scoring:
+    pass_accuracy: 0.8
+    max_duration_seconds: 120
+  persistence:
+    store_response_log: false
+    store_summary: true
+  gate:
+    requires_ready_material_id: division_facts_from_tables_drill
 ---
 
 # Division Facts From Tables Assessment
 
-Keep this direct. Ask for the multiplication check on at least three answers.
-
-1. `48 / 6 =`
-2. `72 / 9 =`
-3. `63 / 7 =`
-4. `56 / 8 =`
-5. `81 / 9 =`
-6. `90 / 10 =`
-7. Which multiplication fact proves `42 / 7 = 6`?
-8. Which multiplication fact proves `64 / 8 = 8`?
-9. Check `54 / 9 = 6` by multiplying.
-10. Explain why division facts belong to multiplication families.
-
-Passing guide: 8 or more secure answers means exact division facts are ready to support written division. Keep weak table families in weekly review.
+Start the live assessment after the drill target is ready.

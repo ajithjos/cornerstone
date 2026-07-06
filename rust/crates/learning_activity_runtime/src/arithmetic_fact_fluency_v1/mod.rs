@@ -1,8 +1,10 @@
 mod anchor_facts_to_20;
 mod bridge_through_10_addition;
 mod bridge_through_10_subtraction;
+mod division_facts_from_tables;
 mod mixed_add_sub_to_10;
 mod mixed_add_sub_to_20;
+mod multiplication_tables_to_10;
 mod readiness_within_5;
 mod shared;
 
@@ -37,6 +39,20 @@ pub const PROGRAMS: &[RuntimeProgramRegistration] = &[
         engine_id: ENGINE_ID,
         template_id: bridge_through_10_subtraction::TEMPLATE_ID,
         generate: bridge_through_10_subtraction::generate,
+        score: shared::score_integer_activity,
+    },
+    RuntimeProgramRegistration {
+        runtime_id: multiplication_tables_to_10::RUNTIME_ID,
+        engine_id: ENGINE_ID,
+        template_id: multiplication_tables_to_10::TEMPLATE_ID,
+        generate: multiplication_tables_to_10::generate,
+        score: shared::score_integer_activity,
+    },
+    RuntimeProgramRegistration {
+        runtime_id: division_facts_from_tables::RUNTIME_ID,
+        engine_id: ENGINE_ID,
+        template_id: division_facts_from_tables::TEMPLATE_ID,
+        generate: division_facts_from_tables::generate,
         score: shared::score_integer_activity,
     },
     RuntimeProgramRegistration {

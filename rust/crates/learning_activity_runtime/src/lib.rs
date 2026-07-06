@@ -209,4 +209,52 @@ mod tests {
         assert_eq!(first.runtime_id, second.runtime_id);
         assert_eq!(first_items, second_items);
     }
+
+    #[test]
+    fn generates_multiplication_table_items() {
+        let material = build_material(
+            "multiplication_tables_to_10",
+            json!({
+                "question_count": 6,
+                "table_min": 2,
+                "table_max": 10,
+                "max_multiplier": 10,
+                "include_zero_facts": true,
+                "include_one_facts": true,
+                "allow_commuted": true
+            }),
+        );
+
+        let generated = generate_activity(&material, 99).expect("multiplication generation");
+
+        assert_eq!(
+            generated.runtime_id,
+            "arithmetic_fact_fluency.v1/multiplication_tables_to_10"
+        );
+        assert_eq!(generated.items.len(), 6);
+        assert!(generated.items.iter().all(|item| item.content.contains('x')));
+    }
+
+    #[test]
+    fn generates_division_table_items() {
+        let material = build_material(
+            "division_facts_from_tables",
+            json!({
+                "question_count": 6,
+                "divisor_min": 2,
+                "divisor_max": 10,
+                "max_quotient": 10,
+                "include_zero_dividend": true
+            }),
+        );
+
+        let generated = generate_activity(&material, 123).expect("division generation");
+
+        assert_eq!(
+            generated.runtime_id,
+            "arithmetic_fact_fluency.v1/division_facts_from_tables"
+        );
+        assert_eq!(generated.items.len(), 6);
+        assert!(generated.items.iter().all(|item| item.content.contains('/')));
+    }
 }
