@@ -9,26 +9,23 @@ skill_ids:
 recommended_age_min: 8
 recommended_age_max: 10
 sessions:
-  - title: Teach division facts as the reverse of multiplication facts
+  - id: instruction
+    title: Teach division facts as the reverse of multiplication facts
     material_ids:
       - division_facts_from_tables_lesson_note
       - multiplication_division_facts_teaching_note
     skill_ids:
       - derive_division_facts_from_multiplication
       - check_division_facts_with_multiplication
-  - title: Practise exact division facts from table families
-    material_ids:
-      - division_facts_from_tables_practice
-    skill_ids:
-      - derive_division_facts_from_multiplication
-      - check_division_facts_with_multiplication
-  - title: Run a short mixed drill on exact division fact families
+  - id: live_drill
+    title: Run a short mixed drill on exact division fact families
     material_ids:
       - division_facts_from_tables_drill
     skill_ids:
       - derive_division_facts_from_multiplication
       - check_division_facts_with_multiplication
-  - title: Assessment on division facts from tables
+  - id: quick_check
+    title: Assessment on division facts from tables
     material_ids:
       - division_facts_from_tables_check
     skill_ids:

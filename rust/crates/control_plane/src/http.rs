@@ -16,18 +16,18 @@ use uuid::Uuid;
 use catalog::LibraryBundle;
 
 use crate::domain::{
-    ActivityStartResponse, AssignmentRequest, CompleteActivityRequest, CompleteActivityResponse,
-    LibraryDocumentResponse, LibraryDocumentsResponse, LibraryReloadResponse, OperationStatusResponse,
-    RecordSessionRequest, ReviewRebuildRequest, SwitchActiveTeamRequest, SwitchActiveUserRequest,
-    ViewerSessionResponse,
+    ActivityStartResponse, AssignmentReconcileRequest, AssignmentRequest, CompleteActivityRequest,
+    CompleteActivityResponse, LibraryDocumentResponse, LibraryDocumentsResponse, LibraryReloadResponse,
+    OperationStatusResponse, RecordSessionRequest, ReviewRebuildRequest, SwitchActiveTeamRequest,
+    SwitchActiveUserRequest, ViewerSessionResponse,
 };
 use crate::service::{
     AppState, apply_bootstrap, clear_proficiency_override, complete_activity_instance, create_assignment,
     delete_viewer_session, fetch_auth_options, fetch_dashboard, fetch_learner_detail, fetch_learner_workspace,
     fetch_library, fetch_library_document, fetch_library_workspace, fetch_viewer_session, finish_google_oauth_flow,
-    list_learners, list_library_documents, rebuild_review_items, record_session, reload_library,
-    resolve_session_context, set_proficiency_override, start_google_oauth_flow, start_session_material_activity,
-    switch_active_team, switch_active_user,
+    list_learners, list_library_documents, rebuild_review_items, reconcile_assignments_from_library, record_session,
+    reload_library, resolve_session_context, set_proficiency_override, start_google_oauth_flow,
+    start_session_material_activity, switch_active_team, switch_active_user,
 };
 
 const SESSION_COOKIE_NAME: &str = "cornerstone_session";
@@ -160,6 +160,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             delete(delete_proficiency_override),
         )
         .route("/api/v1/assignments", post(post_assignment))
+        .route("/api/v1/assignments/reconcile", post(post_assignments_reconcile))
         .route("/api/v1/sessions/{session_id}/record", post(post_record_session))
         .route(
             "/api/v1/sessions/{session_id}/materials/{session_material_id}/start",
@@ -360,6 +361,17 @@ async fn post_assignment(
 ) -> Result<Json<crate::domain::AssignmentResponse>, ApiError> {
     let context = session_context_from_jar(&jar, &state).await?;
     Ok(Json(create_assignment(&state, &context, request).await?))
+}
+
+async fn post_assignments_reconcile(
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<AssignmentReconcileRequest>,
+) -> Result<Json<crate::domain::AssignmentReconcileResponse>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        reconcile_assignments_from_library(&state, &context, request).await?,
+    ))
 }
 
 async fn post_proficiency_override(

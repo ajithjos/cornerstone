@@ -340,6 +340,7 @@ class PlaylistAssignmentTarget {
 class LibraryWorkspaceSession {
   LibraryWorkspaceSession({
     required this.sessionIndex,
+    required this.authoredSessionId,
     required this.dayOffset,
     required this.title,
     required this.skillIds,
@@ -355,6 +356,7 @@ class LibraryWorkspaceSession {
   factory LibraryWorkspaceSession.fromJson(Map<String, dynamic> json) {
     return LibraryWorkspaceSession(
       sessionIndex: (json['session_index'] as num).toInt(),
+      authoredSessionId: json['authored_session_id'] as String? ?? '',
       dayOffset: (json['day_offset'] as num).toInt(),
       title: json['title'] as String,
       skillIds: (json['skill_ids'] as List<dynamic>)
@@ -382,6 +384,7 @@ class LibraryWorkspaceSession {
   }
 
   final int sessionIndex;
+  final String authoredSessionId;
   final int dayOffset;
   final String title;
   final List<String> skillIds;
@@ -1983,6 +1986,7 @@ class PlaylistInfo {
 
 class PlaylistSessionInfo {
   PlaylistSessionInfo({
+    required this.sessionId,
     required this.dayOffset,
     required this.title,
     required this.skillIds,
@@ -1991,6 +1995,8 @@ class PlaylistSessionInfo {
 
   factory PlaylistSessionInfo.fromJson(Map<String, dynamic> json) {
     return PlaylistSessionInfo(
+      sessionId:
+          (json['session_id'] as String?) ?? (json['id'] as String?) ?? '',
       dayOffset: (json['day_offset'] as num).toInt(),
       title: json['title'] as String,
       skillIds: (json['skill_ids'] as List<dynamic>)
@@ -2002,6 +2008,7 @@ class PlaylistSessionInfo {
     );
   }
 
+  final String sessionId;
   final int dayOffset;
   final String title;
   final List<String> skillIds;

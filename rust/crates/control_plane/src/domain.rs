@@ -136,6 +136,7 @@ pub struct PlaylistAssignmentTargetSummary {
 #[derive(Debug, Clone, Serialize)]
 pub struct PlaylistSessionWorkspaceSummary {
     pub session_index: usize,
+    pub authored_session_id: String,
     pub day_offset: i32,
     pub title: String,
     pub skill_ids: Vec<String>,
@@ -175,6 +176,24 @@ pub struct BootstrapApplyResponse {
     pub user_count: usize,
     pub membership_count: usize,
     pub learner_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AssignmentReconcileRequest {
+    pub learner_id: Option<String>,
+    pub assignment_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct AssignmentReconcileResponse {
+    pub status: String,
+    pub assignment_count: usize,
+    pub sessions_inserted: usize,
+    pub sessions_updated: usize,
+    pub sessions_deleted: usize,
+    pub material_refs_inserted: usize,
+    pub material_refs_updated: usize,
+    pub material_refs_deleted: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -708,6 +727,7 @@ pub struct SessionRow {
     pub session_id: String,
     pub assignment_id: String,
     pub learner_id: String,
+    pub authored_session_id: String,
     pub title: String,
     pub scheduled_date: NaiveDate,
     pub status: String,

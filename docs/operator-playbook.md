@@ -69,6 +69,26 @@ make frontend-dev
 
 If tracked Postgres defaults become incompatible, the repo rotates `CORNERSTONE_DEV_DATA_REVISION` to move local work onto a fresh dev data window.
 
+## Assignment Plan Refresh
+
+Material body/runtime edits are read from the current library by `material_id`.
+
+Playlist session membership edits are assignment-plan edits. Existing assignments keep their own `session` and `session_material` rows until the database is reset or an owner explicitly reconciles active assignments:
+
+```bash
+make dev-reset
+make dev-up
+```
+
+For a running environment where you do not want a reset, call:
+
+```text
+POST /api/v1/assignments/reconcile
+{}
+```
+
+The reset-era schema is intentionally kept in one SQLx migration file: `rust/crates/control_plane/migrations/001_initial.sql`.
+
 ## Runtime Expectations
 
 - pathways organize the whole route

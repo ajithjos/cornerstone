@@ -127,6 +127,7 @@ pub struct SessionPattern {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaylistSession {
+    pub session_id: String,
     pub day_offset: i32,
     pub title: String,
     pub skill_ids: Vec<String>,
@@ -318,6 +319,7 @@ struct PlaylistFrontmatter {
 
 #[derive(Debug, Deserialize)]
 struct PlaylistFrontmatterSession {
+    id: String,
     title: String,
     material_ids: Vec<String>,
     skill_ids: Vec<String>,
@@ -673,6 +675,7 @@ fn load_library_documents(
                 .into_iter()
                 .enumerate()
                 .map(|(index, session)| PlaylistSession {
+                    session_id: session.id,
                     day_offset: index as i32,
                     title: session.title,
                     skill_ids: session.skill_ids,
@@ -1165,6 +1168,16 @@ fn validate_pathways(
     Ok(())
 }
 
+fn is_snake_case_id(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('_')
+        && !value.ends_with('_')
+        && !value.contains("__")
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
+}
+
 fn validate_catalog(
     subjects: &[Subject],
     areas: &[Area],
@@ -1311,8 +1324,24 @@ fn validate_catalog(
         let mut covered_skills = BTreeSet::new();
         let mut introduced_lesson_skills = BTreeSet::new();
         let mut playlist_material_kinds = BTreeSet::new();
+        let mut seen_session_ids = BTreeSet::new();
         let mut seen_day_offsets = BTreeSet::new();
         for session in &playlist.session_pattern.sessions {
+            if !is_snake_case_id(&session.session_id) {
+                bail!(
+                    "playlist '{}' session '{}' has invalid id '{}'; use snake_case",
+                    playlist.playlist_id,
+                    session.title,
+                    session.session_id
+                );
+            }
+            if !seen_session_ids.insert(session.session_id.as_str()) {
+                bail!(
+                    "playlist '{}' repeats session id '{}'",
+                    playlist.playlist_id,
+                    session.session_id
+                );
+            }
             if session.day_offset < 0 {
                 bail!("playlist {} uses a negative day_offset", playlist.playlist_id);
             }

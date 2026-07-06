@@ -10,7 +10,8 @@ skill_ids:
 recommended_age_min: 7
 recommended_age_max: 10
 sessions:
-  - title: Teach place-value names, zero placeholders, and number building
+  - id: instruction
+    title: Teach place-value names, zero placeholders, and number building
     material_ids:
       - place_value_and_number_sense_lesson_note
       - written_methods_teaching_note
@@ -18,20 +19,23 @@ sessions:
       - read_and_build_whole_numbers_by_place_value
       - partition_whole_numbers_by_place_value
       - compare_and_order_whole_numbers
-  - title: Practise building, partitioning, and comparing whole numbers
+  - id: paper_practice
+    title: Practise building, partitioning, and comparing whole numbers
     material_ids:
       - place_value_and_number_sense_practice
     skill_ids:
       - read_and_build_whole_numbers_by_place_value
       - partition_whole_numbers_by_place_value
       - compare_and_order_whole_numbers
-  - title: Repeat the weak place-value patterns
+  - id: targeted_review
+    title: Repeat the weak place-value patterns
     material_ids:
       - place_value_and_number_sense_practice
     skill_ids:
       - partition_whole_numbers_by_place_value
       - compare_and_order_whole_numbers
-  - title: Assessment on place value and number sense
+  - id: quick_check
+    title: Assessment on place value and number sense
     material_ids:
       - place_value_and_number_sense_check
     skill_ids:

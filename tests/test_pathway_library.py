@@ -107,7 +107,11 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
             assert skill_id in skills
             playlist_skill_ids.add(skill_id)
 
+        playlist_session_ids = set()
         for session in playlist["sessions"]:
+            assert session["id"]
+            assert session["id"] not in playlist_session_ids
+            playlist_session_ids.add(session["id"])
             assert session["material_ids"]
             assert session["skill_ids"]
             session_material_kinds = []

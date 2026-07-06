@@ -23,20 +23,20 @@ use uuid::Uuid;
 
 use crate::config::AppConfig;
 use crate::domain::{
-    ActivityInstance, ActivityItem, ActivityScoringSummary, ActivityStartResponse, ActivitySummary, AssignmentRequest,
-    AssignmentResponse, AssignmentRow, AssignmentSummary, AuthOptionsSummary, BootstrapApplyResponse,
-    CompleteActivityRequest, CompleteActivityResponse, DashboardResponse, EvidenceRow, EvidenceSummary,
-    LearnerAssignedPathwaySummary, LearnerContinueBlock, LearnerDashboard, LearnerDetailResponse,
-    LearnerJourneySummary, LearnerProgressSnapshot, LearnerRecentWinSummary, LearnerRow, LearnerSummary,
-    LearnerWorkspaceSummary, LibraryDocumentPayload, LibraryDocumentSummary, LibraryReloadResponse,
-    LibraryWorkspaceResponse, MaterialWorkspaceSummary, PathwayEntryPointSummary, PathwayWorkspaceSummary,
-    PlaylistAssignmentTargetSummary, PlaylistDeliveryShapeSummary, PlaylistSessionWorkspaceSummary,
-    PlaylistWorkspaceSummary, ProficiencyOverrideRequest, ProficiencyOverrideResponse, RecordSessionRequest,
-    RecordSessionResponse, ReviewItemRow, ReviewItemSummary, ReviewRebuildResponse, SessionDetail,
-    SessionMaterialGateSummary, SessionMaterialKindGroupSummary, SessionMaterialProficiencySummary, SessionMaterialRow,
-    SessionMaterialRuntimeSummary, SessionMaterialSummary, SessionRow, SessionSummary, SkillProgressRow,
-    SkillProgressSummary, StageProgress, TeamMemberRow, TeamMemberSummary, TeamRow, TeamSummary, ViewerSessionResponse,
-    WorkspaceMaterialKindGroupSummary,
+    ActivityInstance, ActivityItem, ActivityScoringSummary, ActivityStartResponse, ActivitySummary,
+    AssignmentReconcileRequest, AssignmentReconcileResponse, AssignmentRequest, AssignmentResponse, AssignmentRow,
+    AssignmentSummary, AuthOptionsSummary, BootstrapApplyResponse, CompleteActivityRequest, CompleteActivityResponse,
+    DashboardResponse, EvidenceRow, EvidenceSummary, LearnerAssignedPathwaySummary, LearnerContinueBlock,
+    LearnerDashboard, LearnerDetailResponse, LearnerJourneySummary, LearnerProgressSnapshot, LearnerRecentWinSummary,
+    LearnerRow, LearnerSummary, LearnerWorkspaceSummary, LibraryDocumentPayload, LibraryDocumentSummary,
+    LibraryReloadResponse, LibraryWorkspaceResponse, MaterialWorkspaceSummary, PathwayEntryPointSummary,
+    PathwayWorkspaceSummary, PlaylistAssignmentTargetSummary, PlaylistDeliveryShapeSummary,
+    PlaylistSessionWorkspaceSummary, PlaylistWorkspaceSummary, ProficiencyOverrideRequest, ProficiencyOverrideResponse,
+    RecordSessionRequest, RecordSessionResponse, ReviewItemRow, ReviewItemSummary, ReviewRebuildResponse,
+    SessionDetail, SessionMaterialGateSummary, SessionMaterialKindGroupSummary, SessionMaterialProficiencySummary,
+    SessionMaterialRow, SessionMaterialRuntimeSummary, SessionMaterialSummary, SessionRow, SessionSummary,
+    SkillProgressRow, SkillProgressSummary, StageProgress, TeamMemberRow, TeamMemberSummary, TeamRow, TeamSummary,
+    ViewerSessionResponse, WorkspaceMaterialKindGroupSummary,
 };
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -2014,18 +2014,18 @@ pub async fn complete_activity_instance(
         "{}: {}/{} correct",
         material.title, scored.correct_count, scored.item_count
     );
-    let artifact_payload = build_activity_artifact_payload(
-        &session,
-        &session_material,
+    let artifact_payload = build_activity_artifact_payload(ActivityArtifactPayloadContext {
+        session: &session,
+        session_material: &session_material,
         material,
-        &generated,
-        &scored,
+        generated: &generated,
+        scored: &scored,
         started_at,
         completed_at,
         duration_seconds,
-        activity_passed,
-        &completion_reason,
-    );
+        passed: activity_passed,
+        completion_reason: &completion_reason,
+    });
     let persisted = persist_session_result(
         state,
         &session,
@@ -2325,6 +2325,7 @@ fn build_library_workspace_pathways(
 
                 sessions.push(PlaylistSessionWorkspaceSummary {
                     session_index: index + 1,
+                    authored_session_id: session.session_id.clone(),
                     day_offset: session.day_offset,
                     title: session.title.clone(),
                     skill_ids: session.skill_ids.clone(),
@@ -2836,12 +2837,13 @@ async fn create_assignment_internal(
         let scheduled_date = start_date + Duration::days(session.day_offset as i64);
         let session_id = Uuid::new_v4().to_string();
         query(
-            "insert into session (session_id, assignment_id, learner_id, title, scheduled_date, status, day_offset, notes, completed_at)
-             values ($1, $2, $3, $4, $5, 'scheduled', $6, '', null)",
+            "insert into session (session_id, assignment_id, learner_id, authored_session_id, title, scheduled_date, status, day_offset, notes, completed_at)
+             values ($1, $2, $3, $4, $5, $6, 'scheduled', $7, '', null)",
         )
         .bind(&session_id)
         .bind(&assignment_id)
         .bind(learner_id)
+        .bind(&session.session_id)
         .bind(&session.title)
         .bind(scheduled_date)
         .bind(session.day_offset)
@@ -2907,6 +2909,289 @@ fn material_skill_pairs_for_session(library: &LibraryBundle, session: &PlaylistS
         }
     }
     pairs.into_iter().collect()
+}
+
+pub async fn reconcile_assignments_from_library(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    request: AssignmentReconcileRequest,
+) -> anyhow::Result<AssignmentReconcileResponse> {
+    ensure_viewer_can_manage_team(&context.authenticated_user)?;
+
+    let library = state.library.read().await.clone();
+    let assignments = fetch_reconcilable_assignments(
+        &state.pool,
+        request.learner_id.as_deref(),
+        request.assignment_id.as_deref(),
+    )
+    .await?;
+    let mut response = AssignmentReconcileResponse {
+        status: "ok".to_string(),
+        assignment_count: assignments.len(),
+        ..AssignmentReconcileResponse::default()
+    };
+
+    for assignment in assignments {
+        reconcile_assignment_from_library(&state.pool, &library, &assignment, &mut response).await?;
+        refresh_assignment_progress(&state.pool, &assignment.learner_id).await?;
+    }
+
+    Ok(response)
+}
+
+async fn fetch_reconcilable_assignments(
+    pool: &PgPool,
+    learner_id: Option<&str>,
+    assignment_id: Option<&str>,
+) -> anyhow::Result<Vec<AssignmentRow>> {
+    let base_select = "select assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions
+         from assignment";
+    let active_filter = "status <> 'completed' and status <> 'replaced'";
+
+    let rows = match (learner_id, assignment_id) {
+        (Some(learner_id), Some(assignment_id)) => {
+            let sql = format!(
+                "{base_select} where learner_id = $1 and assignment_id = $2 and {active_filter} order by start_date asc, title asc"
+            );
+            query_as::<_, AssignmentRow>(&sql)
+                .bind(learner_id)
+                .bind(assignment_id)
+                .fetch_all(pool)
+                .await?
+        }
+        (Some(learner_id), None) => {
+            let sql =
+                format!("{base_select} where learner_id = $1 and {active_filter} order by start_date asc, title asc");
+            query_as::<_, AssignmentRow>(&sql)
+                .bind(learner_id)
+                .fetch_all(pool)
+                .await?
+        }
+        (None, Some(assignment_id)) => {
+            let sql = format!(
+                "{base_select} where assignment_id = $1 and {active_filter} order by start_date asc, title asc"
+            );
+            query_as::<_, AssignmentRow>(&sql)
+                .bind(assignment_id)
+                .fetch_all(pool)
+                .await?
+        }
+        (None, None) => {
+            let sql = format!("{base_select} where {active_filter} order by learner_id asc, start_date asc, title asc");
+            query_as::<_, AssignmentRow>(&sql).fetch_all(pool).await?
+        }
+    };
+
+    Ok(rows)
+}
+
+async fn reconcile_assignment_from_library(
+    pool: &PgPool,
+    library: &LibraryBundle,
+    assignment: &AssignmentRow,
+    response: &mut AssignmentReconcileResponse,
+) -> anyhow::Result<()> {
+    let playlist = library.playlist(&assignment.playlist_id).ok_or_else(|| {
+        anyhow!(
+            "assignment '{}' references missing playlist '{}'",
+            assignment.assignment_id,
+            assignment.playlist_id
+        )
+    })?;
+    let authored_sessions = playlist
+        .session_pattern
+        .sessions
+        .iter()
+        .map(|session| (session.session_id.as_str(), session))
+        .collect::<BTreeMap<_, _>>();
+    let existing_sessions = fetch_sessions_for_assignment_reconcile(pool, &assignment.assignment_id).await?;
+    let existing_by_authored_id = existing_sessions
+        .iter()
+        .map(|session| (session.authored_session_id.as_str(), session))
+        .collect::<BTreeMap<_, _>>();
+
+    for session in &existing_sessions {
+        if !authored_sessions.contains_key(session.authored_session_id.as_str()) {
+            query("delete from session where session_id = $1")
+                .bind(&session.session_id)
+                .execute(pool)
+                .await?;
+            response.sessions_deleted += 1;
+        }
+    }
+
+    for authored_session in &playlist.session_pattern.sessions {
+        let scheduled_date = assignment.start_date + Duration::days(authored_session.day_offset as i64);
+        if let Some(existing) = existing_by_authored_id.get(authored_session.session_id.as_str()) {
+            let rows_affected = query(
+                "update session
+                 set title = $2, scheduled_date = $3, day_offset = $4
+                 where session_id = $1
+                   and (title <> $2 or scheduled_date <> $3 or day_offset <> $4)",
+            )
+            .bind(&existing.session_id)
+            .bind(&authored_session.title)
+            .bind(scheduled_date)
+            .bind(authored_session.day_offset)
+            .execute(pool)
+            .await?
+            .rows_affected();
+            response.sessions_updated += rows_affected as usize;
+
+            let mut reconciled_session = (**existing).clone();
+            reconciled_session.title = authored_session.title.clone();
+            reconciled_session.scheduled_date = scheduled_date;
+            reconciled_session.day_offset = authored_session.day_offset;
+            reconcile_session_material_refs(pool, library, &reconciled_session, authored_session, response).await?;
+        } else {
+            let session_id = Uuid::new_v4().to_string();
+            query(
+                "insert into session (session_id, assignment_id, learner_id, authored_session_id, title, scheduled_date, status, day_offset, notes, completed_at)
+                 values ($1, $2, $3, $4, $5, $6, 'scheduled', $7, '', null)",
+            )
+            .bind(&session_id)
+            .bind(&assignment.assignment_id)
+            .bind(&assignment.learner_id)
+            .bind(&authored_session.session_id)
+            .bind(&authored_session.title)
+            .bind(scheduled_date)
+            .bind(authored_session.day_offset)
+            .execute(pool)
+            .await?;
+            response.sessions_inserted += 1;
+
+            let inserted_session = SessionRow {
+                session_id,
+                assignment_id: assignment.assignment_id.clone(),
+                learner_id: assignment.learner_id.clone(),
+                authored_session_id: authored_session.session_id.clone(),
+                title: authored_session.title.clone(),
+                scheduled_date,
+                status: "scheduled".to_string(),
+                day_offset: authored_session.day_offset,
+                notes: String::new(),
+                completed_at: None,
+            };
+            reconcile_session_material_refs(pool, library, &inserted_session, authored_session, response).await?;
+        }
+    }
+
+    let end_date = assignment.start_date + Duration::days((playlist.duration_days.saturating_sub(1)) as i64);
+    query(
+        "update assignment
+         set title = $2, end_date = $3, total_sessions = $4
+         where assignment_id = $1",
+    )
+    .bind(&assignment.assignment_id)
+    .bind(&playlist.title)
+    .bind(end_date)
+    .bind(playlist.session_pattern.sessions.len() as i32)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn fetch_sessions_for_assignment_reconcile(
+    pool: &PgPool,
+    assignment_id: &str,
+) -> anyhow::Result<Vec<SessionRow>> {
+    query_as::<_, SessionRow>(
+        "select session_id, assignment_id, learner_id, authored_session_id, title, scheduled_date, status, day_offset, notes, completed_at
+         from session
+         where assignment_id = $1
+         order by scheduled_date asc, day_offset asc",
+    )
+    .bind(assignment_id)
+    .fetch_all(pool)
+    .await
+    .map_err(Into::into)
+}
+
+async fn reconcile_session_material_refs(
+    pool: &PgPool,
+    library: &LibraryBundle,
+    session_row: &SessionRow,
+    authored_session: &PlaylistSession,
+    response: &mut AssignmentReconcileResponse,
+) -> anyhow::Result<()> {
+    let expected_pairs = material_skill_pairs_for_session(library, authored_session)
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    if expected_pairs.is_empty() {
+        bail!(
+            "playlist session '{}' has no material-to-skill links",
+            authored_session.session_id
+        );
+    }
+
+    let existing_rows = query_as::<_, SessionMaterialRow>(
+        "select session_material_id, session_id, title, skill_id, material_id, status
+         from session_material
+         where session_id = $1
+         order by title, skill_id",
+    )
+    .bind(&session_row.session_id)
+    .fetch_all(pool)
+    .await?;
+    let existing_pairs = existing_rows
+        .iter()
+        .map(|row| (row.material_id.clone(), row.skill_id.clone()))
+        .collect::<BTreeSet<_>>();
+
+    for row in &existing_rows {
+        if !expected_pairs.contains(&(row.material_id.clone(), row.skill_id.clone())) {
+            query("delete from session_material where session_material_id = $1")
+                .bind(&row.session_material_id)
+                .execute(pool)
+                .await?;
+            response.material_refs_deleted += 1;
+        }
+    }
+
+    let material_status = material_status_for_session_status(&session_row.status);
+    for (material_id, skill_id) in &expected_pairs {
+        if existing_pairs.contains(&(material_id.clone(), skill_id.clone())) {
+            let rows_affected = query(
+                "update session_material
+                 set title = $2
+                 where session_id = $1 and material_id = $3 and skill_id = $4 and title <> $2",
+            )
+            .bind(&session_row.session_id)
+            .bind(format!("{}: {}", session_row.title, skill_id))
+            .bind(material_id)
+            .bind(skill_id)
+            .execute(pool)
+            .await?
+            .rows_affected();
+            response.material_refs_updated += rows_affected as usize;
+            continue;
+        }
+
+        query(
+            "insert into session_material (session_material_id, session_id, title, skill_id, material_id, status)
+             values ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&session_row.session_id)
+        .bind(format!("{}: {}", session_row.title, skill_id))
+        .bind(skill_id)
+        .bind(material_id)
+        .bind(material_status)
+        .execute(pool)
+        .await?;
+        response.material_refs_inserted += 1;
+    }
+
+    Ok(())
+}
+
+fn material_status_for_session_status(session_status: &str) -> &'static str {
+    match session_status {
+        "completed" => "completed",
+        "active" => "active",
+        _ => "scheduled",
+    }
 }
 
 async fn build_assigned_journeys(
@@ -3092,7 +3377,7 @@ async fn fetch_next_session_for_assignment(
     assignment_id: &str,
 ) -> anyhow::Result<Option<SessionSummary>> {
     let row = query_as::<_, SessionRow>(
-        "select session_id, assignment_id, learner_id, title, scheduled_date, status, day_offset, notes, completed_at
+        "select session_id, assignment_id, learner_id, authored_session_id, title, scheduled_date, status, day_offset, notes, completed_at
          from session
          where assignment_id = $1 and status <> 'completed'
          order by scheduled_date asc, day_offset asc
@@ -3115,7 +3400,7 @@ async fn fetch_sessions(
     let ordered_sessions = assignment_id.is_some();
     let rows = if let Some(assignment_id) = assignment_id {
         query_as::<_, SessionRow>(
-            "select session_id, assignment_id, learner_id, title, scheduled_date, status, day_offset, notes, completed_at
+            "select session_id, assignment_id, learner_id, authored_session_id, title, scheduled_date, status, day_offset, notes, completed_at
              from session
              where learner_id = $1 and assignment_id = $2
              order by scheduled_date asc, day_offset asc",
@@ -3126,7 +3411,7 @@ async fn fetch_sessions(
         .await?
     } else {
         query_as::<_, SessionRow>(
-            "select session_id, assignment_id, learner_id, title, scheduled_date, status, day_offset, notes, completed_at
+            "select session_id, assignment_id, learner_id, authored_session_id, title, scheduled_date, status, day_offset, notes, completed_at
              from session
              where learner_id = $1
              order by scheduled_date desc, day_offset desc
@@ -3148,7 +3433,6 @@ async fn fetch_sessions(
         .bind(&row.session_id)
         .fetch_all(pool)
         .await?;
-        material_rows = ensure_session_material_rows(pool, library, &row, material_rows).await?;
         order_session_material_rows(pool, library, &row, &mut material_rows).await?;
         let latest_evidence = fetch_latest_evidence_for_session(pool, &row.session_id).await?;
         let mut materials = build_session_material_summaries(library, documents, material_rows);
@@ -3226,14 +3510,7 @@ async fn authored_material_order_for_session(
         .session_pattern
         .sessions
         .iter()
-        .find(|session| session.day_offset == session_row.day_offset && session.title == session_row.title)
-        .or_else(|| {
-            playlist
-                .session_pattern
-                .sessions
-                .iter()
-                .find(|session| session.day_offset == session_row.day_offset)
-        });
+        .find(|session| session.session_id == session_row.authored_session_id);
     let Some(authored_session) = authored_session else {
         return Ok(BTreeMap::new());
     };
@@ -3244,90 +3521,6 @@ async fn authored_material_order_for_session(
         .enumerate()
         .map(|(index, material_id)| (material_id.clone(), index))
         .collect())
-}
-
-async fn ensure_session_material_rows(
-    pool: &PgPool,
-    library: &LibraryBundle,
-    session_row: &SessionRow,
-    existing_rows: Vec<SessionMaterialRow>,
-) -> anyhow::Result<Vec<SessionMaterialRow>> {
-    if session_row.status == "completed" || session_row.assignment_id.is_empty() {
-        return Ok(existing_rows);
-    }
-
-    let playlist_id = query_scalar::<_, String>("select playlist_id from assignment where assignment_id = $1")
-        .bind(&session_row.assignment_id)
-        .fetch_optional(pool)
-        .await?;
-    let Some(playlist_id) = playlist_id else {
-        return Ok(existing_rows);
-    };
-    let Some(playlist) = library.playlist(&playlist_id) else {
-        return Ok(existing_rows);
-    };
-
-    let authored_session = playlist
-        .session_pattern
-        .sessions
-        .iter()
-        .find(|session| session.day_offset == session_row.day_offset && session.title == session_row.title)
-        .or_else(|| {
-            playlist
-                .session_pattern
-                .sessions
-                .iter()
-                .find(|session| session.day_offset == session_row.day_offset)
-        });
-    let Some(authored_session) = authored_session else {
-        return Ok(existing_rows);
-    };
-
-    let expected_pairs = material_skill_pairs_for_session(library, authored_session)
-        .into_iter()
-        .collect::<BTreeSet<_>>();
-    if expected_pairs.is_empty() {
-        return Ok(existing_rows);
-    }
-    let existing_pairs = existing_rows
-        .iter()
-        .map(|row| (row.material_id.clone(), row.skill_id.clone()))
-        .collect::<BTreeSet<_>>();
-    let missing_pairs = expected_pairs.difference(&existing_pairs).cloned().collect::<Vec<_>>();
-    if missing_pairs.is_empty() {
-        return Ok(existing_rows);
-    }
-
-    let material_status = if session_row.status == "active" {
-        "active"
-    } else {
-        "scheduled"
-    };
-    for (material_id, skill_id) in missing_pairs {
-        query(
-            "insert into session_material (session_material_id, session_id, title, skill_id, material_id, status)
-             values ($1, $2, $3, $4, $5, $6)",
-        )
-        .bind(Uuid::new_v4().to_string())
-        .bind(&session_row.session_id)
-        .bind(format!("{}: {}", session_row.title, skill_id))
-        .bind(skill_id)
-        .bind(material_id)
-        .bind(material_status)
-        .execute(pool)
-        .await?;
-    }
-
-    query_as::<_, SessionMaterialRow>(
-        "select session_material_id, session_id, title, skill_id, material_id, status
-         from session_material
-         where session_id = $1
-         order by title, skill_id",
-    )
-    .bind(&session_row.session_id)
-    .fetch_all(pool)
-    .await
-    .map_err(Into::into)
 }
 
 fn build_session_material_summaries(
@@ -3629,10 +3822,10 @@ fn attempt_meets_proficiency(target: &MaterialRuntimeProficiency, attempt: &Acti
     if attempt.accuracy < target.target_accuracy {
         return false;
     }
-    if let Some(max_duration_seconds) = target.max_duration_seconds {
-        if attempt.duration_seconds <= 0 || attempt.duration_seconds as u32 > max_duration_seconds {
-            return false;
-        }
+    if let Some(max_duration_seconds) = target.max_duration_seconds
+        && (attempt.duration_seconds <= 0 || attempt.duration_seconds as u32 > max_duration_seconds)
+    {
+        return false;
     }
     target
         .target_correct_count
@@ -3685,7 +3878,7 @@ async fn effective_proficiency_target(
 
 async fn load_session_row(pool: &PgPool, session_id: &str) -> anyhow::Result<SessionRow> {
     query_as::<_, SessionRow>(
-        "select session_id, assignment_id, learner_id, title, scheduled_date, status, day_offset, notes, completed_at
+        "select session_id, assignment_id, learner_id, authored_session_id, title, scheduled_date, status, day_offset, notes, completed_at
          from session
          where session_id = $1",
     )
@@ -3751,18 +3944,32 @@ fn build_activity_notes(material_title: &str, scored: &ScoredActivity, notes: &s
     }
 }
 
-fn build_activity_artifact_payload(
-    session: &SessionRow,
-    session_material: &SessionMaterialRow,
-    material: &catalog::MaterialDocument,
-    generated: &GeneratedActivity,
-    scored: &ScoredActivity,
+struct ActivityArtifactPayloadContext<'a> {
+    session: &'a SessionRow,
+    session_material: &'a SessionMaterialRow,
+    material: &'a catalog::MaterialDocument,
+    generated: &'a GeneratedActivity,
+    scored: &'a ScoredActivity,
     started_at: Option<DateTime<Utc>>,
     completed_at: DateTime<Utc>,
     duration_seconds: i32,
     passed: bool,
-    completion_reason: &str,
-) -> JsonValue {
+    completion_reason: &'a str,
+}
+
+fn build_activity_artifact_payload(context: ActivityArtifactPayloadContext<'_>) -> JsonValue {
+    let ActivityArtifactPayloadContext {
+        session,
+        session_material,
+        material,
+        generated,
+        scored,
+        started_at,
+        completed_at,
+        duration_seconds,
+        passed,
+        completion_reason,
+    } = context;
     let mut payload = json!({
         "session_id": session.session_id,
         "learner_id": session.learner_id,

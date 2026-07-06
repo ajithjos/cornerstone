@@ -10,7 +10,8 @@ skill_ids:
 recommended_age_min: 7
 recommended_age_max: 10
 sessions:
-  - title: Teach column addition, column subtraction, and meaningful exchange
+  - id: instruction
+    title: Teach column addition, column subtraction, and meaningful exchange
     material_ids:
       - written_addition_and_subtraction_lesson_note
       - written_methods_teaching_note
@@ -18,20 +19,23 @@ sessions:
       - add_whole_numbers_with_column_method
       - subtract_whole_numbers_with_column_method
       - explain_exchange_in_written_methods
-  - title: Practise column addition and subtraction
+  - id: paper_practice
+    title: Practise column addition and subtraction
     material_ids:
       - written_addition_and_subtraction_practice
     skill_ids:
       - add_whole_numbers_with_column_method
       - subtract_whole_numbers_with_column_method
       - explain_exchange_in_written_methods
-  - title: Repeat the exchange questions and error checks
+  - id: targeted_review
+    title: Repeat the exchange questions and error checks
     material_ids:
       - written_addition_and_subtraction_practice
     skill_ids:
       - subtract_whole_numbers_with_column_method
       - explain_exchange_in_written_methods
-  - title: Assessment on column addition and subtraction
+  - id: quick_check
+    title: Assessment on column addition and subtraction
     material_ids:
       - written_addition_and_subtraction_check
     skill_ids:

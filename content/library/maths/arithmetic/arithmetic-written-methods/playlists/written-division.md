@@ -10,7 +10,8 @@ skill_ids:
 recommended_age_min: 8
 recommended_age_max: 10
 sessions:
-  - title: Teach short division, long division, and remainder checks
+  - id: instruction
+    title: Teach short division, long division, and remainder checks
     material_ids:
       - written_division_lesson_note
       - written_methods_teaching_note
@@ -18,19 +19,22 @@ sessions:
       - interpret_division_as_sharing_and_grouping
       - divide_whole_numbers_with_written_methods
       - check_written_division_with_multiplication
-  - title: Practise short and long division
+  - id: paper_practice
+    title: Practise short and long division
     material_ids:
       - written_division_practice
     skill_ids:
       - divide_whole_numbers_with_written_methods
       - check_written_division_with_multiplication
-  - title: Repeat quotient digit and remainder checks
+  - id: targeted_review
+    title: Repeat quotient digit and remainder checks
     material_ids:
       - written_division_practice
     skill_ids:
       - interpret_division_as_sharing_and_grouping
       - divide_whole_numbers_with_written_methods
-  - title: Assessment on written division
+  - id: quick_check
+    title: Assessment on written division
     material_ids:
       - written_division_check
     skill_ids:
