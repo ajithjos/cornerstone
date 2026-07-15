@@ -10,6 +10,7 @@ These docs describe the canonical Cornerstone model and the authoring workflow a
 - `architecture/runtime-program-contract.md`: the developer contract for runtime ids, runtime program registration, generate and score functions, and how to add new live programs
 - `architecture/how-live-materials-work.md`: the short developer guide for how live materials map from authored runtime blocks to backend generation, UI rendering, assignment flow, and learner use
 - `architecture/executable-drills-and-assignment-delivery.md`: the contract for live drills, result capture, and the parent browse-and-assign flow
+- `architecture/practice-quality-contract.md`: explicit session, run, skill, and review statuses plus balanced practice, correction, evidence, and review rules
 - `deploy/hosted-auth-and-team-switching.md`: the recommended first hosted auth model for GCP, adult sign-in, and in-team family member switching
 - `operator-playbook.md`: the end-to-end operating workflow for authoring, validating, and running the stack
 

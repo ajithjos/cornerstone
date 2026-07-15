@@ -20,15 +20,12 @@ runtime:
     include_one_facts: true
     allow_commuted: true
   scoring:
-    pass_accuracy: 0.8
+    target_accuracy: 0.9
     max_duration_seconds: 120
-  persistence:
-    store_response_log: false
-    store_summary: true
   gate:
     requires_ready_material_id: multiplication_tables_to_10_drill
 ---
 
 # Multiplication Tables Through 10 Assessment
 
-Start the live assessment after the drill target is ready.
+Start the balanced check when practice is ready for check.

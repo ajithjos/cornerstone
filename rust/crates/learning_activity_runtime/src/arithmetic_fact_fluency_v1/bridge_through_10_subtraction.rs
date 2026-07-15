@@ -1,42 +1,107 @@
 use catalog::MaterialRuntime;
+use serde::Deserialize;
 
-use crate::GeneratedActivity;
+use crate::{DifficultyBand, GeneratedActivity, GeneratedActivityItem, GenerationContext};
 
-use super::shared::{
-    ActivityRng, build_generated_activity, generate_unique_items, integer_item, parameter_string, parameter_usize,
-};
+use super::shared::{build_generated_activity, integer_candidate, parse_parameters, validate_template};
 
 pub(super) const TEMPLATE_ID: &str = "bridge_through_10_subtraction";
 pub(super) const RUNTIME_ID: &str = "arithmetic_fact_fluency.v1/bridge_through_10_subtraction";
 
-pub(super) fn generate(runtime: &MaterialRuntime, seed: u64) -> anyhow::Result<GeneratedActivity> {
-    let item_count = parameter_usize(runtime, "question_count").unwrap_or(10);
-    let difficulty = parameter_string(runtime, "difficulty").unwrap_or_else(|| "basic".to_string());
-    let mut rng = ActivityRng::new(seed);
-    let items = generate_unique_items(item_count, 18, &mut rng, |index, rng| {
-        let whole = if difficulty == "advanced" {
-            rng.range_inclusive(12, 19) as i32
-        } else {
-            rng.range_inclusive(11, 17) as i32
-        };
-        let to_ten = whole - 10;
-        let max_rest = (9 - to_ten).max(1) as u32;
-        let rest = rng.range_inclusive(1, max_rest) as i32;
-        let part = to_ten + rest;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Difficulty {
+    Basic,
+    Advanced,
+}
 
-        integer_item(
-            index,
-            format!("{whole} - {part} ="),
-            whole - part,
-            "bridge_through_10_for_subtraction",
-        )
-    })?;
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Parameters {
+    #[serde(default = "default_question_count")]
+    question_count: usize,
+    #[serde(default = "default_difficulty")]
+    difficulty: Difficulty,
+}
 
-    Ok(build_generated_activity(
+fn default_question_count() -> usize {
+    10
+}
+
+fn default_difficulty() -> Difficulty {
+    Difficulty::Basic
+}
+
+impl Parameters {
+    fn parse(runtime: &MaterialRuntime) -> anyhow::Result<Self> {
+        parse_parameters(runtime)
+    }
+
+    fn whole_range(&self) -> std::ops::RangeInclusive<i32> {
+        match self.difficulty {
+            Difficulty::Basic => 11..=17,
+            Difficulty::Advanced => 12..=19,
+        }
+    }
+}
+
+pub(super) fn validate(runtime: &MaterialRuntime) -> anyhow::Result<()> {
+    let parameters = Parameters::parse(runtime)?;
+    let required = required_coverage(&parameters);
+    validate_template(runtime, parameters.question_count, &candidates(&parameters), &required)
+}
+
+pub(super) fn generate(runtime: &MaterialRuntime, context: &GenerationContext) -> anyhow::Result<GeneratedActivity> {
+    let parameters = Parameters::parse(runtime)?;
+    let required = required_coverage(&parameters);
+    build_generated_activity(
         runtime,
-        seed,
+        context,
         RUNTIME_ID,
         "Step back to 10 first, then subtract the rest.".to_string(),
-        items,
-    ))
+        parameters.question_count,
+        candidates(&parameters),
+        required,
+    )
+}
+
+fn required_coverage(parameters: &Parameters) -> Vec<String> {
+    parameters
+        .whole_range()
+        .map(|whole| format!("bridge_start:{whole}"))
+        .collect()
+}
+
+fn candidates(parameters: &Parameters) -> Vec<GeneratedActivityItem> {
+    let mut candidates = Vec::new();
+    for whole in parameters.whole_range() {
+        let to_ten = whole - 10;
+        for rest in 1..=(9 - to_ten).max(1) {
+            let part = to_ten + rest;
+            let answer = whole - part;
+            let coverage_key = format!("bridge_start:{whole}");
+            candidates.push(integer_candidate(
+                format!("subtraction:{whole}-{part}"),
+                [
+                    "bridge_through_10_for_subtraction".to_string(),
+                    "operation:subtraction".to_string(),
+                    coverage_key.clone(),
+                ],
+                [coverage_key],
+                bridge_band(whole),
+                format!("{whole} - {part} ="),
+                answer,
+                format!("Split {part} into {to_ten} and {rest}; step to 10, then subtract {rest}."),
+            ));
+        }
+    }
+    candidates
+}
+
+fn bridge_band(whole: i32) -> DifficultyBand {
+    match whole {
+        ..=12 => DifficultyBand::Foundation,
+        13..=15 => DifficultyBand::Core,
+        _ => DifficultyBand::Challenge,
+    }
 }

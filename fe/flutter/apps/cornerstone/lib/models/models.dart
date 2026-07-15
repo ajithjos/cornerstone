@@ -1,3 +1,124 @@
+enum SessionStatus {
+  scheduled('scheduled', 'Scheduled'),
+  active('active', 'In progress'),
+  completed('completed', 'Finished');
+
+  const SessionStatus(this.wireValue, this.label);
+
+  factory SessionStatus.fromJson(Object? value) => switch (value) {
+    'scheduled' => scheduled,
+    'active' => active,
+    'completed' => completed,
+    _ => throw FormatException('Unknown session status: $value'),
+  };
+
+  final String wireValue;
+  final String label;
+}
+
+enum SessionMaterialStatus {
+  scheduled('scheduled', 'Scheduled'),
+  active('active', 'In progress'),
+  completed('completed', 'Finished');
+
+  const SessionMaterialStatus(this.wireValue, this.label);
+
+  factory SessionMaterialStatus.fromJson(Object? value) => switch (value) {
+    'scheduled' => scheduled,
+    'active' => active,
+    'completed' => completed,
+    _ => throw FormatException('Unknown session material status: $value'),
+  };
+
+  final String wireValue;
+  final String label;
+}
+
+enum RunStatus {
+  inProgress('in_progress'),
+  finished('finished');
+
+  const RunStatus(this.wireValue);
+
+  factory RunStatus.fromJson(Object? value) => switch (value) {
+    'in_progress' => inProgress,
+    'finished' => finished,
+    _ => throw FormatException('Unknown run status: $value'),
+  };
+
+  final String wireValue;
+}
+
+enum RunOutcome {
+  targetMet('target_met'),
+  targetNotMet('target_not_met');
+
+  const RunOutcome(this.wireValue);
+
+  factory RunOutcome.fromJson(Object? value) => switch (value) {
+    'target_met' => targetMet,
+    'target_not_met' => targetNotMet,
+    _ => throw FormatException('Unknown run outcome: $value'),
+  };
+
+  final String wireValue;
+}
+
+enum RunMode {
+  practice('practice'),
+  check('check'),
+  review('review'),
+  retry('retry');
+
+  const RunMode(this.wireValue);
+
+  factory RunMode.fromJson(Object? value) => switch (value) {
+    'practice' => practice,
+    'check' => check,
+    'review' => review,
+    'retry' => retry,
+    _ => throw FormatException('Unknown run mode: $value'),
+  };
+
+  final String wireValue;
+}
+
+enum SkillStatus {
+  notStarted('not_started', 'Not started'),
+  needsPractice('needs_practice', 'Needs practice'),
+  readyForCheck('ready_for_check', 'Ready for check'),
+  confirmed('confirmed', 'Skill confirmed');
+
+  const SkillStatus(this.wireValue, this.label);
+
+  factory SkillStatus.fromJson(Object? value) => switch (value) {
+    'not_started' => notStarted,
+    'needs_practice' => needsPractice,
+    'ready_for_check' => readyForCheck,
+    'confirmed' => confirmed,
+    _ => throw FormatException('Unknown skill status: $value'),
+  };
+
+  final String wireValue;
+  final String label;
+}
+
+enum ReviewStatus {
+  notDue('not_due', 'No review due'),
+  due('due', 'Review due');
+
+  const ReviewStatus(this.wireValue, this.label);
+
+  factory ReviewStatus.fromJson(Object? value) => switch (value) {
+    'not_due' => notDue,
+    'due' => due,
+    _ => throw FormatException('Unknown review status: $value'),
+  };
+
+  final String wireValue;
+  final String label;
+}
+
 class DashboardPayload {
   DashboardPayload({required this.learners, this.team, this.library});
 
@@ -759,7 +880,7 @@ class LearnerDashboard {
     required this.attentionState,
     required this.attentionLabel,
     required this.nextActionLabel,
-    required this.reviewItemCount,
+    required this.reviewDueCount,
     required this.progressStatusCounts,
     required this.stageProgress,
     this.activeAssignment,
@@ -777,10 +898,11 @@ class LearnerDashboard {
       attentionState: json['attention_state'] as String? ?? 'ready_now',
       attentionLabel: json['attention_label'] as String? ?? '',
       nextActionLabel: json['next_action_label'] as String? ?? '',
-      reviewItemCount: (json['review_item_count'] as num).toInt(),
+      reviewDueCount: (json['review_due_count'] as num).toInt(),
       progressStatusCounts:
           (json['progress_status_counts'] as Map<String, dynamic>).map(
-            (key, value) => MapEntry(key, (value as num).toInt()),
+            (key, value) =>
+                MapEntry(SkillStatus.fromJson(key), (value as num).toInt()),
           ),
       stageProgress: (json['stage_progress'] as List<dynamic>)
           .map((item) => StageProgress.fromJson(item as Map<String, dynamic>))
@@ -811,8 +933,8 @@ class LearnerDashboard {
   final String attentionState;
   final String attentionLabel;
   final String nextActionLabel;
-  final int reviewItemCount;
-  final Map<String, int> progressStatusCounts;
+  final int reviewDueCount;
+  final Map<SkillStatus, int> progressStatusCounts;
   final List<StageProgress> stageProgress;
   final AssignmentSummary? activeAssignment;
   final SessionSummary? todaySession;
@@ -827,6 +949,7 @@ class LearnerDetailPayload {
     required this.sessions,
     required this.progress,
     required this.reviewItems,
+    required this.practiceMastery,
     required this.workspace,
     this.activeAssignment,
     this.journey,
@@ -876,6 +999,13 @@ class LearnerDetailPayload {
       reviewItems: (json['review_items'] as List<dynamic>)
           .map((item) => ReviewItem.fromJson(item as Map<String, dynamic>))
           .toList(),
+      practiceMastery:
+          ((json['practice_mastery'] as List<dynamic>?) ?? const <dynamic>[])
+              .map(
+                (item) =>
+                    PracticeMastery.fromJson(item as Map<String, dynamic>),
+              )
+              .toList(),
       workspace: LearnerWorkspace.fromJson(
         json['workspace'] as Map<String, dynamic>,
       ),
@@ -890,6 +1020,7 @@ class LearnerDetailPayload {
   final List<SessionDetail> sessions;
   final List<SkillProgressSummary> progress;
   final List<ReviewItem> reviewItems;
+  final List<PracticeMastery> practiceMastery;
   final LearnerWorkspace workspace;
 }
 
@@ -905,6 +1036,7 @@ class LearnerWorkspacePayload {
     required this.sessions,
     required this.progress,
     required this.reviewItems,
+    required this.practiceMastery,
     required this.workspace,
     this.activeAssignment,
     this.journey,
@@ -959,6 +1091,13 @@ class LearnerWorkspacePayload {
       reviewItems: (json['review_items'] as List<dynamic>)
           .map((item) => ReviewItem.fromJson(item as Map<String, dynamic>))
           .toList(),
+      practiceMastery:
+          ((json['practice_mastery'] as List<dynamic>?) ?? const <dynamic>[])
+              .map(
+                (item) =>
+                    PracticeMastery.fromJson(item as Map<String, dynamic>),
+              )
+              .toList(),
       workspace: LearnerWorkspace.fromJson(
         json['workspace'] as Map<String, dynamic>,
       ),
@@ -977,6 +1116,7 @@ class LearnerWorkspacePayload {
   final List<SessionDetail> sessions;
   final List<SkillProgressSummary> progress;
   final List<ReviewItem> reviewItems;
+  final List<PracticeMastery> practiceMastery;
   final LearnerWorkspace workspace;
 }
 
@@ -1175,29 +1315,32 @@ class LearnerAssignedPathway {
 
 class LearnerProgressSnapshot {
   LearnerProgressSnapshot({
-    required this.secureCount,
-    required this.developingCount,
+    required this.confirmedCount,
+    required this.readyForCheckCount,
+    required this.needsPracticeCount,
     required this.notStartedCount,
-    required this.reviewItemCount,
+    required this.reviewDueCount,
     required this.completedSessionCount,
     required this.pendingSessionCount,
   });
 
   factory LearnerProgressSnapshot.fromJson(Map<String, dynamic> json) {
     return LearnerProgressSnapshot(
-      secureCount: (json['secure_count'] as num).toInt(),
-      developingCount: (json['developing_count'] as num).toInt(),
+      confirmedCount: (json['confirmed_count'] as num).toInt(),
+      readyForCheckCount: (json['ready_for_check_count'] as num).toInt(),
+      needsPracticeCount: (json['needs_practice_count'] as num).toInt(),
       notStartedCount: (json['not_started_count'] as num).toInt(),
-      reviewItemCount: (json['review_item_count'] as num).toInt(),
+      reviewDueCount: (json['review_due_count'] as num).toInt(),
       completedSessionCount: (json['completed_session_count'] as num).toInt(),
       pendingSessionCount: (json['pending_session_count'] as num).toInt(),
     );
   }
 
-  final int secureCount;
-  final int developingCount;
+  final int confirmedCount;
+  final int readyForCheckCount;
+  final int needsPracticeCount;
   final int notStartedCount;
-  final int reviewItemCount;
+  final int reviewDueCount;
   final int completedSessionCount;
   final int pendingSessionCount;
 }
@@ -1369,7 +1512,7 @@ class SessionSummary {
       sessionId: json['session_id'] as String,
       title: json['title'] as String,
       scheduledDate: json['scheduled_date'] as String,
-      status: json['status'] as String,
+      status: SessionStatus.fromJson(json['status']),
       dayOffset: (json['day_offset'] as num).toInt(),
       sequenceNumber: (json['sequence_number'] as num?)?.toInt(),
     );
@@ -1378,7 +1521,7 @@ class SessionSummary {
   final String sessionId;
   final String title;
   final String scheduledDate;
-  final String status;
+  final SessionStatus status;
   final int dayOffset;
   final int? sequenceNumber;
 }
@@ -1408,7 +1551,7 @@ class SessionDetail extends SessionSummary {
       sessionId: json['session_id'] as String,
       title: json['title'] as String,
       scheduledDate: json['scheduled_date'] as String,
-      status: json['status'] as String,
+      status: SessionStatus.fromJson(json['status']),
       dayOffset: (json['day_offset'] as num).toInt(),
       sequenceNumber: (json['sequence_number'] as num?)?.toInt(),
       dominantKind: json['dominant_kind'] as String,
@@ -1462,7 +1605,7 @@ class SessionMaterial {
     this.documentRoutePath,
     this.documentBody,
     this.runtime,
-    this.proficiency,
+    this.readiness,
     this.gate,
   });
 
@@ -1477,7 +1620,7 @@ class SessionMaterial {
       skillIds: (json['skill_ids'] as List<dynamic>)
           .map((item) => item as String)
           .toList(),
-      status: json['status'] as String,
+      status: SessionMaterialStatus.fromJson(json['status']),
       printable: json['printable'] as bool? ?? false,
       documentRoutePath: json['document_route_path'] as String?,
       documentBody: json['document_body'] as String?,
@@ -1486,10 +1629,10 @@ class SessionMaterial {
           : SessionMaterialRuntimeSummary.fromJson(
               json['runtime'] as Map<String, dynamic>,
             ),
-      proficiency: json['proficiency'] == null
+      readiness: json['readiness'] == null
           ? null
-          : SessionMaterialProficiencySummary.fromJson(
-              json['proficiency'] as Map<String, dynamic>,
+          : SessionMaterialReadinessSummary.fromJson(
+              json['readiness'] as Map<String, dynamic>,
             ),
       gate: json['gate'] == null
           ? null
@@ -1506,12 +1649,12 @@ class SessionMaterial {
   final String audience;
   final int estimatedMinutes;
   final List<String> skillIds;
-  final String status;
+  final SessionMaterialStatus status;
   final bool printable;
   final String? documentRoutePath;
   final String? documentBody;
   final SessionMaterialRuntimeSummary? runtime;
-  final SessionMaterialProficiencySummary? proficiency;
+  final SessionMaterialReadinessSummary? readiness;
   final SessionMaterialGateSummary? gate;
 
   bool get isAdultFacing => audience == 'adult';
@@ -1568,20 +1711,23 @@ class SessionMaterialRuntimeSummary {
   final bool executable;
 }
 
-class SessionMaterialProficiencySummary {
-  SessionMaterialProficiencySummary({
-    required this.minAttempts,
-    required this.windowSize,
+class SessionMaterialReadinessSummary {
+  SessionMaterialReadinessSummary({
+    required this.minimumRuns,
+    required this.recentRunWindow,
     required this.targetAccuracy,
-    required this.consecutivePassesRequired,
-    required this.attemptCount,
-    required this.recentAttemptCount,
+    required this.consecutiveTargetRunsRequired,
+    required this.minimumDistinctItems,
+    required this.minimumFamilyCount,
+    required this.readyForCheck,
+    required this.runCount,
+    required this.recentRunCount,
     required this.recentAverageAccuracy,
-    required this.consecutivePassCount,
+    required this.consecutiveTargetRunCount,
     required this.bestCorrectCount,
-    required this.readyToMoveOn,
-    required this.verdict,
-    required this.verdictLabel,
+    required this.distinctItemCount,
+    required this.skillStatus,
+    required this.statusLabel,
     required this.detailLabel,
     this.targetCorrectCount,
     this.maxDurationSeconds,
@@ -1589,48 +1735,53 @@ class SessionMaterialProficiencySummary {
     this.overrideReason = '',
   });
 
-  factory SessionMaterialProficiencySummary.fromJson(
-    Map<String, dynamic> json,
-  ) {
-    return SessionMaterialProficiencySummary(
-      minAttempts: (json['min_attempts'] as num).toInt(),
-      windowSize: (json['window_size'] as num).toInt(),
+  factory SessionMaterialReadinessSummary.fromJson(Map<String, dynamic> json) {
+    return SessionMaterialReadinessSummary(
+      minimumRuns: (json['minimum_runs'] as num).toInt(),
+      recentRunWindow: (json['recent_run_window'] as num).toInt(),
       targetAccuracy: (json['target_accuracy'] as num).toDouble(),
-      consecutivePassesRequired: (json['consecutive_passes_required'] as num)
-          .toInt(),
+      consecutiveTargetRunsRequired:
+          (json['consecutive_target_runs_required'] as num).toInt(),
       targetCorrectCount: (json['target_correct_count'] as num?)?.toInt(),
+      minimumDistinctItems: (json['minimum_distinct_items'] as num).toInt(),
+      minimumFamilyCount: (json['minimum_family_count'] as num).toInt(),
       maxDurationSeconds: (json['max_duration_seconds'] as num?)?.toInt(),
       overrideApplied: json['override_applied'] as bool? ?? false,
       overrideReason: json['override_reason'] as String? ?? '',
-      attemptCount: (json['attempt_count'] as num).toInt(),
-      recentAttemptCount: (json['recent_attempt_count'] as num).toInt(),
+      readyForCheck: json['ready_for_check'] as bool? ?? false,
+      runCount: (json['run_count'] as num).toInt(),
+      recentRunCount: (json['recent_run_count'] as num).toInt(),
       recentAverageAccuracy: (json['recent_average_accuracy'] as num)
           .toDouble(),
-      consecutivePassCount: (json['consecutive_pass_count'] as num).toInt(),
+      consecutiveTargetRunCount: (json['consecutive_target_run_count'] as num)
+          .toInt(),
       bestCorrectCount: (json['best_correct_count'] as num).toInt(),
-      readyToMoveOn: json['ready_to_move_on'] as bool? ?? false,
-      verdict: json['verdict'] as String,
-      verdictLabel: json['verdict_label'] as String,
+      distinctItemCount: (json['distinct_item_count'] as num).toInt(),
+      skillStatus: SkillStatus.fromJson(json['skill_status']),
+      statusLabel: json['status_label'] as String,
       detailLabel: json['detail_label'] as String,
     );
   }
 
-  final int minAttempts;
-  final int windowSize;
+  final int minimumRuns;
+  final int recentRunWindow;
   final double targetAccuracy;
-  final int consecutivePassesRequired;
+  final int consecutiveTargetRunsRequired;
   final int? targetCorrectCount;
+  final int minimumDistinctItems;
+  final int minimumFamilyCount;
   final int? maxDurationSeconds;
   final bool overrideApplied;
   final String overrideReason;
-  final int attemptCount;
-  final int recentAttemptCount;
+  final bool readyForCheck;
+  final int runCount;
+  final int recentRunCount;
   final double recentAverageAccuracy;
-  final int consecutivePassCount;
+  final int consecutiveTargetRunCount;
   final int bestCorrectCount;
-  final bool readyToMoveOn;
-  final String verdict;
-  final String verdictLabel;
+  final int distinctItemCount;
+  final SkillStatus skillStatus;
+  final String statusLabel;
   final String detailLabel;
 }
 
@@ -1639,7 +1790,7 @@ class SessionMaterialGateSummary {
     required this.enabled,
     required this.prerequisiteMaterialId,
     required this.prerequisiteTitle,
-    required this.prerequisiteVerdict,
+    required this.prerequisiteStatus,
     required this.reasonLabel,
   });
 
@@ -1648,7 +1799,9 @@ class SessionMaterialGateSummary {
       enabled: json['enabled'] as bool? ?? false,
       prerequisiteMaterialId: json['prerequisite_material_id'] as String,
       prerequisiteTitle: json['prerequisite_title'] as String,
-      prerequisiteVerdict: json['prerequisite_verdict'] as String,
+      prerequisiteStatus: SkillStatus.fromJson(
+        json['prerequisite_skill_status'],
+      ),
       reasonLabel: json['reason_label'] as String,
     );
   }
@@ -1656,7 +1809,7 @@ class SessionMaterialGateSummary {
   final bool enabled;
   final String prerequisiteMaterialId;
   final String prerequisiteTitle;
-  final String prerequisiteVerdict;
+  final SkillStatus prerequisiteStatus;
   final String reasonLabel;
 }
 
@@ -1702,7 +1855,7 @@ class SkillProgressSummary {
   factory SkillProgressSummary.fromJson(Map<String, dynamic> json) {
     return SkillProgressSummary(
       skillId: json['skill_id'] as String,
-      status: json['status'] as String,
+      status: SkillStatus.fromJson(json['skill_status']),
       scoreAverage: (json['score_average'] as num).toDouble(),
       lastScore: (json['last_score'] as num).toDouble(),
       totalEvidence: (json['total_evidence'] as num).toInt(),
@@ -1711,7 +1864,7 @@ class SkillProgressSummary {
   }
 
   final String skillId;
-  final String status;
+  final SkillStatus status;
   final double scoreAverage;
   final double lastScore;
   final int totalEvidence;
@@ -1721,27 +1874,117 @@ class SkillProgressSummary {
 class ReviewItem {
   ReviewItem({
     required this.reviewItemId,
-    required this.skillId,
+    required this.skillIds,
+    required this.materialId,
+    required this.evidenceMaterialId,
     required this.reason,
+    required this.factFocus,
+    required this.familyFocus,
     required this.dueDate,
-    required this.status,
+    required this.reviewStatus,
+    required this.actionLabel,
+    this.sessionId,
+    this.sessionMaterialId,
   });
 
   factory ReviewItem.fromJson(Map<String, dynamic> json) {
     return ReviewItem(
       reviewItemId: json['review_item_id'] as String,
-      skillId: json['skill_id'] as String,
+      skillIds: (json['skill_ids'] as List<dynamic>)
+          .map((item) => item as String)
+          .toList(),
+      sessionId: json['session_id'] as String?,
+      sessionMaterialId: json['session_material_id'] as String?,
+      materialId: json['material_id'] as String,
+      evidenceMaterialId: json['evidence_material_id'] as String,
       reason: json['reason'] as String,
+      factFocus: (json['fact_focus'] as List<dynamic>)
+          .map((item) => item as String)
+          .toList(),
+      familyFocus: (json['family_focus'] as List<dynamic>)
+          .map((item) => item as String)
+          .toList(),
       dueDate: json['due_date'] as String,
-      status: json['status'] as String,
+      reviewStatus: ReviewStatus.fromJson(json['review_status']),
+      actionLabel: json['action_label'] as String,
     );
   }
 
   final String reviewItemId;
-  final String skillId;
+  final List<String> skillIds;
+  final String? sessionId;
+  final String? sessionMaterialId;
+  final String materialId;
+  final String evidenceMaterialId;
   final String reason;
+  final List<String> factFocus;
+  final List<String> familyFocus;
   final String dueDate;
-  final String status;
+  final ReviewStatus reviewStatus;
+  final String actionLabel;
+}
+
+class PracticeMastery {
+  PracticeMastery({
+    required this.materialId,
+    required this.materialTitle,
+    required this.runtimeId,
+    required this.skillStatus,
+    required this.reviewStatus,
+    required this.families,
+  });
+
+  factory PracticeMastery.fromJson(Map<String, dynamic> json) {
+    return PracticeMastery(
+      materialId: json['material_id'] as String,
+      materialTitle: json['material_title'] as String,
+      runtimeId: json['runtime_id'] as String,
+      skillStatus: SkillStatus.fromJson(json['skill_status']),
+      reviewStatus: ReviewStatus.fromJson(json['review_status']),
+      families: (json['families'] as List<dynamic>)
+          .map(
+            (item) =>
+                PracticeMasteryFamily.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+    );
+  }
+
+  final String materialId;
+  final String materialTitle;
+  final String runtimeId;
+  final SkillStatus skillStatus;
+  final ReviewStatus reviewStatus;
+  final List<PracticeMasteryFamily> families;
+}
+
+class PracticeMasteryFamily {
+  PracticeMasteryFamily({
+    required this.familyKey,
+    required this.label,
+    required this.attemptedCount,
+    required this.correctCount,
+    required this.accuracy,
+    required this.lastSeenAt,
+  });
+
+  factory PracticeMasteryFamily.fromJson(Map<String, dynamic> json) {
+    return PracticeMasteryFamily(
+      familyKey: json['family_key'] as String,
+      label: json['label'] as String,
+      attemptedCount: (json['attempted_count'] as num).toInt(),
+      correctCount: (json['correct_count'] as num).toInt(),
+      accuracy: (json['accuracy'] as num).toDouble(),
+      lastSeenAt: json['last_seen_at'] as String,
+    );
+  }
+
+  final String familyKey;
+  final String label;
+  final int attemptedCount;
+  final int correctCount;
+  final double accuracy;
+  final String lastSeenAt;
 }
 
 class StageProgress {
@@ -2074,7 +2317,6 @@ class MaterialRuntimeInfo {
     required this.templateId,
     required this.parameters,
     this.scoring,
-    this.persistence,
   });
 
   factory MaterialRuntimeInfo.fromJson(Map<String, dynamic> json) {
@@ -2090,11 +2332,6 @@ class MaterialRuntimeInfo {
           : MaterialRuntimeScoringInfo.fromJson(
               json['scoring'] as Map<String, dynamic>,
             ),
-      persistence: json['persistence'] == null
-          ? null
-          : MaterialRuntimePersistenceInfo.fromJson(
-              json['persistence'] as Map<String, dynamic>,
-            ),
     );
   }
 
@@ -2103,53 +2340,33 @@ class MaterialRuntimeInfo {
   final String templateId;
   final Map<String, dynamic> parameters;
   final MaterialRuntimeScoringInfo? scoring;
-  final MaterialRuntimePersistenceInfo? persistence;
 }
 
 class MaterialRuntimeScoringInfo {
-  MaterialRuntimeScoringInfo({this.passAccuracy, this.maxDurationSeconds});
+  MaterialRuntimeScoringInfo({this.targetAccuracy, this.maxDurationSeconds});
 
   factory MaterialRuntimeScoringInfo.fromJson(Map<String, dynamic> json) {
     return MaterialRuntimeScoringInfo(
-      passAccuracy: (json['pass_accuracy'] as num?)?.toDouble(),
+      targetAccuracy: (json['target_accuracy'] as num?)?.toDouble(),
       maxDurationSeconds: (json['max_duration_seconds'] as num?)?.toInt(),
     );
   }
 
-  final double? passAccuracy;
+  final double? targetAccuracy;
   final int? maxDurationSeconds;
 }
 
-class MaterialRuntimePersistenceInfo {
-  MaterialRuntimePersistenceInfo({
-    required this.storeResponseLog,
-    required this.storeSummary,
-  });
-
-  factory MaterialRuntimePersistenceInfo.fromJson(Map<String, dynamic> json) {
-    return MaterialRuntimePersistenceInfo(
-      storeResponseLog: json['store_response_log'] as bool? ?? false,
-      storeSummary: json['store_summary'] as bool? ?? true,
-    );
-  }
-
-  final bool storeResponseLog;
-  final bool storeSummary;
-}
-
 class ActivityStartPayload {
-  ActivityStartPayload({required this.status, required this.activity});
+  ActivityStartPayload({required this.activity});
 
   factory ActivityStartPayload.fromJson(Map<String, dynamic> json) {
     return ActivityStartPayload(
-      status: json['status'] as String,
       activity: ActivityInstance.fromJson(
         json['activity'] as Map<String, dynamic>,
       ),
     );
   }
 
-  final String status;
   final ActivityInstance activity;
 }
 
@@ -2166,6 +2383,8 @@ class ActivityInstance {
     required this.instructions,
     required this.estimatedMinutes,
     required this.startedAt,
+    required this.runStatus,
+    required this.runMode,
     required this.scoring,
     required this.items,
   });
@@ -2183,6 +2402,8 @@ class ActivityInstance {
       instructions: json['instructions'] as String,
       estimatedMinutes: (json['estimated_minutes'] as num).toInt(),
       startedAt: DateTime.parse(json['started_at'] as String),
+      runStatus: RunStatus.fromJson(json['run_status']),
+      runMode: RunMode.fromJson(json['run_mode']),
       scoring: ActivityScoringSummary.fromJson(
         json['scoring'] as Map<String, dynamic>,
       ),
@@ -2203,21 +2424,26 @@ class ActivityInstance {
   final String instructions;
   final int estimatedMinutes;
   final DateTime startedAt;
+  final RunStatus runStatus;
+  final RunMode runMode;
   final ActivityScoringSummary scoring;
   final List<ActivityItem> items;
 }
 
 class ActivityScoringSummary {
-  ActivityScoringSummary({this.passAccuracy, this.maxDurationSeconds});
+  ActivityScoringSummary({
+    required this.targetAccuracy,
+    this.maxDurationSeconds,
+  });
 
   factory ActivityScoringSummary.fromJson(Map<String, dynamic> json) {
     return ActivityScoringSummary(
-      passAccuracy: (json['pass_accuracy'] as num?)?.toDouble(),
+      targetAccuracy: (json['target_accuracy'] as num).toDouble(),
       maxDurationSeconds: (json['max_duration_seconds'] as num?)?.toInt(),
     );
   }
 
-  final double? passAccuracy;
+  final double targetAccuracy;
   final int? maxDurationSeconds;
 }
 
@@ -2243,16 +2469,22 @@ class ActivityItem {
 
 class CompleteActivityResponse {
   CompleteActivityResponse({
-    required this.status,
+    required this.runStatus,
+    required this.runOutcome,
+    required this.runOutcomeLabel,
+    required this.retryAvailable,
     required this.evidence,
     required this.updatedProgress,
     required this.activitySummary,
-    this.proficiency,
+    this.readiness,
   });
 
   factory CompleteActivityResponse.fromJson(Map<String, dynamic> json) {
     return CompleteActivityResponse(
-      status: json['status'] as String,
+      runStatus: RunStatus.fromJson(json['run_status']),
+      runOutcome: RunOutcome.fromJson(json['run_outcome']),
+      runOutcomeLabel: json['run_outcome_label'] as String,
+      retryAvailable: json['retry_available'] as bool? ?? false,
       evidence: EvidenceSummary.fromJson(
         json['evidence'] as Map<String, dynamic>,
       ),
@@ -2265,19 +2497,56 @@ class CompleteActivityResponse {
       activitySummary: ActivitySummary.fromJson(
         json['activity_summary'] as Map<String, dynamic>,
       ),
-      proficiency: json['proficiency'] == null
+      readiness: json['readiness'] == null
           ? null
-          : SessionMaterialProficiencySummary.fromJson(
-              json['proficiency'] as Map<String, dynamic>,
+          : SessionMaterialReadinessSummary.fromJson(
+              json['readiness'] as Map<String, dynamic>,
             ),
     );
   }
 
-  final String status;
+  final RunStatus runStatus;
+  final RunOutcome runOutcome;
+  final String runOutcomeLabel;
+  final bool retryAvailable;
   final EvidenceSummary evidence;
   final List<SkillProgressSummary> updatedProgress;
   final ActivitySummary activitySummary;
-  final SessionMaterialProficiencySummary? proficiency;
+  final SessionMaterialReadinessSummary? readiness;
+}
+
+class ActivityCorrection {
+  ActivityCorrection({
+    required this.itemId,
+    required this.content,
+    required this.submittedResponse,
+    required this.expectedResponse,
+    required this.factKey,
+    required this.familyKeys,
+    required this.correctionCue,
+  });
+
+  factory ActivityCorrection.fromJson(Map<String, dynamic> json) {
+    return ActivityCorrection(
+      itemId: json['item_id'] as String,
+      content: json['content'] as String,
+      submittedResponse: json['submitted_response'] as String,
+      expectedResponse: json['expected_response'] as String,
+      factKey: json['fact_key'] as String,
+      familyKeys: (json['family_keys'] as List<dynamic>)
+          .map((item) => item as String)
+          .toList(),
+      correctionCue: json['correction_cue'] as String,
+    );
+  }
+
+  final String itemId;
+  final String content;
+  final String submittedResponse;
+  final String expectedResponse;
+  final String factKey;
+  final List<String> familyKeys;
+  final String correctionCue;
 }
 
 class ActivitySummary {
@@ -2286,11 +2555,11 @@ class ActivitySummary {
     required this.correctCount,
     required this.itemCount,
     required this.accuracy,
-    required this.passed,
     required this.completionReason,
     required this.completedAt,
     required this.durationSeconds,
-    required this.weakGroups,
+    required this.weakFamilies,
+    required this.corrections,
     this.startedAt,
   });
 
@@ -2300,15 +2569,19 @@ class ActivitySummary {
       correctCount: (json['correct_count'] as num).toInt(),
       itemCount: (json['item_count'] as num).toInt(),
       accuracy: (json['accuracy'] as num).toDouble(),
-      passed: json['passed'] as bool,
       completionReason: json['completion_reason'] as String,
       startedAt: json['started_at'] == null
           ? null
           : DateTime.parse(json['started_at'] as String),
       completedAt: DateTime.parse(json['completed_at'] as String),
       durationSeconds: (json['duration_seconds'] as num).toInt(),
-      weakGroups: (json['weak_groups'] as List<dynamic>)
+      weakFamilies: (json['weak_family_keys'] as List<dynamic>)
           .map((item) => item as String)
+          .toList(),
+      corrections: (json['corrections'] as List<dynamic>)
+          .map(
+            (item) => ActivityCorrection.fromJson(item as Map<String, dynamic>),
+          )
           .toList(),
     );
   }
@@ -2317,10 +2590,10 @@ class ActivitySummary {
   final int correctCount;
   final int itemCount;
   final double accuracy;
-  final bool passed;
   final String completionReason;
   final DateTime? startedAt;
   final DateTime completedAt;
   final int durationSeconds;
-  final List<String> weakGroups;
+  final List<String> weakFamilies;
+  final List<ActivityCorrection> corrections;
 }

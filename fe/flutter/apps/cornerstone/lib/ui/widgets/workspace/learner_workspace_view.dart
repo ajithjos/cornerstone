@@ -7,8 +7,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
     required this.viewerCanReadLibrary,
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
-    this.onSetProficiencyOverride,
-    this.onClearProficiencyOverride,
+    required this.onStartReview,
+    this.onSetReadinessOverride,
+    this.onClearReadinessOverride,
   });
 
   final ViewerUser? viewer;
@@ -17,10 +18,10 @@ class _LearnerWorkspaceView extends StatelessWidget {
   final ValueChanged<String> onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
+  final Future<void> Function(ReviewItem reviewItem) onStartReview;
+  final Future<void> Function(SessionMaterial material)? onSetReadinessOverride;
   final Future<void> Function(SessionMaterial material)?
-  onSetProficiencyOverride;
-  final Future<void> Function(SessionMaterial material)?
-  onClearProficiencyOverride;
+  onClearReadinessOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +101,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
         }
       }
       for (final session in orderedJourneySessions) {
-        if (session.status != 'completed') {
+        if (session.status != SessionStatus.completed) {
           return session;
         }
       }
@@ -115,7 +116,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
     final nextSession =
         continueBlock?.session ??
         orderedSessions
-            .where((session) => session.status != 'completed')
+            .where((session) => session.status != SessionStatus.completed)
             .cast<SessionDetail?>()
             .firstWhere((_) => true, orElse: () => null);
     final currentStanding =
@@ -132,7 +133,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
             0.0,
             1.0,
           );
-    final progressStatusCounts = <String, int>{};
+    final progressStatusCounts = <SkillStatus, int>{};
     for (final state in learnerWorkspace.progress) {
       progressStatusCounts.update(
         state.status,
@@ -170,8 +171,9 @@ class _LearnerWorkspaceView extends StatelessWidget {
         viewerCanReadLibrary: viewerCanReadLibrary,
         onOpenLibraryRoute: onOpenLibraryRoute,
         onStartActivity: onStartActivity,
-        onSetProficiencyOverride: onSetProficiencyOverride,
-        onClearProficiencyOverride: onClearProficiencyOverride,
+        onStartReview: onStartReview,
+        onSetReadinessOverride: onSetReadinessOverride,
+        onClearReadinessOverride: onClearReadinessOverride,
       );
     }
 
@@ -187,7 +189,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
           .toList(growable: false);
       final primaryExecutable = primaryExecutableMaterial(session);
       final isRepeatableRun =
-          primaryExecutable != null && session.status == 'completed';
+          primaryExecutable != null &&
+          session.status == SessionStatus.completed;
       return Container(
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(18),
@@ -244,7 +247,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                             domain: 'material_kind',
                             value: session.dominantKind,
                           ),
-                          if (session.status == 'completed')
+                          if (session.status == SessionStatus.completed)
                             _PillBadge(
                               text: 'Practice again',
                               color: theme.colorScheme.primary.withValues(
@@ -265,9 +268,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _PillBadge(
-                  text: session.status == 'completed'
-                      ? 'Completed'
-                      : session.scheduledDate,
+                  text: session.status.label,
                   color: active
                       ? theme.colorScheme.tertiaryContainer
                       : theme.colorScheme.primary.withValues(alpha: 0.12),
@@ -357,8 +358,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   allowPrinting: isSupportView,
                   onOpenLibraryRoute: onOpenLibraryRoute,
                   onStartActivity: onStartActivity,
-                  onSetProficiencyOverride: onSetProficiencyOverride,
-                  onClearProficiencyOverride: onClearProficiencyOverride,
+                  onSetReadinessOverride: onSetReadinessOverride,
+                  onClearReadinessOverride: onClearReadinessOverride,
                 ),
               if (isSupportView && adultGroups.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -377,8 +378,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   allowPrinting: isSupportView,
                   onOpenLibraryRoute: onOpenLibraryRoute,
                   onStartActivity: onStartActivity,
-                  onSetProficiencyOverride: onSetProficiencyOverride,
-                  onClearProficiencyOverride: onClearProficiencyOverride,
+                  onSetReadinessOverride: onSetReadinessOverride,
+                  onClearReadinessOverride: onClearReadinessOverride,
                 ),
               ],
             ],
@@ -462,13 +463,12 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   textColor: theme.colorScheme.onSecondaryContainer,
                 ),
                 _PillBadge(
-                  text:
-                      '${assignedJourneyInfo.completedSessionCount} completed',
+                  text: '${assignedJourneyInfo.completedSessionCount} finished',
                   color: theme.colorScheme.surfaceContainerHighest,
                   textColor: theme.colorScheme.onSurfaceVariant,
                 ),
                 _PillBadge(
-                  text: '${assignedJourneyInfo.pendingSessionCount} pending',
+                  text: '${assignedJourneyInfo.pendingSessionCount} remaining',
                   color: theme.colorScheme.tertiaryContainer,
                   textColor: theme.colorScheme.onTertiaryContainer,
                 ),
@@ -574,7 +574,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   textColor: theme.colorScheme.onSecondaryContainer,
                 ),
                 _PillBadge(
-                  text: '${assignedPathway.pendingSessionCount} pending',
+                  text: '${assignedPathway.pendingSessionCount} remaining',
                   color: theme.colorScheme.tertiaryContainer,
                   textColor: theme.colorScheme.onTertiaryContainer,
                 ),
@@ -659,22 +659,30 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 icon: CornerstoneIcons.standing,
               ),
             _StatChip(
-              label: 'Completed',
+              label: 'Finished',
               value: '${progressSnapshot.completedSessionCount}',
               icon: CornerstoneIcons.completed,
             ),
             _StatChip(
-              label: 'Ready now',
+              label: 'Remaining',
               value: '${progressSnapshot.pendingSessionCount}',
               icon: CornerstoneIcons.readyNow,
             ),
             _StatChip(
               label: 'Review',
-              value: '${progressSnapshot.reviewItemCount}',
+              value: '${progressSnapshot.reviewDueCount}',
               icon: CornerstoneIcons.review,
             ),
           ],
         ),
+        if (learnerWorkspace.practiceMastery.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _SurfaceCard(
+            child: PracticeMasteryPanel(
+              practiceMastery: learnerWorkspace.practiceMastery,
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         _SurfaceCard(
           child: Column(
@@ -707,8 +715,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                     textColor: theme.colorScheme.primary,
                   ),
                   _PillBadge(
-                    text:
-                        'Progress: ${progressSnapshot.reviewItemCount} review',
+                    text: 'Progress: ${progressSnapshot.reviewDueCount} review',
                     color: theme.colorScheme.tertiaryContainer,
                     textColor: theme.colorScheme.onTertiaryContainer,
                   ),
@@ -811,7 +818,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     currentStanding == null
-                        ? '${journey.completedSessionCount} of ${journey.totalSessionCount} sessions completed'
+                        ? '${journey.completedSessionCount} of ${journey.totalSessionCount} sessions finished'
                         : 'You are standing at session $currentStanding of ${journey.totalSessionCount}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
@@ -924,9 +931,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
                           allowPrinting: isSupportView,
                           onOpenLibraryRoute: onOpenLibraryRoute,
                           onStartActivity: onStartActivity,
-                          onSetProficiencyOverride: onSetProficiencyOverride,
-                          onClearProficiencyOverride:
-                              onClearProficiencyOverride,
+                          onSetReadinessOverride: onSetReadinessOverride,
+                          onClearReadinessOverride: onClearReadinessOverride,
                         ),
                         if (isSupportView && adultGroups.isNotEmpty) ...[
                           const SizedBox(height: 12),
@@ -945,9 +951,8 @@ class _LearnerWorkspaceView extends StatelessWidget {
                             allowPrinting: isSupportView,
                             onOpenLibraryRoute: onOpenLibraryRoute,
                             onStartActivity: onStartActivity,
-                            onSetProficiencyOverride: onSetProficiencyOverride,
-                            onClearProficiencyOverride:
-                                onClearProficiencyOverride,
+                            onSetReadinessOverride: onSetReadinessOverride,
+                            onClearReadinessOverride: onClearReadinessOverride,
                           ),
                         ],
                       ],
@@ -967,7 +972,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                 Text('Recent wins', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 6),
                 Text(
-                  'Completed work that has already been recorded for this learner.',
+                  'Finished work that has already been recorded for this learner.',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -998,7 +1003,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                               const SizedBox(height: 4),
                               Text(
                                 win.notes.isEmpty
-                                    ? 'Completed and recorded in the learner history.'
+                                    ? 'Finished and recorded in the learner history.'
                                     : win.notes,
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant,
@@ -1143,15 +1148,16 @@ class _LearnerWorkspaceView extends StatelessWidget {
               Text('Progress report', style: theme.textTheme.headlineSmall),
               const SizedBox(height: 6),
               Text(
-                'A simple snapshot of where this learner is secure, still developing, and not started yet.',
+                'A simple snapshot of skills that need practice, are ready for a check, or are confirmed.',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 18),
               if (progressStatusCounts.isEmpty &&
-                  progressSnapshot.secureCount == 0 &&
-                  progressSnapshot.developingCount == 0 &&
+                  progressSnapshot.confirmedCount == 0 &&
+                  progressSnapshot.readyForCheckCount == 0 &&
+                  progressSnapshot.needsPracticeCount == 0 &&
                   progressSnapshot.notStartedCount == 0)
                 Text(
                   'No progress has been recorded yet.',
@@ -1165,12 +1171,19 @@ class _LearnerWorkspaceView extends StatelessWidget {
                   runSpacing: 10,
                   children: [
                     _PillBadge(
-                      text: '${progressSnapshot.secureCount} secure',
+                      text: '${progressSnapshot.confirmedCount} confirmed',
                       color: theme.colorScheme.secondaryContainer,
                       textColor: theme.colorScheme.onSecondaryContainer,
                     ),
                     _PillBadge(
-                      text: '${progressSnapshot.developingCount} developing',
+                      text:
+                          '${progressSnapshot.readyForCheckCount} ready for check',
+                      color: theme.colorScheme.tertiaryContainer,
+                      textColor: theme.colorScheme.onTertiaryContainer,
+                    ),
+                    _PillBadge(
+                      text:
+                          '${progressSnapshot.needsPracticeCount} need practice',
                       color: theme.colorScheme.primary.withValues(alpha: 0.12),
                       textColor: theme.colorScheme.primary,
                     ),
@@ -1180,7 +1193,7 @@ class _LearnerWorkspaceView extends StatelessWidget {
                       textColor: theme.colorScheme.onSurfaceVariant,
                     ),
                     _PillBadge(
-                      text: '${progressSnapshot.reviewItemCount} review items',
+                      text: '${progressSnapshot.reviewDueCount} review due',
                       color: theme.colorScheme.tertiaryContainer,
                       textColor: theme.colorScheme.onTertiaryContainer,
                     ),
@@ -1212,20 +1225,14 @@ class _LearnerWorkspaceView extends StatelessWidget {
                       color: Colors.green.shade600,
                     ),
                     const SizedBox(width: 8),
-                    const Text('No pending review items.'),
+                    const Text('No review is due.'),
                   ],
                 )
               else
                 ...learnerWorkspace.reviewItems.map(
-                  (item) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(item.reason),
-                    subtitle: Text(_contractTermLabel(item.skillId)),
-                    trailing: _PillBadge(
-                      text: item.dueDate,
-                      color: theme.colorScheme.errorContainer,
-                      textColor: theme.colorScheme.onErrorContainer,
-                    ),
+                  (item) => ReviewItemActionTile(
+                    item: item,
+                    onStartReview: onStartReview,
                   ),
                 ),
             ],

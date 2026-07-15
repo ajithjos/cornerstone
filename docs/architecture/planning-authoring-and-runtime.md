@@ -164,7 +164,7 @@ Use age or school year only for entry guidance, such as:
 
 - a five-year-old usually starts at readiness and bonds within 5
 - a seven-year-old usually starts at addition and subtraction facts to 10
-- a ten-year-old usually takes a quick check first, then jumps to the first insecure playlist
+- a ten-year-old usually takes a quick check first, then jumps to the first playlist that is not yet confirmed
 
 This keeps the pathway reusable across different learners without duplicating the entire route for every age band.
 

@@ -20,18 +20,17 @@ runtime:
     include_one_facts: true
     allow_commuted: true
   scoring:
-    pass_accuracy: 0.85
-  persistence:
-    store_response_log: false
-    store_summary: true
-  proficiency:
-    min_attempts: 20
-    window_size: 20
-    target_accuracy: 0.9
-    consecutive_passes: 3
-    target_correct_count: 13
+    target_accuracy: 0.85
+  readiness:
+    minimum_runs: 3
+    recent_run_window: 3
+    target_accuracy: 0.85
+    consecutive_target_runs: 2
+    target_correct_count: 12
+    minimum_distinct_items: 28
+    minimum_family_count: 9
 ---
 
 # Multiplication Tables Through 10 Drill
 
-Start the live drill after the paper practice is secure.
+Start the live drill after the lesson note and guided practice. Balance table coverage and replay weak facts.

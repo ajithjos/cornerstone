@@ -22,12 +22,13 @@ use crate::domain::{
     SwitchActiveUserRequest, ViewerSessionResponse,
 };
 use crate::service::{
-    AppState, apply_bootstrap, clear_proficiency_override, complete_activity_instance, create_assignment,
+    AppState, apply_bootstrap, clear_readiness_override, complete_activity_instance, create_assignment,
     delete_viewer_session, fetch_auth_options, fetch_dashboard, fetch_learner_detail, fetch_learner_workspace,
     fetch_library, fetch_library_document, fetch_library_workspace, fetch_viewer_session, finish_google_oauth_flow,
     list_learners, list_library_documents, rebuild_review_items, reconcile_assignments_from_library, record_session,
-    reload_library, resolve_session_context, set_proficiency_override, start_google_oauth_flow,
-    start_session_material_activity, switch_active_team, switch_active_user,
+    reload_library, resolve_session_context, retry_missed_activity_facts, set_readiness_override,
+    start_google_oauth_flow, start_review_item_activity, start_session_material_activity, switch_active_team,
+    switch_active_user,
 };
 
 const SESSION_COOKIE_NAME: &str = "cornerstone_session";
@@ -152,12 +153,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/learners/{learner_id}", get(get_learner_detail))
         .route("/api/v1/learners/{learner_id}/workspace", get(get_learner_workspace))
         .route(
-            "/api/v1/learners/{learner_id}/proficiency-overrides",
-            post(post_proficiency_override),
+            "/api/v1/learners/{learner_id}/readiness-overrides",
+            post(post_readiness_override),
         )
         .route(
-            "/api/v1/learners/{learner_id}/proficiency-overrides/{material_id}",
-            delete(delete_proficiency_override),
+            "/api/v1/learners/{learner_id}/readiness-overrides/{material_id}",
+            delete(delete_readiness_override),
         )
         .route("/api/v1/assignments", post(post_assignment))
         .route("/api/v1/assignments/reconcile", post(post_assignments_reconcile))
@@ -169,6 +170,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/v1/activity-instances/{activity_instance_id}/complete",
             post(post_complete_activity_instance),
+        )
+        .route(
+            "/api/v1/activity-instances/{activity_instance_id}/retry",
+            post(post_retry_activity_instance),
+        )
+        .route(
+            "/api/v1/review-items/{review_item_id}/start",
+            post(post_start_review_item),
         )
         .route("/api/v1/review-items/rebuild", post(post_review_rebuild))
         .with_state(state)
@@ -374,26 +383,26 @@ async fn post_assignments_reconcile(
     ))
 }
 
-async fn post_proficiency_override(
+async fn post_readiness_override(
     Path(learner_id): Path<String>,
     jar: CookieJar,
     State(state): State<Arc<AppState>>,
-    Json(request): Json<crate::domain::ProficiencyOverrideRequest>,
-) -> Result<Json<crate::domain::ProficiencyOverrideResponse>, ApiError> {
+    Json(request): Json<crate::domain::ReadinessOverrideRequest>,
+) -> Result<Json<crate::domain::ReadinessOverrideResponse>, ApiError> {
     let context = session_context_from_jar(&jar, &state).await?;
     Ok(Json(
-        set_proficiency_override(&state, &context, &learner_id, request).await?,
+        set_readiness_override(&state, &context, &learner_id, request).await?,
     ))
 }
 
-async fn delete_proficiency_override(
+async fn delete_readiness_override(
     Path((learner_id, material_id)): Path<(String, String)>,
     jar: CookieJar,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<crate::domain::ProficiencyOverrideResponse>, ApiError> {
+) -> Result<Json<crate::domain::ReadinessOverrideResponse>, ApiError> {
     let context = session_context_from_jar(&jar, &state).await?;
     Ok(Json(
-        clear_proficiency_override(&state, &context, &learner_id, &material_id).await?,
+        clear_readiness_override(&state, &context, &learner_id, &material_id).await?,
     ))
 }
 
@@ -427,6 +436,28 @@ async fn post_complete_activity_instance(
     let context = session_context_from_jar(&jar, &state).await?;
     Ok(Json(
         complete_activity_instance(&state, &context, &activity_instance_id, request).await?,
+    ))
+}
+
+async fn post_retry_activity_instance(
+    Path(activity_instance_id): Path<String>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ActivityStartResponse>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        retry_missed_activity_facts(&state, &context, &activity_instance_id).await?,
+    ))
+}
+
+async fn post_start_review_item(
+    Path(review_item_id): Path<String>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ActivityStartResponse>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        start_review_item_activity(&state, &context, &review_item_id).await?,
     ))
 }
 

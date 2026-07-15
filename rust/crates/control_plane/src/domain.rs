@@ -2,7 +2,115 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use sqlx::FromRow;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionStatus {
+    Scheduled,
+    Active,
+    Completed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionMaterialStatus {
+    Scheduled,
+    Active,
+    Completed,
+}
+
+impl SessionMaterialStatus {
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "scheduled" => Self::Scheduled,
+            "active" => Self::Active,
+            "completed" => Self::Completed,
+            _ => panic!("invalid persisted session material status '{value}'"),
+        }
+    }
+}
+
+impl SessionStatus {
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "scheduled" => Self::Scheduled,
+            "active" => Self::Active,
+            "completed" => Self::Completed,
+            _ => panic!("invalid persisted session status '{value}'"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunStatus {
+    InProgress,
+    Finished,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunOutcome {
+    TargetMet,
+    TargetNotMet,
+}
+
+impl RunOutcome {
+    pub fn as_db(self) -> &'static str {
+        match self {
+            Self::TargetMet => "target_met",
+            Self::TargetNotMet => "target_not_met",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillStatus {
+    NotStarted,
+    NeedsPractice,
+    ReadyForCheck,
+    Confirmed,
+}
+
+impl SkillStatus {
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "needs_practice" => Self::NeedsPractice,
+            "ready_for_check" => Self::ReadyForCheck,
+            "confirmed" => Self::Confirmed,
+            _ => panic!("invalid persisted skill status '{value}'"),
+        }
+    }
+
+    pub fn as_db(self) -> &'static str {
+        match self {
+            Self::NotStarted => "not_started",
+            Self::NeedsPractice => "needs_practice",
+            Self::ReadyForCheck => "ready_for_check",
+            Self::Confirmed => "confirmed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewStatus {
+    NotDue,
+    Due,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityRunMode {
+    Practice,
+    Check,
+    Review,
+    Retry,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct OperationStatusResponse {
@@ -259,7 +367,7 @@ pub struct LearnerDashboard {
     pub next_action_label: String,
     pub active_assignment: Option<AssignmentSummary>,
     pub today_session: Option<SessionSummary>,
-    pub review_item_count: i64,
+    pub review_due_count: i64,
     pub progress_status_counts: BTreeMap<String, i64>,
     pub stage_progress: Vec<StageProgress>,
     pub latest_evidence: Option<EvidenceSummary>,
@@ -275,6 +383,7 @@ pub struct LearnerDetailResponse {
     pub sessions: Vec<SessionDetail>,
     pub progress: Vec<SkillProgressSummary>,
     pub review_items: Vec<ReviewItemSummary>,
+    pub practice_mastery: Vec<PracticeMasterySummary>,
     pub workspace: LearnerWorkspaceSummary,
 }
 
@@ -292,6 +401,7 @@ pub struct LearnerWorkspaceResponse {
     pub sessions: Vec<SessionDetail>,
     pub progress: Vec<SkillProgressSummary>,
     pub review_items: Vec<ReviewItemSummary>,
+    pub practice_mastery: Vec<PracticeMasterySummary>,
     pub workspace: LearnerWorkspaceSummary,
 }
 
@@ -336,10 +446,11 @@ pub struct LearnerContinueBlock {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LearnerProgressSnapshot {
-    pub secure_count: usize,
-    pub developing_count: usize,
+    pub confirmed_count: usize,
+    pub ready_for_check_count: usize,
+    pub needs_practice_count: usize,
     pub not_started_count: usize,
-    pub review_item_count: usize,
+    pub review_due_count: usize,
     pub completed_session_count: usize,
     pub pending_session_count: usize,
 }
@@ -401,7 +512,7 @@ pub struct SessionSummary {
     pub session_id: String,
     pub title: String,
     pub scheduled_date: NaiveDate,
-    pub status: String,
+    pub status: SessionStatus,
     pub day_offset: i32,
     pub sequence_number: Option<usize>,
 }
@@ -411,7 +522,7 @@ pub struct SessionDetail {
     pub session_id: String,
     pub title: String,
     pub scheduled_date: NaiveDate,
-    pub status: String,
+    pub status: SessionStatus,
     pub day_offset: i32,
     pub sequence_number: Option<usize>,
     pub dominant_kind: String,
@@ -435,12 +546,12 @@ pub struct SessionMaterialSummary {
     pub audience: String,
     pub estimated_minutes: u16,
     pub skill_ids: Vec<String>,
-    pub status: String,
+    pub status: SessionMaterialStatus,
     pub document_route_path: Option<String>,
     pub document_body: Option<String>,
     pub printable: bool,
     pub runtime: Option<SessionMaterialRuntimeSummary>,
-    pub proficiency: Option<SessionMaterialProficiencySummary>,
+    pub readiness: Option<SessionMaterialReadinessSummary>,
     pub gate: Option<SessionMaterialGateSummary>,
 }
 
@@ -461,23 +572,26 @@ pub struct SessionMaterialRuntimeSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct SessionMaterialProficiencySummary {
-    pub min_attempts: usize,
-    pub window_size: usize,
+pub struct SessionMaterialReadinessSummary {
+    pub minimum_runs: usize,
+    pub recent_run_window: usize,
     pub target_accuracy: f64,
-    pub consecutive_passes_required: usize,
+    pub consecutive_target_runs_required: usize,
     pub target_correct_count: Option<usize>,
+    pub minimum_distinct_items: usize,
+    pub minimum_family_count: usize,
     pub max_duration_seconds: Option<u32>,
     pub override_applied: bool,
     pub override_reason: String,
-    pub attempt_count: usize,
-    pub recent_attempt_count: usize,
+    pub run_count: usize,
+    pub recent_run_count: usize,
     pub recent_average_accuracy: f64,
-    pub consecutive_pass_count: usize,
+    pub consecutive_target_run_count: usize,
     pub best_correct_count: usize,
-    pub ready_to_move_on: bool,
-    pub verdict: String,
-    pub verdict_label: String,
+    pub distinct_item_count: usize,
+    pub ready_for_check: bool,
+    pub skill_status: SkillStatus,
+    pub status_label: String,
     pub detail_label: String,
 }
 
@@ -486,25 +600,27 @@ pub struct SessionMaterialGateSummary {
     pub enabled: bool,
     pub prerequisite_material_id: String,
     pub prerequisite_title: String,
-    pub prerequisite_verdict: String,
+    pub prerequisite_skill_status: SkillStatus,
     pub reason_label: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct ProficiencyOverrideRequest {
+pub struct ReadinessOverrideRequest {
     pub material_id: String,
-    pub min_attempts: i32,
-    pub window_size: i32,
+    pub minimum_runs: i32,
+    pub recent_run_window: i32,
     pub target_accuracy: f64,
-    pub consecutive_passes: i32,
+    pub consecutive_target_runs: i32,
     pub target_correct_count: Option<i32>,
+    pub minimum_distinct_items: Option<i32>,
+    pub minimum_family_count: Option<i32>,
     pub max_duration_seconds: Option<i32>,
     #[serde(default)]
     pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ProficiencyOverrideResponse {
+pub struct ReadinessOverrideResponse {
     pub status: String,
     pub learner_id: String,
     pub material_id: String,
@@ -523,7 +639,7 @@ pub struct EvidenceSummary {
 #[derive(Debug, Clone, Serialize)]
 pub struct SkillProgressSummary {
     pub skill_id: String,
-    pub status: String,
+    pub skill_status: SkillStatus,
     pub score_average: f64,
     pub last_score: f64,
     pub total_evidence: i32,
@@ -533,10 +649,37 @@ pub struct SkillProgressSummary {
 #[derive(Debug, Clone, Serialize)]
 pub struct ReviewItemSummary {
     pub review_item_id: String,
-    pub skill_id: String,
+    pub skill_ids: Vec<String>,
+    pub session_id: Option<String>,
+    pub session_material_id: Option<String>,
+    pub material_id: String,
+    pub evidence_material_id: String,
     pub reason: String,
+    pub fact_focus: Vec<String>,
+    pub family_focus: Vec<String>,
     pub due_date: NaiveDate,
-    pub status: String,
+    pub review_status: ReviewStatus,
+    pub action_label: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PracticeMasterySummary {
+    pub material_id: String,
+    pub material_title: String,
+    pub runtime_id: String,
+    pub skill_status: SkillStatus,
+    pub review_status: ReviewStatus,
+    pub families: Vec<PracticeFamilyMasterySummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PracticeFamilyMasterySummary {
+    pub family_key: String,
+    pub label: String,
+    pub attempted_count: i32,
+    pub correct_count: i32,
+    pub accuracy: f64,
+    pub last_seen_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -577,13 +720,14 @@ pub struct RecordSessionResponse {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ActivityStartResponse {
-    pub status: String,
     pub activity: ActivityInstance,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ActivityInstance {
-    pub activity_instance_id: String,
+    pub activity_instance_id: Uuid,
+    pub run_status: RunStatus,
+    pub run_mode: ActivityRunMode,
     pub session_id: String,
     pub session_material_id: String,
     pub material_id: String,
@@ -600,7 +744,7 @@ pub struct ActivityInstance {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ActivityScoringSummary {
-    pub pass_accuracy: Option<f64>,
+    pub target_accuracy: f64,
     pub max_duration_seconds: Option<u32>,
 }
 
@@ -627,11 +771,14 @@ pub struct ActivityResponseInput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CompleteActivityResponse {
-    pub status: String,
+    pub run_status: RunStatus,
+    pub run_outcome: RunOutcome,
+    pub run_outcome_label: String,
+    pub retry_available: bool,
     pub evidence: EvidenceSummary,
     pub updated_progress: Vec<SkillProgressSummary>,
     pub activity_summary: ActivitySummary,
-    pub proficiency: Option<SessionMaterialProficiencySummary>,
+    pub readiness: Option<SessionMaterialReadinessSummary>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -640,12 +787,23 @@ pub struct ActivitySummary {
     pub correct_count: usize,
     pub item_count: usize,
     pub accuracy: f64,
-    pub passed: bool,
     pub completion_reason: String,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: DateTime<Utc>,
     pub duration_seconds: i32,
-    pub weak_groups: Vec<String>,
+    pub weak_family_keys: Vec<String>,
+    pub corrections: Vec<ActivityCorrectionSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ActivityCorrectionSummary {
+    pub item_id: String,
+    pub content: String,
+    pub submitted_response: String,
+    pub expected_response: String,
+    pub fact_key: String,
+    pub family_keys: Vec<String>,
+    pub correction_cue: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -668,6 +826,28 @@ pub struct ReviewRebuildResponse {
     pub status: String,
     pub learner_ids: Vec<String>,
     pub review_item_count: usize,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, FromRow)]
+pub struct ActivityInstanceRow {
+    pub activity_instance_id: Uuid,
+    pub learner_id: String,
+    pub session_id: String,
+    pub session_material_id: String,
+    pub material_id: String,
+    pub evidence_material_id: String,
+    pub mode: String,
+    pub status: String,
+    pub run_outcome: Option<String>,
+    pub plan: JsonValue,
+    pub result: Option<JsonValue>,
+    pub review_item_id: Option<String>,
+    pub retry_origin_activity_instance_id: Option<Uuid>,
+    pub evidence_id: Option<String>,
+    pub started_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub duration_seconds: Option<i32>,
 }
 
 #[allow(dead_code)]
@@ -777,8 +957,44 @@ pub struct SkillProgressRow {
 pub struct ReviewItemRow {
     pub review_item_id: String,
     pub learner_id: String,
-    pub skill_id: String,
+    pub skill_ids: JsonValue,
+    pub session_id: Option<String>,
+    pub session_material_id: Option<String>,
+    pub material_id: String,
+    pub evidence_material_id: String,
     pub reason: String,
+    pub fact_focus: JsonValue,
+    pub family_focus: JsonValue,
     pub due_date: NaiveDate,
-    pub status: String,
+    pub review_step: i32,
+    pub is_actionable: bool,
+    pub last_reviewed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, FromRow)]
+pub struct FactProgressRow {
+    pub learner_id: String,
+    pub material_id: String,
+    pub fact_key: String,
+    pub attempted_count: i32,
+    pub correct_count: i32,
+    pub last_correct: bool,
+    pub consecutive_correct_count: i32,
+    pub last_seen_at: DateTime<Utc>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, FromRow)]
+pub struct FamilyProgressRow {
+    pub learner_id: String,
+    pub material_id: String,
+    pub family_key: String,
+    pub attempted_count: i32,
+    pub correct_count: i32,
+    pub last_correct: bool,
+    pub consecutive_correct_count: i32,
+    pub last_seen_at: DateTime<Utc>,
 }

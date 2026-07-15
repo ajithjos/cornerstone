@@ -123,7 +123,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
     for (final journey in workspace.assignedJourneys) {
       for (final session in journey.sessions) {
         for (final material in session.materials) {
-          if (material.proficiency == null ||
+          if (material.readiness == null ||
               !seenMaterialIds.add(material.materialId)) {
             continue;
           }
@@ -133,7 +133,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
     }
     for (final session in workspace.sessions) {
       for (final material in session.materials) {
-        if (material.proficiency == null ||
+        if (material.readiness == null ||
             !seenMaterialIds.add(material.materialId)) {
           continue;
         }
@@ -141,8 +141,8 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
       }
     }
     materials.sort((left, right) {
-      final leftReady = left.proficiency?.readyToMoveOn ?? false;
-      final rightReady = right.proficiency?.readyToMoveOn ?? false;
+      final leftReady = left.readiness?.readyForCheck ?? false;
+      final rightReady = right.readiness?.readyForCheck ?? false;
       if (leftReady != rightReady) return leftReady ? 1 : -1;
       return left.title.compareTo(right.title);
     });
@@ -229,7 +229,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                                 activeViewer.userId != viewer.userId
                             ? 'Signed in owner stays ${viewer.displayName}. The on-screen learner profile is ${activeViewer.displayName}.'
                             : 'This owner session can switch teams, learners, assignments, and progress views.'
-                      : 'This account stays focused on the learner view, progress, and pending work.',
+                      : 'This account stays focused on the learner view, progress, and remaining work.',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -393,7 +393,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                 Text('Progress', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),
                 Text(
-                  '${profileWorkspace.learner.displayName} can see what is secure, what needs more practice, and which targets are custom.',
+                  '${profileWorkspace.learner.displayName} can see which skills need practice, are ready for a check, or are confirmed.',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -405,13 +405,19 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                   children: [
                     _PillBadge(
                       text:
-                          '${profileWorkspace.workspace.progressSnapshot.secureCount} secure',
+                          '${profileWorkspace.workspace.progressSnapshot.confirmedCount} confirmed',
                       color: theme.colorScheme.secondaryContainer,
                       textColor: theme.colorScheme.onSecondaryContainer,
                     ),
                     _PillBadge(
                       text:
-                          '${profileWorkspace.workspace.progressSnapshot.developingCount} developing',
+                          '${profileWorkspace.workspace.progressSnapshot.needsPracticeCount} need practice',
+                      color: theme.colorScheme.tertiaryContainer,
+                      textColor: theme.colorScheme.onTertiaryContainer,
+                    ),
+                    _PillBadge(
+                      text:
+                          '${profileWorkspace.workspace.progressSnapshot.readyForCheckCount} ready for check',
                       color: theme.colorScheme.tertiaryContainer,
                       textColor: theme.colorScheme.onTertiaryContainer,
                     ),
@@ -423,7 +429,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                     ),
                     _PillBadge(
                       text:
-                          '${profileWorkspace.workspace.progressSnapshot.reviewItemCount} review',
+                          '${profileWorkspace.workspace.progressSnapshot.reviewDueCount} review due',
                       color: theme.colorScheme.surfaceContainerHighest,
                       textColor: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -459,7 +465,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                   Text('Practice targets', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 8),
                   ...progressMaterials.map((material) {
-                    final proficiency = material.proficiency!;
+                    final readiness = material.readiness!;
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
                       padding: const EdgeInsets.all(14),
@@ -483,14 +489,14 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                                 ),
                               ),
                               _PillBadge(
-                                text: proficiency.verdictLabel,
-                                color: _proficiencyBackgroundColor(
+                                text: readiness.statusLabel,
+                                color: _readinessBackgroundColor(
                                   theme,
-                                  proficiency,
+                                  readiness,
                                 ),
-                                textColor: _proficiencyForegroundColor(
+                                textColor: _readinessForegroundColor(
                                   theme,
-                                  proficiency,
+                                  readiness,
                                 ),
                               ),
                             ],
@@ -498,13 +504,14 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                           const SizedBox(height: 8),
                           Text(
                             [
-                              proficiency.detailLabel,
-                              'best ${proficiency.bestCorrectCount}',
-                              if (proficiency.targetCorrectCount != null)
-                                'target ${proficiency.targetCorrectCount}',
-                              if (proficiency.maxDurationSeconds != null)
-                                '${proficiency.maxDurationSeconds}s target',
-                              if (proficiency.overrideApplied) 'custom',
+                              readiness.detailLabel,
+                              if (readiness.targetCorrectCount != null)
+                                'target ${readiness.targetCorrectCount}',
+                              '${readiness.minimumDistinctItems} distinct facts',
+                              '${readiness.minimumFamilyCount} fact families',
+                              if (readiness.maxDurationSeconds != null)
+                                '${readiness.maxDurationSeconds}s target',
+                              if (readiness.overrideApplied) 'custom',
                             ].join(' / '),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,

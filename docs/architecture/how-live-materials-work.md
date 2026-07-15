@@ -43,10 +43,10 @@ The real execution path is:
 2. The catalog loader reads that block into `MaterialDocument.runtime`.
 3. The library and learner APIs expose enough metadata for the UI to know that the material is executable.
 4. The Flutter app calls a start endpoint for the current session material.
-5. The Rust control plane picks a backend-owned engine and template, generates activity item JSON, and returns an activity instance.
+5. The Rust control plane selects the run mode and focus; the runtime generates a balanced or deliberately focused immutable activity plan.
 6. Flutter renders those items using normal UI widgets.
 7. The learner submits answers.
-8. The Rust control plane regenerates the same activity from the encoded seed, scores it, writes evidence, marks the session complete, and updates progress.
+8. The Rust control plane scores the persisted plan, writes compact fact and family evidence, finishes the run, and returns corrections and the next action.
 
 So the runtime block maps to real execution through a fixed backend dispatch, not through dynamic code loading.
 
@@ -56,11 +56,11 @@ The program is the Rust code already compiled into the control-plane service.
 
 Right now the live arithmetic runtime is implemented in the dedicated runtime layer:
 
-- `rust/crates/control_plane/src/runtime/mod.rs`
-- `rust/crates/control_plane/src/runtime/arithmetic_fact_fluency_v1/readiness_within_5.rs`
-- `rust/crates/control_plane/src/runtime/arithmetic_fact_fluency_v1/mixed_add_sub_to_10.rs`
-- `rust/crates/control_plane/src/runtime/arithmetic_fact_fluency_v1/mixed_add_sub_to_20.rs`
-- `rust/crates/control_plane/src/runtime/arithmetic_fact_fluency_v1/shared.rs`
+- `rust/crates/learning_activity_runtime/src/lib.rs`
+- `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/readiness_within_5.rs`
+- `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/mixed_add_sub_to_10.rs`
+- `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/mixed_add_sub_to_20.rs`
+- `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/shared.rs`
 
 That is the important distinction:
 
@@ -78,8 +78,8 @@ These are the key handoff points.
 - `rust/crates/control_plane/src/http.rs`: exposes the activity start and complete endpoints.
 - `rust/crates/control_plane/src/service.rs`: creates assignments, starts and completes activities, and persists results.
 - `fe/flutter/apps/cornerstone/lib/services/api_service.dart`: calls the start and complete endpoints.
-- `fe/flutter/apps/cornerstone/lib/ui/screens/home_screen.dart`: launches live activities from the current learner session.
-- `fe/flutter/apps/cornerstone/lib/ui/widgets/home_widgets.dart`: renders the executable activity dialog and submission flow.
+- `fe/flutter/apps/cornerstone/lib/ui/screens/home/home_shell.dart`: launches live activities from the current learner session.
+- `fe/flutter/apps/cornerstone/lib/ui/widgets/home/activity_dialog.dart`: renders the executable activity dialog, correction, and retry flow.
 
 ## The Runtime Contract
 
@@ -95,11 +95,17 @@ runtime:
     item_forms: [equation, bond_missing]
     question_count: 14
   scoring:
-    pass_accuracy: 0.85
-    soft_time_limit_seconds: 150
-  persistence:
-    store_response_log: false
-    store_summary: true
+    target_accuracy: 0.85
+    max_duration_seconds: 150
+  readiness:
+    minimum_runs: 3
+    recent_run_window: 3
+    target_accuracy: 0.85
+    consecutive_target_runs: 2
+    target_correct_count: 12
+    minimum_distinct_items: 20
+    minimum_family_count: 2
+    max_duration_seconds: 150
 ```
 
 This is not code. It is only data.
@@ -111,8 +117,10 @@ Today that means:
 - `engine_id` selects the backend engine
 - `template_id` selects the generator inside that engine
 - `parameters` tune item generation
-- `scoring` defines pass rules
-- `persistence` controls what to store
+- `scoring` defines this run's target
+- `readiness` defines sufficient representative practice before a check
+
+The control plane always persists the immutable plan plus compact run, fact, and family summaries. Authored content cannot enable raw response logging.
 
 You can think of the runtime block as a configuration record for a backend program that already exists.
 
@@ -159,9 +167,9 @@ Use this as the mental model.
 2. See the live material for that session.
 3. Start the activity.
 4. Answer the items.
-5. Submit once.
-6. See the result summary.
-7. Move on to the next scheduled session later.
+5. Submit once; the run is now finished regardless of its outcome.
+6. See the target outcome and correct any mistakes.
+7. Retry weak material, take a check when ready, or move on as directed.
 
 The learner does not need to know about engines, templates, or runtime contracts.
 
@@ -173,7 +181,7 @@ When Flutter calls the start endpoint, the backend:
 2. finds the matching material in the library bundle
 3. checks that the material has a supported runtime
 4. generates activity items from a backend seed
-5. returns an `activity_instance_id`, item list, instructions, and scoring summary
+5. persists the exact plan and returns an `activity_instance_id`, item list, instructions, and scoring summary
 6. marks the session and material active
 
 In the current arithmetic implementation, this happens in `start_session_material_activity`, which calls `generate_activity`.
@@ -192,19 +200,18 @@ That payload contains the item list, instructions, and scoring settings for that
 
 When Flutter submits the answers, the backend:
 
-1. parses the `activity_instance_id`
-2. extracts the session material id and the original seed
-3. regenerates the same item set from that seed
-4. scores the submitted answers
-5. writes summary evidence and an activity artifact
-6. marks the session completed
-7. updates skill progress and review items
+1. loads the `activity_instance_id` for the active learner
+2. verifies that the instance is still `in_progress`
+3. loads its persisted immutable activity plan
+4. validates and scores the submitted answers against that plan
+5. writes compact run, fact, and family evidence
+6. marks the run `finished` and the submitted session `completed`
+7. updates readiness, confirmation, and review-due state independently
+8. returns exact corrections and whether an immediate retry is available
 
 In the current arithmetic implementation, this happens in `complete_activity_instance`, which calls `score_activity` and then `persist_session_result`.
 
-That seed-based regeneration is how the system can score reliably without storing every item attempt in the database first.
-
-The activity instance id is just a compact way to carry enough information to recreate the same generated activity later. In the current implementation it contains the session material id plus the seed.
+Persisting the issued plan is important because practice generation can use mutable learner evidence. Regenerating later from only a seed could otherwise produce a different batch after that evidence changes.
 
 That means the backend does not need to keep a separate in-memory process alive for each learner activity.
 
@@ -234,8 +241,8 @@ Do this when the runtime is still arithmetic fact fluency, but you need a new it
 
 Steps:
 
-1. Add support for the new `template_id` in `generate_activity`.
-2. Add a generator function that produces items for that template.
+1. Register the new `template_id` in the activity-runtime crate.
+2. Add a generator that produces typed candidate items and a run-mode coverage blueprint.
 3. Make sure `score_activity` still matches the item structure.
 4. Add or update authored materials to use the new template.
 5. Validate the end-to-end flow.
@@ -327,7 +334,8 @@ They show:
 
 - executable drill materials in `content/library/maths/arithmetic/arithmetic-fact-fluency/materials/`
 - playlists that schedule those materials in `content/library/maths/arithmetic/arithmetic-fact-fluency/playlists/`
-- backend runtime generation and scoring in `rust/crates/control_plane/src/service.rs`
+- backend runtime generation and scoring in `rust/crates/learning_activity_runtime/`
+- immutable-instance and learner-evidence orchestration in `rust/crates/control_plane/src/service.rs`
 - frontend activity start and completion in the Flutter app
 
 If you are unsure how to add a new live item, copy one of those three materials first and only add new backend code when the copied contract is no longer enough.

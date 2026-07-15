@@ -173,6 +173,7 @@ pub struct MaterialDocument {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MaterialRuntime {
     pub engine_id: String,
     pub spec_version: u16,
@@ -180,42 +181,34 @@ pub struct MaterialRuntime {
     #[serde(default)]
     pub parameters: JsonValue,
     pub scoring: Option<MaterialRuntimeScoring>,
-    pub persistence: Option<MaterialRuntimePersistence>,
-    pub proficiency: Option<MaterialRuntimeProficiency>,
+    pub readiness: Option<MaterialRuntimeReadiness>,
     pub gate: Option<MaterialRuntimeGate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MaterialRuntimeScoring {
-    pub pass_accuracy: Option<f64>,
+    pub target_accuracy: Option<f64>,
     pub max_duration_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaterialRuntimePersistence {
-    #[serde(default)]
-    pub store_response_log: bool,
-    #[serde(default = "default_store_summary")]
-    pub store_summary: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaterialRuntimeProficiency {
-    pub min_attempts: usize,
-    pub window_size: usize,
+#[serde(deny_unknown_fields)]
+pub struct MaterialRuntimeReadiness {
+    pub minimum_runs: usize,
+    pub recent_run_window: usize,
     pub target_accuracy: f64,
-    pub consecutive_passes: usize,
+    pub consecutive_target_runs: usize,
     pub target_correct_count: Option<usize>,
+    pub minimum_distinct_items: usize,
+    pub minimum_family_count: usize,
     pub max_duration_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MaterialRuntimeGate {
     pub requires_ready_material_id: String,
-}
-
-fn default_store_summary() -> bool {
-    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1575,24 +1568,67 @@ fn validate_catalog(
             );
         }
         if let Some(runtime) = &material.runtime {
-            if let Some(proficiency) = &runtime.proficiency {
-                if proficiency.min_attempts == 0 || proficiency.window_size == 0 || proficiency.consecutive_passes == 0
+            if runtime.spec_version != 1 {
+                bail!(
+                    "material '{}' uses unsupported runtime spec_version {}; expected 1",
+                    material.id,
+                    runtime.spec_version
+                );
+            }
+            let scoring = runtime
+                .scoring
+                .as_ref()
+                .ok_or_else(|| anyhow!("material '{}' has an executable runtime without scoring", material.id))?;
+            let target_accuracy = scoring.target_accuracy.ok_or_else(|| {
+                anyhow!(
+                    "material '{}' has executable scoring without target_accuracy",
+                    material.id
+                )
+            })?;
+            if !(0.0..=1.0).contains(&target_accuracy) || target_accuracy == 0.0 {
+                bail!(
+                    "material '{}' has invalid scoring target_accuracy {}",
+                    material.id,
+                    target_accuracy
+                );
+            }
+            if scoring.max_duration_seconds == Some(0) {
+                bail!("material '{}' has invalid scoring max_duration_seconds 0", material.id);
+            }
+            if let Some(readiness) = &runtime.readiness {
+                if readiness.minimum_runs == 0
+                    || readiness.recent_run_window == 0
+                    || readiness.consecutive_target_runs == 0
+                    || readiness.minimum_distinct_items == 0
+                    || readiness.minimum_family_count == 0
                 {
                     bail!(
-                        "material '{}' has a proficiency target with zero min_attempts, window_size, or consecutive_passes",
+                        "material '{}' has a readiness target with a zero run, coverage, or consecutive-run requirement",
                         material.id
                     );
                 }
-                if !(0.0..=1.0).contains(&proficiency.target_accuracy) || proficiency.target_accuracy == 0.0 {
+                if !(0.0..=1.0).contains(&readiness.target_accuracy) || readiness.target_accuracy == 0.0 {
                     bail!(
-                        "material '{}' has invalid proficiency target_accuracy {}",
+                        "material '{}' has invalid readiness target_accuracy {}",
                         material.id,
-                        proficiency.target_accuracy
+                        readiness.target_accuracy
                     );
                 }
-                if proficiency.max_duration_seconds == Some(0) {
+                if readiness.max_duration_seconds == Some(0) {
                     bail!(
-                        "material '{}' has invalid proficiency max_duration_seconds 0",
+                        "material '{}' has invalid readiness max_duration_seconds 0",
+                        material.id
+                    );
+                }
+                if readiness.consecutive_target_runs > readiness.recent_run_window {
+                    bail!(
+                        "material '{}' readiness consecutive_target_runs exceeds recent_run_window",
+                        material.id
+                    );
+                }
+                if readiness.consecutive_target_runs > readiness.minimum_runs {
+                    bail!(
+                        "material '{}' readiness consecutive_target_runs exceeds minimum_runs",
                         material.id
                     );
                 }
@@ -1604,6 +1640,54 @@ fn validate_catalog(
                     "assessment gate material",
                     &material.id,
                 )?;
+                if gate.requires_ready_material_id == material.id {
+                    bail!("material '{}' cannot gate itself", material.id);
+                }
+                let prerequisite = lookup_required(
+                    &material_map,
+                    gate.requires_ready_material_id.as_str(),
+                    "assessment gate material",
+                    &material.id,
+                )?;
+                let prerequisite_runtime = prerequisite.runtime.as_ref();
+                if prerequisite.kind != DRILL_KIND
+                    || prerequisite_runtime
+                        .and_then(|runtime| runtime.readiness.as_ref())
+                        .is_none()
+                {
+                    bail!(
+                        "material '{}' gate target '{}' must be an executable drill with readiness",
+                        material.id,
+                        gate.requires_ready_material_id
+                    );
+                }
+                validate_gate_skill_alignment(
+                    &material.id,
+                    &material.skill_ids,
+                    &prerequisite.id,
+                    &prerequisite.skill_ids,
+                )?;
+                validate_gate_runtime_alignment(
+                    &material.id,
+                    runtime,
+                    &prerequisite.id,
+                    prerequisite_runtime.expect("an executable readiness drill has a runtime"),
+                )?;
+            }
+            match material.kind.as_str() {
+                DRILL_KIND if runtime.readiness.is_none() || runtime.gate.is_some() => {
+                    bail!(
+                        "executable drill '{}' must declare readiness and must not declare a gate",
+                        material.id
+                    );
+                }
+                QUICK_CHECK_KIND if runtime.readiness.is_some() || runtime.gate.is_none() => {
+                    bail!(
+                        "executable quick_check '{}' must declare a gate and must not declare readiness",
+                        material.id
+                    );
+                }
+                _ => {}
             }
         }
         if material.skill_ids.is_empty() {
@@ -1750,6 +1834,59 @@ fn validate_catalog(
     Ok(())
 }
 
+fn validate_gate_skill_alignment(
+    check_material_id: &str,
+    check_skill_ids: &[String],
+    prerequisite_material_id: &str,
+    prerequisite_skill_ids: &[String],
+) -> anyhow::Result<()> {
+    let check_skills = check_skill_ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    let prerequisite_skills = prerequisite_skill_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if check_skills != prerequisite_skills {
+        bail!(
+            "material '{}' and its readiness gate target '{}' must declare the same skill set",
+            check_material_id,
+            prerequisite_material_id,
+        );
+    }
+    Ok(())
+}
+
+fn validate_gate_runtime_alignment(
+    check_material_id: &str,
+    check_runtime: &MaterialRuntime,
+    prerequisite_material_id: &str,
+    prerequisite_runtime: &MaterialRuntime,
+) -> anyhow::Result<()> {
+    let same_program = check_runtime.engine_id == prerequisite_runtime.engine_id
+        && check_runtime.template_id == prerequisite_runtime.template_id;
+    let same_evidence_domain = normalized_evidence_domain_parameters(&check_runtime.parameters)
+        == normalized_evidence_domain_parameters(&prerequisite_runtime.parameters);
+    if !same_program || !same_evidence_domain {
+        bail!(
+            "material '{}' and its readiness gate target '{}' must use the same runtime evidence domain; only question_count may differ",
+            check_material_id,
+            prerequisite_material_id,
+        );
+    }
+    Ok(())
+}
+
+fn normalized_evidence_domain_parameters(parameters: &JsonValue) -> JsonValue {
+    let mut normalized = if parameters.is_null() {
+        serde_json::json!({})
+    } else {
+        parameters.clone()
+    };
+    if let Some(object) = normalized.as_object_mut() {
+        object.remove("question_count");
+    }
+    normalized
+}
+
 fn ensure_unique_ids<'a>(ids: impl Iterator<Item = &'a str>, label: &str) -> anyhow::Result<()> {
     let mut seen = BTreeSet::new();
     for id in ids {
@@ -1779,5 +1916,58 @@ mod tests {
             .expect("content root");
         let result = load_library_bundle(&root);
         assert!(result.is_ok(), "catalog should load: {result:?}");
+    }
+
+    #[test]
+    fn gated_check_requires_the_same_skills_as_its_readiness_drill() {
+        let check_skills = vec!["recall_facts".to_string(), "use_structure".to_string()];
+        let same_skills_in_another_order = vec!["use_structure".to_string(), "recall_facts".to_string()];
+        validate_gate_skill_alignment(
+            "facts_check",
+            &check_skills,
+            "facts_drill",
+            &same_skills_in_another_order,
+        )
+        .expect("the same skill set should be accepted regardless of order");
+
+        let error = validate_gate_skill_alignment(
+            "facts_check",
+            &check_skills,
+            "facts_drill",
+            &["recall_facts".to_string()],
+        )
+        .expect_err("a partial prerequisite skill set must be rejected");
+        assert!(error.to_string().contains("must declare the same skill set"));
+    }
+
+    #[test]
+    fn gated_check_requires_the_same_runtime_evidence_domain_as_its_drill() {
+        let runtime = |template_id: &str, parameters: JsonValue| MaterialRuntime {
+            engine_id: "arithmetic_fact_fluency.v1".to_string(),
+            spec_version: 1,
+            template_id: template_id.to_string(),
+            parameters,
+            scoring: None,
+            readiness: None,
+            gate: None,
+        };
+        let drill = runtime(
+            "multiplication_tables_to_10",
+            serde_json::json!({"question_count": 14, "table_min": 2, "table_max": 10}),
+        );
+        let same_domain_check = runtime(
+            "multiplication_tables_to_10",
+            serde_json::json!({"question_count": 10, "table_min": 2, "table_max": 10}),
+        );
+        validate_gate_runtime_alignment("tables_check", &same_domain_check, "tables_drill", &drill)
+            .expect("delivery batch size may differ inside the same evidence domain");
+
+        let narrower_check = runtime(
+            "multiplication_tables_to_10",
+            serde_json::json!({"question_count": 10, "table_min": 3, "table_max": 10}),
+        );
+        let error = validate_gate_runtime_alignment("tables_check", &narrower_check, "tables_drill", &drill)
+            .expect_err("a different fact domain must not share readiness evidence");
+        assert!(error.to_string().contains("same runtime evidence domain"));
     }
 }

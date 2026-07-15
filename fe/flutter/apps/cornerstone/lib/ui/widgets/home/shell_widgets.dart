@@ -172,7 +172,7 @@ class _LearnerCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'Review: ${learner.reviewItemCount}',
+                  'Review due: ${learner.reviewDueCount}',
                   style: theme.textTheme.bodySmall,
                 ),
                 if (learner.todaySession != null) ...[

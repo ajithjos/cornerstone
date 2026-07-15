@@ -43,7 +43,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     text: '15',
   );
   final TextEditingController _notesController = TextEditingController(
-    text: 'Completed well with one or two slow facts.',
+    text: 'Worked well with one or two slow facts.',
   );
 
   ViewerSessionPayload? _viewerSession;
@@ -597,21 +597,70 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       setState(() {
         _busy = false;
       });
-      await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (context) => _ExecutableActivityPage(
-            activity: activity,
-            onComplete: (answers, durationSeconds, notes) =>
-                _completeExecutableActivity(
-                  activity,
-                  answers,
-                  durationSeconds,
-                  notes,
-                ),
-          ),
+      await _openExecutableActivity(activity);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorMessage = error.toString();
+      });
+    }
+  }
+
+  Future<void> _openExecutableActivity(ActivityInstance activity) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => ExecutableActivityPage(
+          activity: activity,
+          onComplete: _completeExecutableActivity,
+          onRetry: _retryExecutableActivity,
         ),
+      ),
+    );
+  }
+
+  Future<ActivityInstance> _retryExecutableActivity(
+    ActivityInstance activity,
+  ) async {
+    setState(() {
+      _busy = true;
+      _errorMessage = null;
+    });
+    try {
+      final retry = await _apiClient.retryActivity(activity.activityInstanceId);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+      return retry;
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _errorMessage = error.toString();
+        });
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _startReviewItem(ReviewItem reviewItem) async {
+    if (reviewItem.reviewStatus != ReviewStatus.due) return;
+    setState(() {
+      _busy = true;
+      _errorMessage = null;
+    });
+    try {
+      final activity = await _apiClient.startReviewItem(
+        reviewItem.reviewItemId,
       );
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+      });
+      await _openExecutableActivity(activity);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -652,38 +701,40 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     }
   }
 
-  Future<void> _setProficiencyOverrideForMaterial(
+  Future<void> _setReadinessOverrideForMaterial(
     SessionMaterial material,
   ) async {
     if (!_viewerCanManage) return;
     final learnerId =
         _selectedLearnerId ?? _learnerWorkspace?.learner.learnerId;
-    final proficiency = material.proficiency;
-    if (learnerId == null || proficiency == null) return;
-    final supportsHardTimeTarget = material.kind == 'quick_check';
-
-    final minAttemptsController = TextEditingController(
-      text: proficiency.minAttempts.toString(),
+    final readiness = material.readiness;
+    if (learnerId == null || readiness == null) return;
+    final minimumRunsController = TextEditingController(
+      text: readiness.minimumRuns.toString(),
     );
-    final windowSizeController = TextEditingController(
-      text: proficiency.windowSize.toString(),
+    final recentRunWindowController = TextEditingController(
+      text: readiness.recentRunWindow.toString(),
     );
     final targetAccuracyController = TextEditingController(
-      text: (proficiency.targetAccuracy * 100).round().toString(),
+      text: (readiness.targetAccuracy * 100).round().toString(),
     );
     final consecutiveController = TextEditingController(
-      text: proficiency.consecutivePassesRequired.toString(),
+      text: readiness.consecutiveTargetRunsRequired.toString(),
     );
     final targetCorrectController = TextEditingController(
-      text: proficiency.targetCorrectCount?.toString() ?? '',
+      text: readiness.targetCorrectCount?.toString() ?? '',
+    );
+    final minimumDistinctItemsController = TextEditingController(
+      text: readiness.minimumDistinctItems.toString(),
+    );
+    final minimumFamilyCountController = TextEditingController(
+      text: readiness.minimumFamilyCount.toString(),
     );
     final maxDurationController = TextEditingController(
-      text: supportsHardTimeTarget
-          ? proficiency.maxDurationSeconds?.toString() ?? ''
-          : '',
+      text: readiness.maxDurationSeconds?.toString() ?? '',
     );
     final reasonController = TextEditingController(
-      text: proficiency.overrideReason,
+      text: readiness.overrideReason,
     );
 
     try {
@@ -707,18 +758,18 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         TextField(
-                          controller: minAttemptsController,
+                          controller: minimumRunsController,
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(
-                            labelText: 'Minimum attempts',
+                            labelText: 'Minimum runs',
                           ),
                         ),
                         const SizedBox(height: 10),
                         TextField(
-                          controller: windowSizeController,
+                          controller: recentRunWindowController,
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(
-                            labelText: 'Recent window size',
+                            labelText: 'Recent run window',
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -734,7 +785,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
                           controller: consecutiveController,
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(
-                            labelText: 'Consecutive passing runs',
+                            labelText: 'Consecutive target runs',
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -746,16 +797,30 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        if (supportsHardTimeTarget) ...[
-                          TextField(
-                            controller: maxDurationController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Max seconds',
-                            ),
+                        TextField(
+                          controller: minimumDistinctItemsController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Minimum distinct facts',
                           ),
-                          const SizedBox(height: 10),
-                        ],
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: minimumFamilyCountController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Minimum fact families',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: maxDurationController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Max seconds (optional)',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
                         TextField(
                           controller: reasonController,
                           maxLines: 2,
@@ -784,36 +849,46 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
                   ),
                   FilledButton(
                     onPressed: () {
-                      final minAttempts = int.tryParse(
-                        minAttemptsController.text.trim(),
+                      final minimumRuns = int.tryParse(
+                        minimumRunsController.text.trim(),
                       );
-                      final windowSize = int.tryParse(
-                        windowSizeController.text.trim(),
+                      final recentRunWindow = int.tryParse(
+                        recentRunWindowController.text.trim(),
                       );
                       final targetAccuracyPercent = int.tryParse(
                         targetAccuracyController.text.trim(),
                       );
-                      final consecutivePasses = int.tryParse(
+                      final consecutiveTargetRunsRequired = int.tryParse(
                         consecutiveController.text.trim(),
                       );
                       final targetCorrectCount = optionalInt(
                         targetCorrectController.text,
                       );
-                      final maxDurationSeconds = supportsHardTimeTarget
-                          ? optionalInt(maxDurationController.text)
-                          : null;
+                      final minimumDistinctItems = int.tryParse(
+                        minimumDistinctItemsController.text.trim(),
+                      );
+                      final minimumFamilyCount = int.tryParse(
+                        minimumFamilyCountController.text.trim(),
+                      );
+                      final maxDurationSeconds = optionalInt(
+                        maxDurationController.text,
+                      );
                       final invalid =
-                          minAttempts == null ||
-                          minAttempts <= 0 ||
-                          windowSize == null ||
-                          windowSize <= 0 ||
+                          minimumRuns == null ||
+                          minimumRuns <= 0 ||
+                          recentRunWindow == null ||
+                          recentRunWindow <= 0 ||
                           targetAccuracyPercent == null ||
                           targetAccuracyPercent <= 0 ||
                           targetAccuracyPercent > 100 ||
-                          consecutivePasses == null ||
-                          consecutivePasses <= 0 ||
+                          consecutiveTargetRunsRequired == null ||
+                          consecutiveTargetRunsRequired <= 0 ||
+                          minimumDistinctItems == null ||
+                          minimumDistinctItems <= 0 ||
+                          minimumFamilyCount == null ||
+                          minimumFamilyCount <= 0 ||
                           (targetCorrectCount != null &&
-                              targetCorrectCount < 0) ||
+                              targetCorrectCount <= 0) ||
                           (maxDurationSeconds != null &&
                               maxDurationSeconds <= 0);
                       if (invalid) {
@@ -824,12 +899,15 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
                         return;
                       }
                       Navigator.of(context).pop(<String, Object?>{
-                        'minAttempts': minAttempts,
-                        'windowSize': windowSize,
+                        'minimumRuns': minimumRuns,
+                        'recentRunWindow': recentRunWindow,
                         'targetAccuracy':
                             targetAccuracyPercent.toDouble() / 100,
-                        'consecutivePasses': consecutivePasses,
+                        'consecutiveTargetRunsRequired':
+                            consecutiveTargetRunsRequired,
                         'targetCorrectCount': targetCorrectCount,
+                        'minimumDistinctItems': minimumDistinctItems,
+                        'minimumFamilyCount': minimumFamilyCount,
                         'maxDurationSeconds': maxDurationSeconds,
                         'reason': reasonController.text.trim(),
                       });
@@ -848,14 +926,17 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         _busy = true;
         _errorMessage = null;
       });
-      await _apiClient.setProficiencyOverride(
+      await _apiClient.setReadinessOverride(
         learnerId: learnerId,
         materialId: material.materialId,
-        minAttempts: request['minAttempts']! as int,
-        windowSize: request['windowSize']! as int,
+        minimumRuns: request['minimumRuns']! as int,
+        recentRunWindow: request['recentRunWindow']! as int,
         targetAccuracy: request['targetAccuracy']! as double,
-        consecutivePasses: request['consecutivePasses']! as int,
+        consecutiveTargetRunsRequired:
+            request['consecutiveTargetRunsRequired']! as int,
         targetCorrectCount: request['targetCorrectCount'] as int?,
+        minimumDistinctItems: request['minimumDistinctItems']! as int,
+        minimumFamilyCount: request['minimumFamilyCount']! as int,
         maxDurationSeconds: request['maxDurationSeconds'] as int?,
         reason: request['reason']! as String,
       );
@@ -867,17 +948,19 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         _errorMessage = error.toString();
       });
     } finally {
-      minAttemptsController.dispose();
-      windowSizeController.dispose();
+      minimumRunsController.dispose();
+      recentRunWindowController.dispose();
       targetAccuracyController.dispose();
       consecutiveController.dispose();
       targetCorrectController.dispose();
+      minimumDistinctItemsController.dispose();
+      minimumFamilyCountController.dispose();
       maxDurationController.dispose();
       reasonController.dispose();
     }
   }
 
-  Future<void> _clearProficiencyOverrideForMaterial(
+  Future<void> _clearReadinessOverrideForMaterial(
     SessionMaterial material,
   ) async {
     if (!_viewerCanManage) return;
@@ -889,7 +972,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       _errorMessage = null;
     });
     try {
-      await _apiClient.clearProficiencyOverride(
+      await _apiClient.clearReadinessOverride(
         learnerId: learnerId,
         materialId: material.materialId,
       );
@@ -907,7 +990,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     final detail = _learnerDetail;
     if (detail == null) return null;
     for (final session in detail.sessions) {
-      if (session.status != 'completed') return session;
+      if (session.status != SessionStatus.completed) return session;
     }
     return null;
   }
@@ -1776,11 +1859,12 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       onOpenLibraryWorkspace: () => _setDestination(_ShellDestination.library),
       onRecordSession: _recordCurrentSession,
       onStartActivity: _startActivityForMaterial,
-      onSetProficiencyOverride: _viewerCanManage
-          ? _setProficiencyOverrideForMaterial
+      onStartReview: _startReviewItem,
+      onSetReadinessOverride: _viewerCanManage
+          ? _setReadinessOverrideForMaterial
           : null,
-      onClearProficiencyOverride: _viewerCanManage
-          ? _clearProficiencyOverrideForMaterial
+      onClearReadinessOverride: _viewerCanManage
+          ? _clearReadinessOverrideForMaterial
           : null,
     );
   }
@@ -1792,11 +1876,12 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       viewerCanReadLibrary: _viewerCanReadLibrary,
       onOpenLibraryRoute: _selectLibraryDocument,
       onStartActivity: _startActivityForMaterial,
-      onSetProficiencyOverride: _viewerCanManage
-          ? _setProficiencyOverrideForMaterial
+      onStartReview: _startReviewItem,
+      onSetReadinessOverride: _viewerCanManage
+          ? _setReadinessOverrideForMaterial
           : null,
-      onClearProficiencyOverride: _viewerCanManage
-          ? _clearProficiencyOverrideForMaterial
+      onClearReadinessOverride: _viewerCanManage
+          ? _clearReadinessOverrideForMaterial
           : null,
     );
   }

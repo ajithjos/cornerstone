@@ -67,7 +67,7 @@ make frontend-dev
 
 ```
 
-If tracked Postgres defaults become incompatible, the repo rotates `CORNERSTONE_DEV_DATA_REVISION` to move local work onto a fresh dev data window.
+If the reset-era baseline migration changes incompatibly, rotate `CORNERSTONE_DEV_DATA_REVISION` and all tracked hosted data directories together. This moves local and hosted deployments onto a fresh data window and avoids applying a changed SQLx migration checksum to an existing database. The previous numbered directory remains available for an explicit rollback; deployment does not delete it.
 
 ## Assignment Plan Refresh
 
@@ -87,7 +87,7 @@ POST /api/v1/assignments/reconcile
 {}
 ```
 
-The reset-era schema is intentionally kept in one SQLx migration file: `rust/crates/control_plane/migrations/001_initial.sql`.
+The reset-era schema is intentionally kept in one SQLx migration file: `rust/crates/control_plane/migrations/001_initial.sql`. Practice Quality v1 starts data revision `02`; moving an existing deployment to this revision is a deliberate database reset, followed by bootstrap and assignment recreation or reconciliation as appropriate.
 
 ## Runtime Expectations
 
@@ -95,6 +95,6 @@ The reset-era schema is intentionally kept in one SQLx migration file: `rust/cra
 - playlists become assignments at runtime
 - assignments schedule sessions
 - sessions produce evidence
-- evidence updates progress
+- compact run evidence updates fact, family, readiness, and skill progress
 
-If a review queue exists in the UI, treat it as a helper derived from progress rather than a separate curriculum object.
+The review queue is stable runtime state with its own due status, cadence, focus keys, and launch target. It is not a curriculum object and must not be reconstructed in Flutter from raw progress.

@@ -9,8 +9,9 @@ class _LearnerWorkspaceDesktop extends StatefulWidget {
     required this.viewerCanReadLibrary,
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
-    this.onSetProficiencyOverride,
-    this.onClearProficiencyOverride,
+    required this.onStartReview,
+    this.onSetReadinessOverride,
+    this.onClearReadinessOverride,
   });
 
   final ViewerUser? viewer;
@@ -19,10 +20,10 @@ class _LearnerWorkspaceDesktop extends StatefulWidget {
   final ValueChanged<String> onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
+  final Future<void> Function(ReviewItem reviewItem) onStartReview;
+  final Future<void> Function(SessionMaterial material)? onSetReadinessOverride;
   final Future<void> Function(SessionMaterial material)?
-  onSetProficiencyOverride;
-  final Future<void> Function(SessionMaterial material)?
-  onClearProficiencyOverride;
+  onClearReadinessOverride;
 
   @override
   State<_LearnerWorkspaceDesktop> createState() =>
@@ -111,7 +112,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
       }
     }
     for (final session in orderedJourneySessions) {
-      if (session.status != 'completed') {
+      if (session.status != SessionStatus.completed) {
         return session;
       }
     }
@@ -124,7 +125,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
       return _currentSessionForJourney(selectedJourney);
     }
     for (final session in _orderedSessions) {
-      if (session.status != 'completed') {
+      if (session.status != SessionStatus.completed) {
         return session;
       }
     }
@@ -151,8 +152,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
   bool _sessionMatchesFilter(SessionDetail session) {
     return switch (_sessionFilter) {
       _SessionStatusFilter.all => true,
-      _SessionStatusFilter.pending => session.status != 'completed',
-      _SessionStatusFilter.completed => session.status == 'completed',
+      _SessionStatusFilter.pending => session.status != SessionStatus.completed,
+      _SessionStatusFilter.completed =>
+        session.status == SessionStatus.completed,
     };
   }
 
@@ -427,7 +429,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                   _buildCompactStat(
                     theme,
                     value: '${snapshot.pendingSessionCount}',
-                    label: 'pending',
+                    label: 'remaining',
                     icon: CornerstoneIcons.pending,
                   ),
                 ],
@@ -477,9 +479,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
       children: [
         _buildFilterChip(theme, 'All', _SessionStatusFilter.all),
         const SizedBox(width: 6),
-        _buildFilterChip(theme, 'Pending', _SessionStatusFilter.pending),
+        _buildFilterChip(theme, 'Open', _SessionStatusFilter.pending),
         const SizedBox(width: 6),
-        _buildFilterChip(theme, 'Done', _SessionStatusFilter.completed),
+        _buildFilterChip(theme, 'Finished', _SessionStatusFilter.completed),
         const Spacer(),
         _buildIconToggle(
           theme: theme,
@@ -541,7 +543,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     }
 
     final hasRepeatableActivity =
-        session.status == 'completed' &&
+        session.status == SessionStatus.completed &&
         _primaryExecutableMaterial(session) != null;
 
     return Padding(
@@ -610,15 +612,13 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                               textColor: theme.colorScheme.onSecondaryContainer,
                             ),
                           _PillBadge(
-                            text: session.status == 'completed'
-                                ? 'Completed'
-                                : 'Pending',
-                            color: session.status == 'completed'
+                            text: session.status.label,
+                            color: session.status == SessionStatus.completed
                                 ? theme.colorScheme.surfaceContainerHighest
                                 : theme.colorScheme.primary.withValues(
                                     alpha: 0.12,
                                   ),
-                            textColor: session.status == 'completed'
+                            textColor: session.status == SessionStatus.completed
                                 ? theme.colorScheme.onSurfaceVariant
                                 : theme.colorScheme.primary,
                           ),
@@ -903,7 +903,7 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
         .toList(growable: false);
     final primaryExecutable = _primaryExecutableMaterial(session);
     final isRepeatableRun =
-        primaryExecutable != null && session.status == 'completed';
+        primaryExecutable != null && session.status == SessionStatus.completed;
     return _SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -917,11 +917,11 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
             runSpacing: 8,
             children: [
               _PillBadge(
-                text: session.status == 'completed' ? 'Completed' : 'Pending',
-                color: session.status == 'completed'
+                text: session.status.label,
+                color: session.status == SessionStatus.completed
                     ? theme.colorScheme.surfaceContainerHighest
                     : theme.colorScheme.primary.withValues(alpha: 0.12),
-                textColor: session.status == 'completed'
+                textColor: session.status == SessionStatus.completed
                     ? theme.colorScheme.onSurfaceVariant
                     : theme.colorScheme.primary,
               ),
@@ -995,8 +995,8 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
               allowPrinting: _isSupportView,
               onOpenLibraryRoute: widget.onOpenLibraryRoute,
               onStartActivity: widget.onStartActivity,
-              onSetProficiencyOverride: widget.onSetProficiencyOverride,
-              onClearProficiencyOverride: widget.onClearProficiencyOverride,
+              onSetReadinessOverride: widget.onSetReadinessOverride,
+              onClearReadinessOverride: widget.onClearReadinessOverride,
             ),
           if (_isSupportView) ...[
             const SizedBox(height: 12),
@@ -1014,8 +1014,8 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
               allowPrinting: _isSupportView,
               onOpenLibraryRoute: widget.onOpenLibraryRoute,
               onStartActivity: widget.onStartActivity,
-              onSetProficiencyOverride: widget.onSetProficiencyOverride,
-              onClearProficiencyOverride: widget.onClearProficiencyOverride,
+              onSetReadinessOverride: widget.onSetReadinessOverride,
+              onClearReadinessOverride: widget.onClearReadinessOverride,
             ),
           ],
         ],
@@ -1027,8 +1027,9 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
     final snapshot = _workspace.progressSnapshot;
     final reviewItems = widget.workspace.reviewItems;
     final total =
-        snapshot.secureCount +
-        snapshot.developingCount +
+        snapshot.confirmedCount +
+        snapshot.readyForCheckCount +
+        snapshot.needsPracticeCount +
         snapshot.notStartedCount;
 
     Widget buildMeter(String label, int value, Color color) {
@@ -1085,14 +1086,20 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           buildMeter(
-            'Secure',
-            snapshot.secureCount,
+            'Confirmed',
+            snapshot.confirmedCount,
             theme.colorScheme.secondary,
           ),
           const SizedBox(height: 8),
           buildMeter(
-            'Developing',
-            snapshot.developingCount,
+            'Ready',
+            snapshot.readyForCheckCount,
+            theme.colorScheme.tertiary,
+          ),
+          const SizedBox(height: 8),
+          buildMeter(
+            'Practice',
+            snapshot.needsPracticeCount,
             theme.colorScheme.primary,
           ),
           const SizedBox(height: 8),
@@ -1117,14 +1124,24 @@ class _LearnerWorkspaceDesktopState extends State<_LearnerWorkspaceDesktop> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _PillBadge(
-                      text: item.dueDate,
-                      color: theme.colorScheme.errorContainer,
-                      textColor: theme.colorScheme.onErrorContainer,
+                    TextButton(
+                      onPressed: item.reviewStatus == ReviewStatus.due
+                          ? () => widget.onStartReview(item)
+                          : null,
+                      child: Text(item.actionLabel),
                     ),
                   ],
                 ),
               ),
+            ),
+          ],
+          if (widget.workspace.practiceMastery.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            PracticeMasteryPanel(
+              practiceMastery: widget.workspace.practiceMastery,
+              compact: true,
             ),
           ],
         ],

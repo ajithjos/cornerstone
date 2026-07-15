@@ -128,26 +128,198 @@ Future<void> _runPrintAction(
   }
 }
 
-Color _proficiencyBackgroundColor(
+Color _readinessBackgroundColor(
   ThemeData theme,
-  SessionMaterialProficiencySummary proficiency,
+  SessionMaterialReadinessSummary readiness,
 ) {
-  return switch (proficiency.verdict) {
-    'ready_to_move_on' => theme.colorScheme.secondaryContainer,
-    'nearly_secure' => theme.colorScheme.tertiaryContainer,
-    _ => theme.colorScheme.primary.withValues(alpha: 0.12),
+  return switch (readiness.skillStatus) {
+    SkillStatus.confirmed => theme.colorScheme.secondaryContainer,
+    SkillStatus.readyForCheck => theme.colorScheme.tertiaryContainer,
+    SkillStatus.needsPractice => theme.colorScheme.primary.withValues(
+      alpha: 0.12,
+    ),
+    SkillStatus.notStarted => theme.colorScheme.surfaceContainerHighest,
   };
 }
 
-Color _proficiencyForegroundColor(
+Color _readinessForegroundColor(
   ThemeData theme,
-  SessionMaterialProficiencySummary proficiency,
+  SessionMaterialReadinessSummary readiness,
 ) {
-  return switch (proficiency.verdict) {
-    'ready_to_move_on' => theme.colorScheme.onSecondaryContainer,
-    'nearly_secure' => theme.colorScheme.onTertiaryContainer,
-    _ => theme.colorScheme.primary,
+  return switch (readiness.skillStatus) {
+    SkillStatus.confirmed => theme.colorScheme.onSecondaryContainer,
+    SkillStatus.readyForCheck => theme.colorScheme.onTertiaryContainer,
+    SkillStatus.needsPractice => theme.colorScheme.primary,
+    SkillStatus.notStarted => theme.colorScheme.onSurfaceVariant,
   };
+}
+
+Color _skillStatusBackgroundColor(ThemeData theme, SkillStatus status) {
+  return switch (status) {
+    SkillStatus.confirmed => theme.colorScheme.secondaryContainer,
+    SkillStatus.readyForCheck => theme.colorScheme.tertiaryContainer,
+    SkillStatus.needsPractice => theme.colorScheme.primary.withValues(
+      alpha: 0.12,
+    ),
+    SkillStatus.notStarted => theme.colorScheme.surfaceContainerHighest,
+  };
+}
+
+Color _skillStatusForegroundColor(ThemeData theme, SkillStatus status) {
+  return switch (status) {
+    SkillStatus.confirmed => theme.colorScheme.onSecondaryContainer,
+    SkillStatus.readyForCheck => theme.colorScheme.onTertiaryContainer,
+    SkillStatus.needsPractice => theme.colorScheme.primary,
+    SkillStatus.notStarted => theme.colorScheme.onSurfaceVariant,
+  };
+}
+
+class PracticeMasteryPanel extends StatelessWidget {
+  const PracticeMasteryPanel({
+    required this.practiceMastery,
+    this.compact = false,
+    super.key,
+  });
+
+  final List<PracticeMastery> practiceMastery;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (practiceMastery.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Fact progress', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 6),
+        Text(
+          'Coverage and accuracy by fact family, based on finished runs.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...practiceMastery.map(
+          (mastery) => Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: EdgeInsets.all(compact ? 12 : 14),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.38,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(mastery.materialTitle, style: theme.textTheme.titleSmall),
+                const SizedBox(height: 7),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _PillBadge(
+                      text: mastery.skillStatus.label,
+                      color: _skillStatusBackgroundColor(
+                        theme,
+                        mastery.skillStatus,
+                      ),
+                      textColor: _skillStatusForegroundColor(
+                        theme,
+                        mastery.skillStatus,
+                      ),
+                    ),
+                    if (mastery.reviewStatus == ReviewStatus.due)
+                      _PillBadge(
+                        text: mastery.reviewStatus.label,
+                        color: theme.colorScheme.errorContainer,
+                        textColor: theme.colorScheme.onErrorContainer,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: mastery.families
+                      .map(
+                        (family) => Container(
+                          constraints: BoxConstraints(
+                            minWidth: compact ? 170 : 190,
+                            maxWidth: compact ? 240 : 280,
+                          ),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                family.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelLarge,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${family.correctCount}/${family.attemptedCount} correct · ${(family.accuracy * 100).round()}%',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Last practised ${family.lastSeenAt.substring(0, 10)}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class ReviewItemActionTile extends StatelessWidget {
+  const ReviewItemActionTile({
+    required this.item,
+    required this.onStartReview,
+    super.key,
+  });
+
+  final ReviewItem item;
+  final Future<void> Function(ReviewItem item) onStartReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final focusLabel = item.familyFocus.isNotEmpty
+        ? item.familyFocus.map(_contractTermLabel).join(', ')
+        : item.skillIds.map(_contractTermLabel).join(', ');
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(item.reason),
+      subtitle: Text('$focusLabel · ${item.reviewStatus.label}'),
+      trailing: FilledButton.tonal(
+        onPressed: item.reviewStatus == ReviewStatus.due
+            ? () => onStartReview(item)
+            : null,
+        child: Text(item.actionLabel),
+      ),
+    );
+  }
 }
 
 Color _markdownCodeForegroundColor(ThemeData theme) {
@@ -213,8 +385,8 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
     this.supportMode = false,
     this.onOpenLibraryRoute,
     this.onStartActivity,
-    this.onSetProficiencyOverride,
-    this.onClearProficiencyOverride,
+    this.onSetReadinessOverride,
+    this.onClearReadinessOverride,
   });
 
   final SessionMaterialKindGroup group;
@@ -226,10 +398,9 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
   final ValueChanged<String>? onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)?
   onStartActivity;
+  final Future<void> Function(SessionMaterial material)? onSetReadinessOverride;
   final Future<void> Function(SessionMaterial material)?
-  onSetProficiencyOverride;
-  final Future<void> Function(SessionMaterial material)?
-  onClearProficiencyOverride;
+  onClearReadinessOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -326,9 +497,9 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                 material.canStartActivity;
             final isRepeatableRun =
                 canStart &&
-                (material.status == 'completed' ||
-                    session?.status == 'completed');
-            final proficiency = material.proficiency;
+                (material.status == SessionMaterialStatus.completed ||
+                    session?.status == SessionStatus.completed);
+            final readiness = material.readiness;
             final materialCardColor = material.isExecutable
                 ? theme.colorScheme.surfaceContainerHighest.withValues(
                     alpha: 0.72,
@@ -369,17 +540,26 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                         textColor: foregroundColor,
                       ),
                       if (material.isExecutable)
-                        _ContractChip(domain: 'status', value: 'live'),
-                      if (proficiency != null)
                         _PillBadge(
-                          text: proficiency.verdictLabel,
-                          color: _proficiencyBackgroundColor(
+                          text: material.status.label,
+                          color:
+                              material.status == SessionMaterialStatus.completed
+                              ? theme.colorScheme.secondaryContainer
+                              : theme.colorScheme.primary.withValues(
+                                  alpha: 0.12,
+                                ),
+                          textColor:
+                              material.status == SessionMaterialStatus.completed
+                              ? theme.colorScheme.onSecondaryContainer
+                              : theme.colorScheme.primary,
+                        ),
+                      if (readiness != null)
+                        _PillBadge(
+                          text: readiness.statusLabel,
+                          color: _readinessBackgroundColor(theme, readiness),
+                          textColor: _readinessForegroundColor(
                             theme,
-                            proficiency,
-                          ),
-                          textColor: _proficiencyForegroundColor(
-                            theme,
-                            proficiency,
+                            readiness,
                           ),
                         ),
                       if (gate != null && !gate.enabled)
@@ -417,24 +597,24 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (proficiency != null) ...[
+                  if (readiness != null) ...[
                     const SizedBox(height: 10),
                     Text(
                       [
-                        proficiency.detailLabel,
-                        if (proficiency.maxDurationSeconds != null)
-                          'target time ${proficiency.maxDurationSeconds}s',
-                        if (proficiency.overrideApplied) 'custom target',
+                        readiness.detailLabel,
+                        if (readiness.maxDurationSeconds != null)
+                          'target time ${readiness.maxDurationSeconds}s',
+                        if (readiness.overrideApplied) 'custom target',
                       ].join(' / '),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    if (proficiency.overrideApplied &&
-                        proficiency.overrideReason.trim().isNotEmpty) ...[
+                    if (readiness.overrideApplied &&
+                        readiness.overrideReason.trim().isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
-                        proficiency.overrideReason,
+                        readiness.overrideReason,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontStyle: FontStyle.italic,
@@ -501,23 +681,21 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
                             icon: const Icon(CornerstoneIcons.print, size: 18),
                             label: const Text('Print'),
                           ),
-                        if (proficiency != null &&
-                            onSetProficiencyOverride != null)
+                        if (readiness != null && onSetReadinessOverride != null)
                           OutlinedButton.icon(
-                            onPressed: () =>
-                                onSetProficiencyOverride!(material),
+                            onPressed: () => onSetReadinessOverride!(material),
                             icon: const Icon(Icons.tune_rounded, size: 18),
                             label: Text(
-                              proficiency.overrideApplied
+                              readiness.overrideApplied
                                   ? 'Edit target'
                                   : 'Custom target',
                             ),
                           ),
-                        if (proficiency?.overrideApplied == true &&
-                            onClearProficiencyOverride != null)
+                        if (readiness?.overrideApplied == true &&
+                            onClearReadinessOverride != null)
                           TextButton.icon(
                             onPressed: () =>
-                                onClearProficiencyOverride!(material),
+                                onClearReadinessOverride!(material),
                             icon: const Icon(
                               Icons.settings_backup_restore,
                               size: 18,
@@ -635,8 +813,8 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
     this.allowPrinting = false,
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
-    this.onSetProficiencyOverride,
-    this.onClearProficiencyOverride,
+    this.onSetReadinessOverride,
+    this.onClearReadinessOverride,
   });
 
   final String title;
@@ -652,10 +830,9 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
   final ValueChanged<String> onOpenLibraryRoute;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
+  final Future<void> Function(SessionMaterial material)? onSetReadinessOverride;
   final Future<void> Function(SessionMaterial material)?
-  onSetProficiencyOverride;
-  final Future<void> Function(SessionMaterial material)?
-  onClearProficiencyOverride;
+  onClearReadinessOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -758,8 +935,8 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
                 supportMode: supportMode,
                 onOpenLibraryRoute: onOpenLibraryRoute,
                 onStartActivity: onStartActivity,
-                onSetProficiencyOverride: onSetProficiencyOverride,
-                onClearProficiencyOverride: onClearProficiencyOverride,
+                onSetReadinessOverride: onSetReadinessOverride,
+                onClearReadinessOverride: onClearReadinessOverride,
               ),
             ),
         ],

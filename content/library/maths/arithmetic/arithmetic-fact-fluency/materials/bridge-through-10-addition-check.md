@@ -14,15 +14,12 @@ runtime:
     question_count: 10
     difficulty: advanced
   scoring:
-    pass_accuracy: 0.8
+    target_accuracy: 0.9
     max_duration_seconds: 120
-  persistence:
-    store_response_log: false
-    store_summary: true
   gate:
     requires_ready_material_id: bridge_through_10_addition_drill
 ---
 
 # Bridge Through 10 Addition Assessment
 
-Start the live assessment after the drill target is ready.
+Start the balanced check when practice is ready for check.

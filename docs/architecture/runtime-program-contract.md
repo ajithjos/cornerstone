@@ -32,16 +32,23 @@ runtime:
     item_forms: [equation, bond_missing]
     question_count: 10
   scoring:
-    pass_accuracy: 0.85
-    soft_time_limit_seconds: 120
-  persistence:
-    store_response_log: false
-    store_summary: true
+    target_accuracy: 0.85
+    max_duration_seconds: 120
+  readiness:
+    minimum_runs: 3
+    recent_run_window: 3
+    target_accuracy: 0.85
+    consecutive_target_runs: 2
+    target_correct_count: 12
+    minimum_distinct_items: 20
+    minimum_family_count: 2
+    max_duration_seconds: 120
 ```
 
 This does not contain executable code.
 
 It only identifies an approved runtime program and passes configuration into it.
+Compact summary persistence is a fixed control-plane policy, not an authored switch.
 
 ### 2. Runtime program contract
 
@@ -49,12 +56,12 @@ The backend owns the actual executable program.
 
 That program is registered in Rust and must support:
 
-- generation from `MaterialRuntime` plus a seed
+- generation from `MaterialRuntime` and an explicit `GenerationContext` that owns the seed
 - scoring from the generated activity plus learner responses
 
 In the current codebase this contract lives in:
 
-- `rust/crates/control_plane/src/runtime/mod.rs`
+- `rust/crates/learning_activity_runtime/src/lib.rs`
 
 The main registration type is `RuntimeProgramRegistration`.
 
@@ -83,16 +90,16 @@ The code layout should mirror that contract.
 
 For example, the runtime id `arithmetic_fact_fluency.v1/mixed_add_sub_to_10` is implemented under:
 
-- `rust/crates/control_plane/src/runtime/arithmetic_fact_fluency_v1/`
-- `rust/crates/control_plane/src/runtime/arithmetic_fact_fluency_v1/mixed_add_sub_to_10.rs`
+- `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/`
+- `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/mixed_add_sub_to_10.rs`
 
 ## Where The Code Lives
 
 The current separation is:
 
 - `rust/crates/control_plane/src/service.rs`: session orchestration, evidence persistence, assignment flow, activity start and complete endpoints
-- `rust/crates/control_plane/src/runtime/mod.rs`: runtime registry, runtime id helpers, generated/scored activity contracts, dispatch
-- `rust/crates/control_plane/src/runtime/arithmetic_fact_fluency_v1/`: the current arithmetic engine folder, with one file per runtime template plus shared helpers
+- `rust/crates/learning_activity_runtime/src/lib.rs`: runtime registry, runtime id helpers, generated/scored activity contracts, dispatch
+- `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/`: the current arithmetic engine folder, with one file per runtime template plus shared helpers
 
 This means `service.rs` no longer contains the runtime implementation details. It only orchestrates session state and calls the runtime registry.
 
@@ -107,6 +114,7 @@ Each runtime program is registered as a `RuntimeProgramRegistration` with:
 - `runtime_id`
 - `engine_id`
 - `template_id`
+- `validate`
 - `generate`
 - `score`
 
@@ -115,13 +123,16 @@ Each runtime program is registered as a `RuntimeProgramRegistration` with:
 The generate function signature is effectively:
 
 ```rust
-fn generate(runtime: &MaterialRuntime, seed: u64) -> anyhow::Result<GeneratedActivity>
+fn generate(
+    runtime: &MaterialRuntime,
+    context: &GenerationContext,
+) -> anyhow::Result<GeneratedActivity>
 ```
 
 It receives:
 
 - the authored runtime block
-- a seed for deterministic item generation
+- a context containing the seed, run mode, and any backend-selected weak facts or families
 
 It must return a `GeneratedActivity` containing:
 
@@ -130,8 +141,8 @@ It must return a `GeneratedActivity` containing:
 - `template_id`
 - `instructions`
 - `items`
+- coverage and representativeness metadata
 - scoring thresholds
-- persistence flags
 
 ### Score contract
 
@@ -152,10 +163,11 @@ It returns:
 - correct count
 - item count
 - accuracy
-- pass or fail
+- whether this run met its target
 - completion reason
-- weak groups
-- response log when needed
+- compact fact and family results
+- exact corrections for incorrect responses
+- exact current-run corrections returned without retaining the submitted response set
 
 ## Actual Execution Flow
 
@@ -165,19 +177,20 @@ This is the real backend execution path.
 
 1. `start_session_material_activity` loads the current session material.
 2. It loads the authored material from the library bundle.
-3. It calls `runtime::generate_activity(material, seed)`.
-4. `runtime::resolve_program` matches `engine_id` plus `template_id` to a registered runtime program.
-5. The selected program's `generate` function runs.
-6. The backend returns an `ActivityInstance` with `runtime_id`, items, instructions, and scoring settings.
+3. It builds a `GenerationContext` for `practice`, `check`, `review`, or `retry`.
+4. It calls the runtime with that context.
+5. The registry matches `engine_id` plus `template_id` to a registered runtime program.
+6. The selected program generates a representative or deliberately focused plan.
+7. The backend persists that immutable plan and returns its activity instance.
 
 ### Complete flow
 
 1. `complete_activity_instance` parses the activity instance id.
-2. It loads the same authored material again.
-3. It regenerates the same activity from the stored seed.
+2. It loads the persisted immutable activity plan.
+3. It validates the submitted item ids against that plan.
 4. It calls `runtime::score_activity(...)`.
 5. The selected program's `score` function runs.
-6. The backend persists evidence and updates learner progress.
+6. The backend persists compact fact and family evidence, updates readiness, and returns corrections and retry availability.
 
 The key point is this:
 
@@ -206,7 +219,7 @@ arithmetic_fact_fluency.v1/mixed_add_sub_to_10
 
 The runtime registry then dispatches to the registered arithmetic runtime program in:
 
-- `rust/crates/control_plane/src/runtime/arithmetic_fact_fluency_v1/mixed_add_sub_to_10.rs`
+- `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/mixed_add_sub_to_10.rs`
 
 Specifically, the program entry is the one whose registration matches:
 
@@ -244,7 +257,7 @@ Do this when the engine is the same, but you need a new runtime variation.
 
 Steps:
 
-1. Add a new generate function in the engine folder, for example in `runtime/arithmetic_fact_fluency_v1/`.
+1. Add a new generate function in the engine folder, for example in `learning_activity_runtime/src/arithmetic_fact_fluency_v1/`.
 2. Reuse an existing score function or add a new one if needed.
 3. Register the new program in that module's `PROGRAMS` list.
 4. Choose a new `template_id`.
@@ -257,7 +270,7 @@ Do this when the interaction model or scoring model is genuinely different.
 
 Steps:
 
-1. Create a new engine module under `rust/crates/control_plane/src/runtime/`.
+1. Create a new engine module under `rust/crates/learning_activity_runtime/src/`.
 2. Define one or more `RuntimeProgramRegistration` entries.
 3. Implement the generate and score functions.
 4. Register those programs through `runtime/mod.rs`.

@@ -47,6 +47,8 @@ export GCLOUD_BIN=/absolute/path/to/gcloud # only when gcloud is not on PATH
 make deploy
 ```
 
+When a release changes the reset-era baseline migration, first confirm that the tracked Postgres, artifact, and export directories all point to the same new numbered data revision. Such a deploy intentionally starts a fresh database; the old directory is retained for rollback. Practice Quality v1 uses revision `02`. Do not point the changed `001_initial.sql` at a database created from revision `01`, because SQLx will reject the changed migration checksum.
+
 What the deploy script does:
 
 1. validates the local gcloud config and the target VM

@@ -11,29 +11,40 @@ String _humanizeLabel(String value) {
       .join(' ');
 }
 
-class _ExecutableActivityPage extends StatefulWidget {
-  const _ExecutableActivityPage({
+String _runModeLabel(RunMode mode) => switch (mode) {
+  RunMode.practice => 'Practice',
+  RunMode.check => 'Check',
+  RunMode.review => 'Review',
+  RunMode.retry => 'Missed-fact retry',
+};
+
+class ExecutableActivityPage extends StatefulWidget {
+  const ExecutableActivityPage({
     required this.activity,
     required this.onComplete,
+    required this.onRetry,
+    super.key,
   });
 
   final ActivityInstance activity;
   final Future<CompleteActivityResponse> Function(
+    ActivityInstance activity,
     List<String> answers,
     int durationSeconds,
     String notes,
   )
   onComplete;
+  final Future<ActivityInstance> Function(ActivityInstance activity) onRetry;
 
   @override
-  State<_ExecutableActivityPage> createState() =>
-      _ExecutableActivityPageState();
+  State<ExecutableActivityPage> createState() => ExecutableActivityPageState();
 }
 
-class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
-  late final List<TextEditingController> _answerControllers;
+class ExecutableActivityPageState extends State<ExecutableActivityPage> {
+  late ActivityInstance _activity;
+  late List<TextEditingController> _answerControllers;
   final TextEditingController _notesController = TextEditingController();
-  late final DateTime _startedAt;
+  late DateTime _startedAt;
   Timer? _timer;
   late int _elapsedSeconds;
   bool _submitting = false;
@@ -44,17 +55,27 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
   @override
   void initState() {
     super.initState();
-    _startedAt = widget.activity.startedAt.toLocal();
+    _activity = widget.activity;
+    _startedAt = _activity.startedAt.toLocal();
     _elapsedSeconds = _elapsedFromStart();
+    _startTimer();
+    _answerControllers = _newAnswerControllers(_activity);
+  }
+
+  List<TextEditingController> _newAnswerControllers(
+    ActivityInstance activity,
+  ) => activity.items
+      .map((_) => TextEditingController())
+      .toList(growable: false);
+
+  void _startTimer() {
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _result != null) return;
       setState(() {
         _elapsedSeconds = _elapsedFromStart();
       });
     });
-    _answerControllers = widget.activity.items
-        .map((_) => TextEditingController())
-        .toList(growable: false);
   }
 
   @override
@@ -78,10 +99,9 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
     return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
-  int? get _targetSeconds => widget.activity.scoring.maxDurationSeconds;
+  int? get _targetSeconds => _activity.scoring.maxDurationSeconds;
 
-  bool get _hasHardTimeLimit =>
-      widget.activity.scoring.maxDurationSeconds != null;
+  bool get _hasHardTimeLimit => _activity.scoring.maxDurationSeconds != null;
 
   Future<void> _requestClose() async {
     if (_submitting) return;
@@ -121,6 +141,7 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
     });
     try {
       final response = await widget.onComplete(
+        _activity,
         _answerControllers
             .map((controller) => controller.text.trim())
             .toList(growable: false),
@@ -134,6 +155,37 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
         _result = response;
         _elapsedSeconds = response.activitySummary.durationSeconds;
       });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _errorMessage = error.toString();
+      });
+    }
+  }
+
+  Future<void> _retryMissedFacts() async {
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+    });
+    try {
+      final nextActivity = await widget.onRetry(_activity);
+      if (!mounted) return;
+      final nextControllers = _newAnswerControllers(nextActivity);
+      for (final controller in _answerControllers) {
+        controller.dispose();
+      }
+      _notesController.clear();
+      setState(() {
+        _activity = nextActivity;
+        _answerControllers = nextControllers;
+        _startedAt = nextActivity.startedAt.toLocal();
+        _elapsedSeconds = _elapsedFromStart();
+        _result = null;
+        _submitting = false;
+      });
+      _startTimer();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -162,7 +214,7 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
       child: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          title: Text(widget.activity.materialTitle),
+          title: Text(_activity.materialTitle),
           actions: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -191,17 +243,15 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
                 child: result != null
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    ? ListView(
                         children: [
                           Text(
-                            widget.activity.materialTitle,
+                            _activity.materialTitle,
                             style: theme.textTheme.headlineSmall,
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Completed with ${result.activitySummary.correctCount}/${result.activitySummary.itemCount} correct (${(result.activitySummary.accuracy * 100).round()}%).',
+                            '${result.activitySummary.correctCount}/${result.activitySummary.itemCount} correct (${(result.activitySummary.accuracy * 100).round()}%).',
                             style: theme.textTheme.bodyLarge,
                           ),
                           const SizedBox(height: 6),
@@ -211,10 +261,10 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          if (result.proficiency != null) ...[
+                          if (result.readiness != null) ...[
                             const SizedBox(height: 8),
                             Text(
-                              '${result.proficiency!.verdictLabel}: ${result.proficiency!.detailLabel}',
+                              '${result.readiness!.statusLabel}: ${result.readiness!.detailLabel}',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                                 fontWeight: FontWeight.w600,
@@ -227,22 +277,24 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
                             runSpacing: 8,
                             children: [
                               _PillBadge(
-                                text: result.activitySummary.passed
-                                    ? 'Pass threshold met'
-                                    : result.activitySummary.completionReason ==
-                                          'completed_over_time_limit'
-                                    ? 'Over time'
-                                    : 'More review needed',
-                                color: result.activitySummary.passed
+                                text: result.runOutcomeLabel,
+                                color: result.runOutcome == RunOutcome.targetMet
                                     ? theme.colorScheme.secondaryContainer
                                     : theme.colorScheme.errorContainer,
-                                textColor: result.activitySummary.passed
+                                textColor:
+                                    result.runOutcome == RunOutcome.targetMet
                                     ? theme.colorScheme.onSecondaryContainer
                                     : theme.colorScheme.onErrorContainer,
                               ),
-                              ...result.activitySummary.weakGroups.map(
-                                (group) => _PillBadge(
-                                  text: _humanizeLabel(group),
+                              _PillBadge(
+                                text: 'Run finished',
+                                color:
+                                    theme.colorScheme.surfaceContainerHighest,
+                                textColor: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              ...result.activitySummary.weakFamilies.map(
+                                (family) => _PillBadge(
+                                  text: _humanizeLabel(family),
                                   color: theme.colorScheme.primary.withValues(
                                     alpha: 0.12,
                                   ),
@@ -251,13 +303,116 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 18),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton(
-                              onPressed: _requestClose,
-                              child: const Text('Close'),
+                          if (result
+                              .activitySummary
+                              .corrections
+                              .isNotEmpty) ...[
+                            const SizedBox(height: 22),
+                            Text(
+                              'Corrections',
+                              style: theme.textTheme.titleLarge,
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Review each missed item before trying it again.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ...result.activitySummary.corrections.map(
+                              (correction) => Container(
+                                key: ValueKey(
+                                  'correction-${correction.itemId}',
+                                ),
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.errorContainer
+                                      .withValues(alpha: 0.42),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outlineVariant,
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      correction.content,
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Your answer: ${correction.submittedResponse.isEmpty ? 'No answer' : correction.submittedResponse}',
+                                    ),
+                                    Text(
+                                      'Correct answer: ${correction.expectedResponse}',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    if (correction
+                                        .correctionCue
+                                        .isNotEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        correction.correctionCue,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (_errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              _errorMessage!,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 18),
+                          Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              if (result.retryAvailable &&
+                                  result.activitySummary.corrections.isNotEmpty)
+                                FilledButton.icon(
+                                  key: const ValueKey('practise-missed-facts'),
+                                  onPressed: _submitting
+                                      ? null
+                                      : _retryMissedFacts,
+                                  icon: _submitting
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.replay_rounded,
+                                          size: 18,
+                                        ),
+                                  label: const Text('Practise missed facts'),
+                                ),
+                              OutlinedButton(
+                                onPressed: _submitting ? null : _requestClose,
+                                child: const Text('Close'),
+                              ),
+                            ],
                           ),
                         ],
                       )
@@ -279,12 +434,12 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  widget.activity.materialTitle,
+                                  _activity.materialTitle,
                                   style: theme.textTheme.headlineSmall,
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  widget.activity.instructions,
+                                  _activity.instructions,
                                   style: theme.textTheme.bodyLarge,
                                 ),
                               ],
@@ -296,32 +451,42 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
                             runSpacing: 8,
                             children: [
                               _PillBadge(
-                                text: '${widget.activity.items.length} items',
+                                text: 'Run in progress',
+                                color: theme.colorScheme.tertiaryContainer,
+                                textColor:
+                                    theme.colorScheme.onTertiaryContainer,
+                              ),
+                              _PillBadge(
+                                text: _runModeLabel(_activity.runMode),
+                                color:
+                                    theme.colorScheme.surfaceContainerHighest,
+                                textColor: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              _PillBadge(
+                                text: '${_activity.items.length} items',
                                 color: theme.colorScheme.primary.withValues(
                                   alpha: 0.12,
                                 ),
                                 textColor: theme.colorScheme.primary,
                               ),
                               _PillBadge(
-                                text: '${widget.activity.estimatedMinutes} min',
+                                text: '${_activity.estimatedMinutes} min',
                                 color: theme.colorScheme.primary.withValues(
                                   alpha: 0.12,
                                 ),
                                 textColor: theme.colorScheme.primary,
                               ),
-                              if (widget.activity.scoring.passAccuracy != null)
+                              _PillBadge(
+                                text:
+                                    '${(_activity.scoring.targetAccuracy * 100).round()}% target',
+                                color: theme.colorScheme.secondaryContainer,
+                                textColor:
+                                    theme.colorScheme.onSecondaryContainer,
+                              ),
+                              if (_activity.scoring.maxDurationSeconds != null)
                                 _PillBadge(
                                   text:
-                                      '${(widget.activity.scoring.passAccuracy! * 100).round()}% pass',
-                                  color: theme.colorScheme.secondaryContainer,
-                                  textColor:
-                                      theme.colorScheme.onSecondaryContainer,
-                                ),
-                              if (widget.activity.scoring.maxDurationSeconds !=
-                                  null)
-                                _PillBadge(
-                                  text:
-                                      '${widget.activity.scoring.maxDurationSeconds}s target',
+                                      '${_activity.scoring.maxDurationSeconds}s target',
                                   color: theme.colorScheme.tertiaryContainer,
                                   textColor:
                                       theme.colorScheme.onTertiaryContainer,
@@ -348,11 +513,11 @@ class _ExecutableActivityPageState extends State<_ExecutableActivityPage> {
                           const SizedBox(height: 16),
                           Expanded(
                             child: ListView.separated(
-                              itemCount: widget.activity.items.length,
+                              itemCount: _activity.items.length,
                               separatorBuilder: (_, _) =>
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
-                                final item = widget.activity.items[index];
+                                final item = _activity.items[index];
                                 return Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(

@@ -78,7 +78,7 @@ create table session (
     authored_session_id text not null,
     title text not null,
     scheduled_date date not null,
-    status text not null,
+    status text not null check (status in ('scheduled', 'active', 'completed')),
     day_offset integer not null,
     notes text not null default '',
     completed_at timestamptz null
@@ -95,7 +95,7 @@ create table session_material (
     title text not null,
     skill_id text not null,
     material_id text not null,
-    status text not null
+    status text not null check (status in ('scheduled', 'active', 'completed'))
 );
 
 create unique index session_material_unique_ref_idx
@@ -127,7 +127,7 @@ create table evidence_artifact (
 create table learner_skill_progress (
     learner_id text not null references user_account(user_id) on delete cascade,
     skill_id text not null,
-    status text not null,
+    status text not null check (status in ('needs_practice', 'ready_for_check', 'confirmed')),
     score_average double precision not null,
     last_score double precision not null,
     total_evidence integer not null,
@@ -138,14 +138,87 @@ create table learner_skill_progress (
 create table review_item (
     review_item_id text primary key,
     learner_id text not null references user_account(user_id) on delete cascade,
-    skill_id text not null,
+    skill_ids jsonb not null,
+    session_id text null references session(session_id) on delete set null,
+    session_material_id text null references session_material(session_material_id) on delete set null,
+    material_id text not null,
+    evidence_material_id text not null,
     reason text not null,
+    fact_focus jsonb not null default '[]'::jsonb,
+    family_focus jsonb not null default '[]'::jsonb,
     due_date date not null,
-    status text not null,
-    created_at timestamptz not null
+    review_step integer not null default 0 check (review_step between 0 and 2),
+    is_actionable boolean not null default true,
+    last_reviewed_at timestamptz null,
+    created_at timestamptz not null,
+    updated_at timestamptz not null,
+    unique (learner_id, evidence_material_id)
 );
 
 create index review_item_learner_idx on review_item (learner_id, due_date);
+
+create table activity_instance (
+    activity_instance_id uuid primary key,
+    learner_id text not null references user_account(user_id) on delete cascade,
+    session_id text not null references session(session_id) on delete cascade,
+    session_material_id text not null references session_material(session_material_id) on delete cascade,
+    material_id text not null,
+    evidence_material_id text not null,
+    mode text not null check (mode in ('practice', 'check', 'review', 'retry')),
+    status text not null check (status in ('in_progress', 'finished')),
+    run_outcome text null check (run_outcome in ('target_met', 'target_not_met')),
+    plan jsonb not null,
+    result jsonb null,
+    review_item_id text null references review_item(review_item_id) on delete set null,
+    retry_origin_activity_instance_id uuid null references activity_instance(activity_instance_id) on delete set null,
+    evidence_id text null references evidence(evidence_id) on delete set null,
+    started_at timestamptz not null,
+    finished_at timestamptz null,
+    duration_seconds integer null check (duration_seconds is null or duration_seconds >= 0),
+    check (
+        (status = 'in_progress' and run_outcome is null and result is null and finished_at is null)
+        or
+        (status = 'finished' and run_outcome is not null and result is not null and finished_at is not null)
+    )
+);
+
+create index activity_instance_learner_idx
+    on activity_instance (learner_id, started_at desc);
+create index activity_instance_material_idx
+    on activity_instance (learner_id, material_id, started_at desc);
+create unique index activity_instance_evidence_idx
+    on activity_instance (evidence_id)
+    where evidence_id is not null;
+
+create table learner_fact_progress (
+    learner_id text not null references user_account(user_id) on delete cascade,
+    material_id text not null,
+    fact_key text not null,
+    attempted_count integer not null check (attempted_count >= 0),
+    correct_count integer not null check (correct_count between 0 and attempted_count),
+    last_correct boolean not null,
+    consecutive_correct_count integer not null check (consecutive_correct_count >= 0),
+    last_seen_at timestamptz not null,
+    primary key (learner_id, material_id, fact_key)
+);
+
+create index learner_fact_progress_adaptive_idx
+    on learner_fact_progress (learner_id, material_id, correct_count, attempted_count, last_seen_at);
+
+create table learner_family_progress (
+    learner_id text not null references user_account(user_id) on delete cascade,
+    material_id text not null,
+    family_key text not null,
+    attempted_count integer not null check (attempted_count >= 0),
+    correct_count integer not null check (correct_count between 0 and attempted_count),
+    last_correct boolean not null,
+    consecutive_correct_count integer not null check (consecutive_correct_count >= 0),
+    last_seen_at timestamptz not null,
+    primary key (learner_id, material_id, family_key)
+);
+
+create index learner_family_progress_adaptive_idx
+    on learner_family_progress (learner_id, material_id, correct_count, attempted_count, last_seen_at);
 
 create table web_session (
     session_id uuid primary key,
@@ -170,15 +243,21 @@ create table google_oauth_flow (
 
 create index google_oauth_flow_created_at_idx on google_oauth_flow (created_at);
 
-create table learner_material_proficiency_override (
+create table learner_material_readiness_override (
     learner_id text not null references user_account(user_id) on delete cascade,
     material_id text not null,
-    min_attempts integer not null,
-    window_size integer not null,
-    target_accuracy double precision not null,
-    consecutive_passes integer not null,
-    target_correct_count integer null,
-    max_duration_seconds integer null,
+    minimum_runs integer not null check (minimum_runs > 0),
+    recent_run_window integer not null check (recent_run_window > 0),
+    target_accuracy double precision not null check (target_accuracy > 0 and target_accuracy <= 1),
+    consecutive_target_runs integer not null check (
+        consecutive_target_runs > 0
+        and consecutive_target_runs <= recent_run_window
+        and consecutive_target_runs <= minimum_runs
+    ),
+    target_correct_count integer null check (target_correct_count is null or target_correct_count > 0),
+    minimum_distinct_items integer null check (minimum_distinct_items is null or minimum_distinct_items > 0),
+    minimum_family_count integer null check (minimum_family_count is null or minimum_family_count > 0),
+    max_duration_seconds integer null check (max_duration_seconds is null or max_duration_seconds > 0),
     enabled boolean not null default true,
     reason text not null default '',
     created_by_user_id text not null references user_account(user_id) on delete restrict,
@@ -188,5 +267,5 @@ create table learner_material_proficiency_override (
     primary key (learner_id, material_id)
 );
 
-create index learner_material_proficiency_override_learner_idx
-    on learner_material_proficiency_override (learner_id, enabled);
+create index learner_material_readiness_override_learner_idx
+    on learner_material_readiness_override (learner_id, enabled);

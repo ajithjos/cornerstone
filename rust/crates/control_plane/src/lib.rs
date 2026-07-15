@@ -52,6 +52,7 @@ pub async fn run_cli() -> anyhow::Result<()> {
         Command::LibraryValidate => {
             let content_root = config::content_root_from_env()?;
             let (bundle, report) = catalog::load_library_bundle(&content_root)?;
+            service::validate_supported_material_runtimes(&bundle)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
             println!(
                 "Loaded {} subjects, {} areas, {} pathways, {} skills, {} stages, {} playlists, {} materials",

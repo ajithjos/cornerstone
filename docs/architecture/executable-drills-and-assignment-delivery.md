@@ -13,7 +13,7 @@ The missing piece is the contract for materials that behave like live drills or 
 
 It also needs a clearer parent-facing browse and assignment flow so an adult can see the ordered playlist, the session materials, and the expected target before assigning it.
 
-## Current Product Gap
+## Product Capability
 
 Today the repository already holds real ordered playlists for arithmetic fact fluency, including:
 
@@ -23,13 +23,7 @@ Today the repository already holds real ordered playlists for arithmetic fact fl
 
 Those playlists already define ordered sessions in playlist frontmatter.
 
-The gap is delivery:
-
-- live drills do not have an executable runtime contract yet
-- the generic library document payload exposes markdown body, not the structured playlist session plan
-- the current parent workflow can assign a playlist, but it does not yet show the full session and material picture well enough before assignment
-
-That makes the authored content feel thinner than it really is and makes dynamic activities feel under-designed.
+Delivery now uses an explicit runtime contract, structured playlist sessions, persisted activity instances, compact learner evidence, correction, retry, and actionable review. The remaining rule is to extend those contracts deliberately when a new interaction type is introduced, rather than bypassing them in content or Flutter.
 
 ## Decisions
 
@@ -70,11 +64,11 @@ The backend should:
 
 The client should render trusted interaction primitives from JSON. It should not run remote code.
 
-### 4. Persist summary evidence by default, not every answer forever
+### 4. Persist summary evidence, not every answer forever
 
 Cornerstone does not need keystroke-level history as the default storage model.
 
-The default persistence rule should be:
+The persistence rule is:
 
 - generate items for one activity instance
 - let the learner answer locally in the client
@@ -114,11 +108,17 @@ runtime:
     question_count: 14
     allow_negative_answers: false
   scoring:
-    pass_accuracy: 0.85
-    soft_time_limit_seconds: 180
-  persistence:
-    store_response_log: false
-    store_summary: true
+    target_accuracy: 0.85
+    max_duration_seconds: 180
+  readiness:
+    minimum_runs: 3
+    recent_run_window: 3
+    target_accuracy: 0.85
+    consecutive_target_runs: 2
+    target_correct_count: 12
+    minimum_distinct_items: 20
+    minimum_family_count: 2
+    max_duration_seconds: 180
 ---
 ```
 
@@ -128,10 +128,11 @@ Recommended contract fields:
 - `spec_version`: schema version for validation
 - `template_id`: the named generator template inside that engine
 - `parameters`: limits for generation, item forms, timing, and batch size
-- `scoring`: pass or mastery thresholds
-- `persistence`: whether long-lived response logs are stored
+- `scoring`: the target for this one run
+- `readiness`: representative-practice thresholds for becoming ready for a check
 
 This keeps the content expressive without letting content become code.
+Persistence is intentionally not authored: the control plane stores compact evidence and never a long-lived raw response log.
 
 ## Runtime Objects
 
@@ -149,7 +150,9 @@ It should contain at least:
 - `material_id`
 - `engine_id`
 - `template_id`
-- `seed`
+- `run_mode`
+- `generation_context`
+- immutable generated plan
 - `render_model`
 - `issued_at`
 - `expires_at`
@@ -172,7 +175,8 @@ When the learner completes the activity, the backend should score it and produce
 - accuracy
 - duration seconds
 - completion reason
-- weak fact groups or weak prompt families
+- compact fact and family results
+- exact correction records for incorrect responses
 - skill-level evidence summary
 
 This summary becomes part of session evidence.
@@ -187,8 +191,8 @@ For executable materials, use this flow.
 4. The backend validates the material runtime block, generates an activity instance, and returns a trusted render model.
 5. The learner works locally in the client.
 6. The client submits the completed response set once.
-7. The backend scores the result and persists summary evidence.
-8. Progress updates at the skill level.
+7. The backend scores the result, returns corrections, and persists compact fact and family evidence.
+8. Readiness, confirmation, and review-due state update independently.
 
 For early versions, avoid per-answer save calls during the activity. One start call and one complete call are enough.
 
@@ -218,33 +222,37 @@ Use narrow endpoints for executable materials:
 
 - `POST /api/v1/sessions/{session_id}/materials/{session_material_id}/start`
 - `POST /api/v1/activity-instances/{activity_instance_id}/complete`
+- `POST /api/v1/activity-instances/{activity_instance_id}/retry`
+- `POST /api/v1/review-items/{review_item_id}/start`
 
 The start response returns the activity instance and render model.
 
-The complete request sends the learner responses for scoring, but the backend does not need to persist those raw responses unless the material explicitly opts into debug logging.
+The complete request sends the learner responses for scoring. The backend uses them for that request, returns any immediate corrections, and persists only the compact evidence required by the product.
 
 ## What To Persist
 
-Default persistence should be minimal and useful.
+Persistence is minimal and useful.
 
 Persist:
 
 - assignment
 - scheduled session
-- session completion status
+- session lifecycle status
+- run status and run outcome
 - notes from the adult if provided
 - score summary
 - duration summary
-- skill evidence summary
-- weak-spot summary such as "teen facts" or "bonds to 10"
+- readiness and skill evidence summary
+- fact and family progress summaries such as "teen facts" or "bonds to 10"
+- review cadence and launch target
 
-Do not persist by default:
+Do not persist:
 
 - every keystroke
 - every intermediate answer event
 - long-lived full response logs
 
-If debugging is ever needed, add a short-lived response trace behind a flag or a TTL-based store. Do not make that the core model.
+This is a fixed product policy. Authored materials cannot enable raw response logging.
 
 ## Parent-Facing Browse And Assign Flow
 
@@ -308,12 +316,16 @@ Recommended first engine:
 
 - `arithmetic_fact_fluency.v1`
 
-Recommended first templates:
+Current templates include:
 
-- `bonds_within_5`
+- `readiness_within_5`
 - `mixed_add_sub_to_10`
 - `mixed_add_sub_to_20`
-- `missing_number_to_20`
+- `anchor_facts_to_20`
+- `bridge_through_10_addition`
+- `bridge_through_10_subtraction`
+- `multiplication_tables_to_10`
+- `division_facts_from_tables`
 
 Useful parameter families:
 
@@ -324,46 +336,12 @@ Useful parameter families:
 - question count
 - time limit
 - allowed item forms
-- weak-fact replay policy
+- run mode and backend-selected fact or family focus
 
 This is enough to cover the first three arithmetic playlists without overbuilding.
 
-## Applying This To The First Three Playlists
+## Extending The Rollout
 
-Once this contract is accepted, the first content rollout should target the existing playlists in the arithmetic pathway.
+New executable materials should reuse the current runtime when their items fit an existing typed template. Add a template only when candidate construction or the representative-coverage blueprint is genuinely different. Add a new engine only when the learner interaction or scoring model changes.
 
-### Readiness And Bonds Within 5
-
-Add later:
-
-- one live drill for small groups, bonds to 5, and tiny add-or-take-away items
-- one short quick check with a soft timer and low pressure
-
-### Addition And Subtraction Facts To 10
-
-Add later:
-
-- one live mixed-facts drill
-- one quick check that scores both accuracy and speed
-
-### Addition And Subtraction Facts To 20
-
-Add later:
-
-- one live mixed-facts drill with teen anchors
-- one missing-number quick check
-
-The static teaching notes and practice materials already in the repository can stay. The live pieces should be added as additional materials, not as a replacement for the whole playlist.
-
-## Implementation Order
-
-Build this in four passes.
-
-1. Expose playlist sessions and material links in the frontend browse surface so the parent can inspect a playlist before assigning it.
-2. Add the executable material contract and one backend engine for arithmetic fact fluency.
-3. Add drill and quick-check materials for the first three arithmetic playlists.
-4. Feed the resulting activity summaries into session evidence and skill progress.
-
-This keeps the next step practical.
-
-It improves the real parent workflow first, then adds live drill execution without breaking the current curriculum model.
+Every rollout must prove the same complete loop: authored validation, balanced practice, representative check, immutable start and completion, compact evidence, correction and retry, review launch, and parent-visible mastery.

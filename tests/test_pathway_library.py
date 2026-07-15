@@ -158,9 +158,24 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
 
             assert drill_material_ids, f"fact-fluency playlist {playlist['id']} is missing a drill session"
             for material_id in drill_material_ids:
-                assert "runtime" in materials[material_id], (
+                runtime = materials[material_id].get("runtime")
+                assert runtime is not None, (
                     f"fact-fluency drill {material_id} in playlist {playlist['id']} is missing a runtime block"
                 )
+                scoring = runtime.get("scoring")
+                assert scoring is not None and 0 < scoring["target_accuracy"] <= 1
+                assert "pass_accuracy" not in scoring
+                assert "persistence" not in runtime
+                readiness = runtime.get("readiness")
+                assert readiness is not None, (
+                    f"fact-fluency drill {material_id} in playlist {playlist['id']} is missing readiness"
+                )
+                assert "proficiency" not in runtime
+                assert readiness["minimum_runs"] > 0
+                assert readiness["recent_run_window"] > 0
+                assert readiness["consecutive_target_runs"] > 0
+                assert readiness["minimum_distinct_items"] > 0
+                assert readiness["minimum_family_count"] > 0
             for material_id in quick_check_material_ids:
                 runtime = materials[material_id].get("runtime")
                 assert runtime is not None, (
@@ -173,6 +188,12 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
                 assert gate["requires_ready_material_id"] in drill_material_ids, (
                     f"fact-fluency quick check {material_id} in playlist {playlist['id']} must gate on that playlist's drill"
                 )
+                scoring = runtime.get("scoring")
+                assert scoring is not None and scoring["target_accuracy"] >= 0.9
+                assert "pass_accuracy" not in scoring
+                assert "persistence" not in runtime
+                assert "readiness" not in runtime
+                assert "proficiency" not in runtime
 
     assert set(stages) <= stage_ids_from_skills | stage_ids_from_materials | playlist_stage_ids
     assert set(skills) <= skill_ids_in_materials | playlist_skill_ids

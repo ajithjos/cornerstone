@@ -5,18 +5,19 @@ use std::sync::Arc;
 
 use anyhow::{Context, anyhow, bail};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use catalog::MaterialRuntimeProficiency;
+use catalog::MaterialRuntimeReadiness;
 use catalog::{
     BootstrapMembership, BootstrapUser, IdentityBootstrap, LibraryBundle, LibraryDocument, LibraryValidationReport,
     PlaylistSession, load_bootstrap, load_library_content,
 };
-use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use learning_activity_runtime::{self as runtime, GeneratedActivity, ScoredActivity};
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgPool, query, query_as, query_scalar};
+use sqlx::{PgPool, Postgres, Transaction, query, query_as, query_scalar};
 use tokio::fs;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -26,17 +27,18 @@ use crate::domain::{
     ActivityInstance, ActivityItem, ActivityScoringSummary, ActivityStartResponse, ActivitySummary,
     AssignmentReconcileRequest, AssignmentReconcileResponse, AssignmentRequest, AssignmentResponse, AssignmentRow,
     AssignmentSummary, AuthOptionsSummary, BootstrapApplyResponse, CompleteActivityRequest, CompleteActivityResponse,
-    DashboardResponse, EvidenceRow, EvidenceSummary, LearnerAssignedPathwaySummary, LearnerContinueBlock,
-    LearnerDashboard, LearnerDetailResponse, LearnerJourneySummary, LearnerProgressSnapshot, LearnerRecentWinSummary,
-    LearnerRow, LearnerSummary, LearnerWorkspaceSummary, LibraryDocumentPayload, LibraryDocumentSummary,
-    LibraryReloadResponse, LibraryWorkspaceResponse, MaterialWorkspaceSummary, PathwayEntryPointSummary,
-    PathwayWorkspaceSummary, PlaylistAssignmentTargetSummary, PlaylistDeliveryShapeSummary,
-    PlaylistSessionWorkspaceSummary, PlaylistWorkspaceSummary, ProficiencyOverrideRequest, ProficiencyOverrideResponse,
-    RecordSessionRequest, RecordSessionResponse, ReviewItemRow, ReviewItemSummary, ReviewRebuildResponse,
-    SessionDetail, SessionMaterialGateSummary, SessionMaterialKindGroupSummary, SessionMaterialProficiencySummary,
-    SessionMaterialRow, SessionMaterialRuntimeSummary, SessionMaterialSummary, SessionRow, SessionSummary,
-    SkillProgressRow, SkillProgressSummary, StageProgress, TeamMemberRow, TeamMemberSummary, TeamRow, TeamSummary,
-    ViewerSessionResponse, WorkspaceMaterialKindGroupSummary,
+    DashboardResponse, EvidenceRow, EvidenceSummary, FamilyProgressRow, LearnerAssignedPathwaySummary,
+    LearnerContinueBlock, LearnerDashboard, LearnerDetailResponse, LearnerJourneySummary, LearnerProgressSnapshot,
+    LearnerRecentWinSummary, LearnerRow, LearnerSummary, LearnerWorkspaceSummary, LibraryDocumentPayload,
+    LibraryDocumentSummary, LibraryReloadResponse, LibraryWorkspaceResponse, MaterialWorkspaceSummary,
+    PathwayEntryPointSummary, PathwayWorkspaceSummary, PlaylistAssignmentTargetSummary, PlaylistDeliveryShapeSummary,
+    PlaylistSessionWorkspaceSummary, PlaylistWorkspaceSummary, PracticeFamilyMasterySummary, PracticeMasterySummary,
+    ReadinessOverrideRequest, ReadinessOverrideResponse, RecordSessionRequest, RecordSessionResponse, ReviewItemRow,
+    ReviewItemSummary, ReviewRebuildResponse, SessionDetail, SessionMaterialGateSummary,
+    SessionMaterialKindGroupSummary, SessionMaterialReadinessSummary, SessionMaterialRow,
+    SessionMaterialRuntimeSummary, SessionMaterialStatus, SessionMaterialSummary, SessionRow, SessionStatus,
+    SessionSummary, SkillProgressRow, SkillProgressSummary, StageProgress, TeamMemberRow, TeamMemberSummary, TeamRow,
+    TeamSummary, ViewerSessionResponse, WorkspaceMaterialKindGroupSummary,
 };
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -75,6 +77,44 @@ struct ActivityAttemptSummary {
     item_count: usize,
     accuracy: f64,
     duration_seconds: i32,
+    attempted_fact_keys: BTreeSet<String>,
+    attempted_family_keys: BTreeSet<String>,
+    coverage_met: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedActivityResult {
+    attempted_count: usize,
+    correct_count: usize,
+    item_count: usize,
+    accuracy: f64,
+    target_met: bool,
+    weak_family_keys: Vec<String>,
+    missed_fact_keys: Vec<String>,
+    fact_results: Vec<runtime::FactResult>,
+    family_results: Vec<runtime::FamilyResult>,
+}
+
+impl PersistedActivityResult {
+    fn from_scored(scored: &ScoredActivity, target_met: bool) -> Self {
+        Self {
+            attempted_count: scored.attempted_count,
+            correct_count: scored.correct_count,
+            item_count: scored.item_count,
+            accuracy: scored.accuracy,
+            target_met,
+            weak_family_keys: scored.weak_family_keys.clone(),
+            missed_fact_keys: scored
+                .corrections
+                .iter()
+                .map(|correction| correction.fact_key.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+            fact_results: scored.fact_results.clone(),
+            family_results: scored.family_results.clone(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1114,14 +1154,14 @@ pub async fn reload_library(state: &Arc<AppState>, context: &SessionContext) -> 
     Ok(library_report_response(&*state.library_report.read().await))
 }
 
-fn validate_supported_material_runtimes(library: &LibraryBundle) -> anyhow::Result<()> {
+pub(crate) fn validate_supported_material_runtimes(library: &LibraryBundle) -> anyhow::Result<()> {
     for material in &library.materials {
         let Some(runtime_config) = material.runtime.as_ref() else {
             continue;
         };
-        runtime::resolve_program(runtime_config).with_context(|| {
+        runtime::validate_material_runtime(material).with_context(|| {
             format!(
-                "material '{}' references unsupported runtime '{}'",
+                "material '{}' has invalid or unsupported runtime '{}'",
                 material.id,
                 runtime::build_runtime_id(&runtime_config.engine_id, &runtime_config.template_id),
             )
@@ -1604,6 +1644,7 @@ async fn load_learner_detail_payload(
     .await?;
     let progress = fetch_progress(&state.pool, learner_id).await?;
     let review_items = fetch_review_items(&state.pool, learner_id).await?;
+    let practice_mastery = fetch_practice_mastery(&state.pool, &library, learner_id, &progress, &review_items).await?;
     let journey = (assignments.len() == 1)
         .then(|| {
             active_assignment
@@ -1647,6 +1688,7 @@ async fn load_learner_detail_payload(
         sessions: response_sessions,
         progress,
         review_items,
+        practice_mastery,
         workspace,
     })
 }
@@ -1717,6 +1759,7 @@ pub async fn fetch_learner_workspace(
         sessions,
         progress: detail.progress,
         review_items: detail.review_items,
+        practice_mastery: detail.practice_mastery,
         workspace,
     })
 }
@@ -1743,49 +1786,76 @@ pub async fn create_assignment(
     })
 }
 
-pub async fn set_proficiency_override(
+pub async fn set_readiness_override(
     state: &Arc<AppState>,
     context: &SessionContext,
     learner_id: &str,
-    request: ProficiencyOverrideRequest,
-) -> anyhow::Result<ProficiencyOverrideResponse> {
+    request: ReadinessOverrideRequest,
+) -> anyhow::Result<ReadinessOverrideResponse> {
     ensure_viewer_can_manage_team(&context.active_user)?;
     ensure_viewer_can_access_learner(&context.active_user, learner_id)?;
-    if request.min_attempts <= 0 || request.window_size <= 0 || request.consecutive_passes <= 0 {
+    if request.minimum_runs <= 0 || request.recent_run_window <= 0 || request.consecutive_target_runs <= 0 {
         bail!("override counts must be greater than zero");
+    }
+    if request.consecutive_target_runs > request.minimum_runs
+        || request.consecutive_target_runs > request.recent_run_window
+    {
+        bail!("consecutive target runs must fit within both the minimum runs and recent run window");
     }
     if !(0.0..=1.0).contains(&request.target_accuracy) || request.target_accuracy <= 0.0 {
         bail!("target accuracy must be between 0 and 1");
     }
-    if request.target_correct_count.unwrap_or(0) < 0 || request.max_duration_seconds.unwrap_or(1) <= 0 {
-        bail!("target correct count and max duration must not be negative");
+    if request.target_correct_count.is_some_and(|value| value <= 0)
+        || request.minimum_distinct_items.is_some_and(|value| value <= 0)
+        || request.minimum_family_count.is_some_and(|value| value <= 0)
+        || request.max_duration_seconds.unwrap_or(1) <= 0
+    {
+        bail!("readiness target counts must be greater than zero when provided");
     }
     let library = state.library.read().await.clone();
     let material = library
         .material(&request.material_id)
         .ok_or_else(|| anyhow!("material '{}' not found", request.material_id))?;
-    if material
+    let authored_readiness = material
         .runtime
         .as_ref()
-        .and_then(|runtime| runtime.proficiency.as_ref())
-        .is_none()
-    {
-        bail!("material '{}' does not have a proficiency target", material.id);
-    }
+        .and_then(|runtime| runtime.readiness.as_ref())
+        .ok_or_else(|| anyhow!("material '{}' does not have a readiness target", material.id))?;
+    let mut candidate_runtime = material.runtime.clone().expect("readiness requires runtime");
+    candidate_runtime.readiness = Some(MaterialRuntimeReadiness {
+        minimum_runs: request.minimum_runs as usize,
+        recent_run_window: request.recent_run_window as usize,
+        target_accuracy: request.target_accuracy,
+        consecutive_target_runs: request.consecutive_target_runs as usize,
+        target_correct_count: request.target_correct_count.map(|value| value as usize),
+        minimum_distinct_items: request
+            .minimum_distinct_items
+            .map(|value| value as usize)
+            .unwrap_or(authored_readiness.minimum_distinct_items),
+        minimum_family_count: request
+            .minimum_family_count
+            .map(|value| value as usize)
+            .unwrap_or(authored_readiness.minimum_family_count),
+        max_duration_seconds: request.max_duration_seconds.map(|value| value as u32),
+    });
+    runtime::validate_runtime(&candidate_runtime).context("readiness override is not feasible for this activity")?;
 
     let now = Utc::now();
     query(
-        "insert into learner_material_proficiency_override (
-            learner_id, material_id, min_attempts, window_size, target_accuracy, consecutive_passes,
-            target_correct_count, max_duration_seconds, enabled, reason, created_by_user_id, created_at, updated_at, disabled_at
+        "insert into learner_material_readiness_override (
+            learner_id, material_id, minimum_runs, recent_run_window, target_accuracy, consecutive_target_runs,
+            target_correct_count, minimum_distinct_items, minimum_family_count, max_duration_seconds,
+            enabled, reason, created_by_user_id, created_at, updated_at, disabled_at
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $11, null)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, $12, $13, $13, null)
         on conflict (learner_id, material_id) do update
-        set min_attempts = excluded.min_attempts,
-            window_size = excluded.window_size,
+        set minimum_runs = excluded.minimum_runs,
+            recent_run_window = excluded.recent_run_window,
             target_accuracy = excluded.target_accuracy,
-            consecutive_passes = excluded.consecutive_passes,
+            consecutive_target_runs = excluded.consecutive_target_runs,
             target_correct_count = excluded.target_correct_count,
+            minimum_distinct_items = excluded.minimum_distinct_items,
+            minimum_family_count = excluded.minimum_family_count,
             max_duration_seconds = excluded.max_duration_seconds,
             enabled = true,
             reason = excluded.reason,
@@ -1794,11 +1864,13 @@ pub async fn set_proficiency_override(
     )
     .bind(learner_id)
     .bind(&request.material_id)
-    .bind(request.min_attempts)
-    .bind(request.window_size)
+    .bind(request.minimum_runs)
+    .bind(request.recent_run_window)
     .bind(request.target_accuracy)
-    .bind(request.consecutive_passes)
+    .bind(request.consecutive_target_runs)
     .bind(request.target_correct_count)
+    .bind(request.minimum_distinct_items)
+    .bind(request.minimum_family_count)
     .bind(request.max_duration_seconds)
     .bind(request.reason.trim())
     .bind(&context.active_user.user_id)
@@ -1806,23 +1878,23 @@ pub async fn set_proficiency_override(
     .execute(&state.pool)
     .await?;
 
-    Ok(ProficiencyOverrideResponse {
+    Ok(ReadinessOverrideResponse {
         status: "ok".to_string(),
         learner_id: learner_id.to_string(),
         material_id: request.material_id,
     })
 }
 
-pub async fn clear_proficiency_override(
+pub async fn clear_readiness_override(
     state: &Arc<AppState>,
     context: &SessionContext,
     learner_id: &str,
     material_id: &str,
-) -> anyhow::Result<ProficiencyOverrideResponse> {
+) -> anyhow::Result<ReadinessOverrideResponse> {
     ensure_viewer_can_manage_team(&context.active_user)?;
     ensure_viewer_can_access_learner(&context.active_user, learner_id)?;
     query(
-        "update learner_material_proficiency_override
+        "update learner_material_readiness_override
          set enabled = false, updated_at = $3, disabled_at = $3
          where learner_id = $1 and material_id = $2",
     )
@@ -1831,7 +1903,7 @@ pub async fn clear_proficiency_override(
     .bind(Utc::now())
     .execute(&state.pool)
     .await?;
-    Ok(ProficiencyOverrideResponse {
+    Ok(ReadinessOverrideResponse {
         status: "ok".to_string(),
         learner_id: learner_id.to_string(),
         material_id: material_id.to_string(),
@@ -1878,6 +1950,12 @@ pub async fn record_session(
             artifact_kind: "session_notes",
             artifact_summary,
             artifact_payload,
+            skill_status: crate::domain::SkillStatus::NeedsPractice,
+            // Manual evidence cannot establish confirmation, and it also cannot erase a
+            // confirmation previously earned by a representative Check.
+            allow_confirmed_downgrade: false,
+            complete_session_lifecycle: true,
+            activity_completion: None,
         },
     )
     .await
@@ -1914,9 +1992,306 @@ pub async fn start_session_material_activity(
             bail!("{}", gate_summary.reason_label);
         }
     }
+    let run_mode = if material.kind == QUICK_CHECK_KIND {
+        runtime::RunMode::Check
+    } else {
+        runtime::RunMode::Practice
+    };
+    let evidence_material_id = practice_evidence_material_id(material);
+    let generation_context = build_generation_context(
+        &state.pool,
+        &session.learner_id,
+        &material.id,
+        &evidence_material_id,
+        run_mode,
+        Vec::new(),
+        Vec::new(),
+    )
+    .await?;
+    create_activity_instance(
+        state,
+        &session,
+        session_material,
+        material,
+        generation_context,
+        None,
+        None,
+    )
+    .await
+}
+
+pub async fn start_review_item_activity(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    review_item_id: &str,
+) -> anyhow::Result<ActivityStartResponse> {
+    let review_item = load_review_item_row(&state.pool, review_item_id).await?;
+    ensure_viewer_can_access_learner(&context.active_user, &review_item.learner_id)?;
+    if review_item.due_date > Utc::now().date_naive() {
+        bail!("review item '{review_item_id}' is not due yet");
+    }
+    let session_material = match review_item.session_material_id.as_deref() {
+        Some(session_material_id) => load_session_material_row(&state.pool, session_material_id).await?,
+        None => {
+            match load_latest_review_session_material(
+                &state.pool,
+                &review_item.learner_id,
+                &review_item.material_id,
+                &review_item.evidence_material_id,
+            )
+            .await?
+            {
+                Some(session_material) => {
+                    query(
+                        "update review_item
+                     set session_id = $2, session_material_id = $3, material_id = $4, updated_at = $5
+                     where review_item_id = $1",
+                    )
+                    .bind(review_item_id)
+                    .bind(&session_material.session_id)
+                    .bind(&session_material.session_material_id)
+                    .bind(&session_material.material_id)
+                    .bind(Utc::now())
+                    .execute(&state.pool)
+                    .await?;
+                    session_material
+                }
+                None => {
+                    query("update review_item set is_actionable = false, updated_at = $2 where review_item_id = $1")
+                        .bind(review_item_id)
+                        .bind(Utc::now())
+                        .execute(&state.pool)
+                        .await?;
+                    bail!("review item '{review_item_id}' no longer has an available activity target");
+                }
+            }
+        }
+    };
+    let session = load_session_row(&state.pool, &session_material.session_id).await?;
+    let library = state.library.read().await.clone();
+    let material = library
+        .material(&session_material.material_id)
+        .ok_or_else(|| anyhow!("material '{}' not found in library", session_material.material_id))?;
+    let generation_context = build_generation_context(
+        &state.pool,
+        &review_item.learner_id,
+        &session_material.material_id,
+        &review_item.evidence_material_id,
+        runtime::RunMode::Review,
+        json_string_array(&review_item.fact_focus),
+        json_string_array(&review_item.family_focus),
+    )
+    .await?;
+    create_activity_instance(
+        state,
+        &session,
+        &session_material,
+        material,
+        generation_context,
+        Some(review_item.review_item_id),
+        None,
+    )
+    .await
+}
+
+pub async fn retry_missed_activity_facts(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    source_activity_instance_id: &str,
+) -> anyhow::Result<ActivityStartResponse> {
+    let source_id = Uuid::parse_str(source_activity_instance_id).context("invalid activity instance id")?;
+    let source = load_activity_instance_row(&state.pool, source_id).await?;
+    ensure_viewer_can_access_learner(&context.active_user, &source.learner_id)?;
+    if source.status != "finished" {
+        bail!("activity instance '{source_activity_instance_id}' is still in progress");
+    }
+    let result = source
+        .result
+        .as_ref()
+        .ok_or_else(|| anyhow!("activity instance '{source_activity_instance_id}' has no scored result"))?;
+    let scored: PersistedActivityResult =
+        serde_json::from_value(result.clone()).context("stored activity result is invalid")?;
+    let focus_fact_keys = scored.missed_fact_keys;
+    if focus_fact_keys.is_empty() {
+        bail!("activity instance '{source_activity_instance_id}' has no missed facts to retry");
+    }
+    let session_material = load_session_material_row(&state.pool, &source.session_material_id).await?;
+    let session = load_session_row(&state.pool, &source.session_id).await?;
+    let library = state.library.read().await.clone();
+    let material = library
+        .material(&source.material_id)
+        .ok_or_else(|| anyhow!("material '{}' not found in library", source.material_id))?;
+    let generation_context = build_generation_context(
+        &state.pool,
+        &source.learner_id,
+        &source.material_id,
+        &source.evidence_material_id,
+        runtime::RunMode::Retry,
+        focus_fact_keys,
+        scored.weak_family_keys,
+    )
+    .await?;
+    create_activity_instance(
+        state,
+        &session,
+        &session_material,
+        material,
+        generation_context,
+        source.review_item_id,
+        Some(source_id),
+    )
+    .await
+}
+
+async fn build_generation_context(
+    pool: &PgPool,
+    learner_id: &str,
+    _material_id: &str,
+    evidence_material_id: &str,
+    run_mode: runtime::RunMode,
+    focus_fact_keys: Vec<String>,
+    focus_family_keys: Vec<String>,
+) -> anyhow::Result<runtime::GenerationContext> {
+    let fact_progress = if run_mode == runtime::RunMode::Check {
+        Vec::new()
+    } else {
+        query_as::<_, crate::domain::FactProgressRow>(
+            "select learner_id, material_id, fact_key, attempted_count, correct_count, last_correct,
+                    consecutive_correct_count, last_seen_at
+             from learner_fact_progress
+             where learner_id = $1 and material_id = $2
+             order by last_correct asc,
+                      (correct_count::double precision / nullif(attempted_count, 0)) asc nulls first,
+                      last_seen_at asc
+             limit 100",
+        )
+        .bind(learner_id)
+        .bind(evidence_material_id)
+        .fetch_all(pool)
+        .await?
+    };
+    let weak_fact_keys = fact_progress
+        .iter()
+        .filter(|progress| {
+            practice_progress_needs_focus(
+                progress.attempted_count,
+                progress.correct_count,
+                progress.last_correct,
+                progress.consecutive_correct_count,
+                progress.last_seen_at,
+                Utc::now(),
+            )
+        })
+        .take(12)
+        .map(|progress| progress.fact_key.clone())
+        .collect::<Vec<_>>();
+    let seen_fact_keys = if run_mode == runtime::RunMode::Practice {
+        fact_progress
+            .iter()
+            .filter(|progress| progress.attempted_count > 0)
+            .map(|progress| progress.fact_key.clone())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let family_progress = if run_mode == runtime::RunMode::Check {
+        Vec::new()
+    } else {
+        query_as::<_, FamilyProgressRow>(
+            "select learner_id, material_id, family_key, attempted_count, correct_count, last_correct,
+                    consecutive_correct_count, last_seen_at
+             from learner_family_progress
+             where learner_id = $1 and material_id = $2
+             order by last_correct asc,
+                      (correct_count::double precision / nullif(attempted_count, 0)) asc nulls first,
+                      last_seen_at asc
+             limit 100",
+        )
+        .bind(learner_id)
+        .bind(evidence_material_id)
+        .fetch_all(pool)
+        .await?
+    };
+    let weak_family_keys = family_progress
+        .iter()
+        .filter(|progress| {
+            practice_progress_needs_focus(
+                progress.attempted_count,
+                progress.correct_count,
+                progress.last_correct,
+                progress.consecutive_correct_count,
+                progress.last_seen_at,
+                Utc::now(),
+            )
+        })
+        .take(8)
+        .map(|progress| progress.family_key.clone())
+        .collect::<Vec<_>>();
+    let context = match run_mode {
+        runtime::RunMode::Practice => runtime::GenerationContext::practice(runtime::activity_seed()),
+        runtime::RunMode::Check => runtime::GenerationContext::check(runtime::activity_seed()),
+        runtime::RunMode::Review => runtime::GenerationContext::review(runtime::activity_seed()),
+        runtime::RunMode::Retry => runtime::GenerationContext::retry(runtime::activity_seed()),
+    };
+    Ok(context
+        .with_focus_facts(focus_fact_keys)
+        .with_focus_families(focus_family_keys)
+        .with_seen_facts(seen_fact_keys)
+        .with_weak_facts(weak_fact_keys)
+        .with_weak_families(weak_family_keys))
+}
+
+fn practice_progress_needs_focus(
+    attempted_count: i32,
+    correct_count: i32,
+    last_correct: bool,
+    consecutive_correct_count: i32,
+    last_seen_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> bool {
+    let accuracy = if attempted_count <= 0 {
+        0.0
+    } else {
+        correct_count as f64 / attempted_count as f64
+    };
+    !last_correct || (accuracy < 0.8 && consecutive_correct_count < 2) || last_seen_at < now - Duration::days(14)
+}
+
+async fn create_activity_instance(
+    state: &Arc<AppState>,
+    session: &SessionRow,
+    session_material: &SessionMaterialRow,
+    material: &catalog::MaterialDocument,
+    generation_context: runtime::GenerationContext,
+    review_item_id: Option<String>,
+    retry_origin_activity_instance_id: Option<Uuid>,
+) -> anyhow::Result<ActivityStartResponse> {
+    let generated = runtime::generate_activity(material, &generation_context).context("failed to generate activity")?;
+    let activity_instance_id = Uuid::new_v4();
     let started_at = Utc::now();
-    let generated =
-        runtime::generate_activity(material, runtime::activity_seed()).context("failed to generate activity")?;
+    let evidence_material_id = practice_evidence_material_id(material);
+    let plan = serde_json::to_value(&generated).context("failed to serialize immutable activity plan")?;
+    query(
+        "insert into activity_instance (
+            activity_instance_id, learner_id, session_id, session_material_id, material_id, evidence_material_id,
+            mode, status,
+            run_outcome, plan, result, review_item_id, retry_origin_activity_instance_id, evidence_id,
+            started_at, finished_at, duration_seconds
+         ) values ($1, $2, $3, $4, $5, $6, $7, 'in_progress', null, $8, null, $9, $10, null, $11, null, null)",
+    )
+    .bind(activity_instance_id)
+    .bind(&session.learner_id)
+    .bind(&session.session_id)
+    .bind(&session_material.session_material_id)
+    .bind(&material.id)
+    .bind(&evidence_material_id)
+    .bind(run_mode_db(generated.generation_context.run_mode))
+    .bind(plan)
+    .bind(review_item_id)
+    .bind(retry_origin_activity_instance_id)
+    .bind(started_at)
+    .execute(&state.pool)
+    .await?;
 
     query("update session set status = 'active' where session_id = $1 and status = 'scheduled'")
         .bind(&session.session_id)
@@ -1931,38 +2306,163 @@ pub async fn start_session_material_activity(
     .await?;
 
     Ok(ActivityStartResponse {
-        status: "ok".to_string(),
         activity: ActivityInstance {
-            activity_instance_id: runtime::build_activity_instance_id(
-                &session_material.session_material_id,
-                generated.seed,
-                started_at.timestamp_millis(),
-            ),
-            session_id: session.session_id,
+            activity_instance_id,
+            run_status: crate::domain::RunStatus::InProgress,
+            run_mode: public_run_mode(generated.generation_context.run_mode),
+            session_id: session.session_id.clone(),
             session_material_id: session_material.session_material_id.clone(),
             material_id: material.id.clone(),
             material_title: material.title.clone(),
             runtime_id: generated.runtime_id.clone(),
-            engine_id: generated.engine_id,
-            template_id: generated.template_id,
-            instructions: generated.instructions,
+            engine_id: generated.engine_id.clone(),
+            template_id: generated.template_id.clone(),
+            instructions: generated.instructions.clone(),
             estimated_minutes: material.estimated_minutes,
             started_at,
             scoring: ActivityScoringSummary {
-                pass_accuracy: generated.pass_accuracy,
+                target_accuracy: generated.target_accuracy,
                 max_duration_seconds: generated.max_duration_seconds,
             },
             items: generated
                 .items
-                .into_iter()
+                .iter()
                 .map(|item| ActivityItem {
-                    item_id: item.item_id,
-                    content: item.content,
-                    response_kind: item.response_kind,
+                    item_id: item.item_id.clone(),
+                    content: item.content.clone(),
+                    response_kind: item.response_kind.clone(),
                 })
                 .collect(),
         },
     })
+}
+
+fn run_mode_db(run_mode: runtime::RunMode) -> &'static str {
+    match run_mode {
+        runtime::RunMode::Practice => "practice",
+        runtime::RunMode::Check => "check",
+        runtime::RunMode::Review => "review",
+        runtime::RunMode::Retry => "retry",
+    }
+}
+
+fn public_run_mode(run_mode: runtime::RunMode) -> crate::domain::ActivityRunMode {
+    match run_mode {
+        runtime::RunMode::Practice => crate::domain::ActivityRunMode::Practice,
+        runtime::RunMode::Check => crate::domain::ActivityRunMode::Check,
+        runtime::RunMode::Review => crate::domain::ActivityRunMode::Review,
+        runtime::RunMode::Retry => crate::domain::ActivityRunMode::Retry,
+    }
+}
+
+fn run_outcome_label(run_mode: runtime::RunMode, outcome: crate::domain::RunOutcome) -> &'static str {
+    match (run_mode, outcome) {
+        (runtime::RunMode::Check, crate::domain::RunOutcome::TargetMet) => "Check passed",
+        (runtime::RunMode::Check, crate::domain::RunOutcome::TargetNotMet) => "Check not yet passed",
+        (_, crate::domain::RunOutcome::TargetMet) => "Practice target met",
+        (_, crate::domain::RunOutcome::TargetNotMet) => "Keep practising",
+    }
+}
+
+fn skill_status_for_completed_run(
+    run_mode: runtime::RunMode,
+    target_met: bool,
+    representative_check: bool,
+    readiness_ready: bool,
+) -> crate::domain::SkillStatus {
+    if run_mode == runtime::RunMode::Check && representative_check && target_met {
+        crate::domain::SkillStatus::Confirmed
+    } else if matches!(run_mode, runtime::RunMode::Check | runtime::RunMode::Review) && !target_met {
+        crate::domain::SkillStatus::NeedsPractice
+    } else if readiness_ready {
+        crate::domain::SkillStatus::ReadyForCheck
+    } else {
+        crate::domain::SkillStatus::NeedsPractice
+    }
+}
+
+fn should_allow_confirmed_downgrade(run_mode: runtime::RunMode, target_met: bool) -> bool {
+    run_mode == runtime::RunMode::Check || (run_mode == runtime::RunMode::Review && !target_met)
+}
+
+#[cfg(test)]
+fn resolve_skill_status_transition(
+    current: crate::domain::SkillStatus,
+    incoming: crate::domain::SkillStatus,
+    allow_confirmed_downgrade: bool,
+) -> crate::domain::SkillStatus {
+    if current == crate::domain::SkillStatus::Confirmed
+        && incoming != crate::domain::SkillStatus::Confirmed
+        && !allow_confirmed_downgrade
+    {
+        crate::domain::SkillStatus::Confirmed
+    } else {
+        incoming
+    }
+}
+
+fn practice_evidence_material_id(material: &catalog::MaterialDocument) -> String {
+    material
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.gate.as_ref())
+        .map(|gate| gate.requires_ready_material_id.clone())
+        .unwrap_or_else(|| material.id.clone())
+}
+
+fn activity_attempt_summary(
+    generated: &GeneratedActivity,
+    scored: &ScoredActivity,
+    duration_seconds: i32,
+) -> ActivityAttemptSummary {
+    ActivityAttemptSummary {
+        correct_count: scored.correct_count,
+        item_count: scored.item_count,
+        accuracy: scored.accuracy,
+        duration_seconds,
+        attempted_fact_keys: scored
+            .fact_results
+            .iter()
+            .filter(|result| result.attempted_count > 0)
+            .map(|result| result.fact_key.clone())
+            .collect(),
+        attempted_family_keys: scored
+            .family_results
+            .iter()
+            .filter(|result| result.attempted_count > 0)
+            .map(|result| result.family_key.clone())
+            .collect(),
+        coverage_met: generated.coverage.requirements_met,
+    }
+}
+
+fn activity_corrections(
+    _generated: &GeneratedActivity,
+    scored: &ScoredActivity,
+) -> Vec<crate::domain::ActivityCorrectionSummary> {
+    scored
+        .corrections
+        .iter()
+        .map(|correction| crate::domain::ActivityCorrectionSummary {
+            item_id: correction.item_id.clone(),
+            content: correction.content.clone(),
+            submitted_response: correction.submitted_response.clone(),
+            expected_response: correction.expected_response.to_string(),
+            fact_key: correction.fact_key.clone(),
+            family_keys: correction.family_keys.clone(),
+            correction_cue: correction.correction_cue.clone(),
+        })
+        .collect()
+}
+
+fn json_string_array(value: &JsonValue) -> Vec<String> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(JsonValue::as_str)
+        .map(ToString::to_string)
+        .collect()
 }
 
 pub async fn complete_activity_instance(
@@ -1971,22 +2471,34 @@ pub async fn complete_activity_instance(
     activity_instance_id: &str,
     request: CompleteActivityRequest,
 ) -> anyhow::Result<CompleteActivityResponse> {
-    let (session_material_id, seed, started_at_millis) = runtime::parse_activity_instance_id(activity_instance_id)?;
+    let activity_instance_uuid = Uuid::parse_str(activity_instance_id).context("invalid activity instance id")?;
+    let activity_row = load_activity_instance_row(&state.pool, activity_instance_uuid).await?;
+    ensure_viewer_can_access_learner(&context.active_user, &activity_row.learner_id)?;
+    if activity_row.status != "in_progress" {
+        bail!("activity instance '{activity_instance_id}' has already been finished");
+    }
     let completed_at = Utc::now();
-    let started_at = started_at_millis.and_then(|millis| Utc.timestamp_millis_opt(millis).single());
-    let measured_duration_seconds = started_at
-        .map(|started_at| completed_at.signed_duration_since(started_at).num_seconds().max(1) as i32)
-        .unwrap_or_else(|| request.duration_seconds.max(1));
+    let started_at = activity_row.started_at;
+    let measured_duration_seconds = completed_at.signed_duration_since(started_at).num_seconds().max(1) as i32;
     let duration_seconds = measured_duration_seconds.max(request.duration_seconds.max(1));
-    let session_material = load_session_material_row(&state.pool, &session_material_id).await?;
+    let session_material = load_session_material_row(&state.pool, &activity_row.session_material_id).await?;
+    if activity_row.material_id != session_material.material_id {
+        bail!("stored activity target does not match its session material");
+    }
     let session = load_session_row(&state.pool, &session_material.session_id).await?;
-    ensure_viewer_can_access_learner(&context.active_user, &session.learner_id)?;
 
     let library = state.library.read().await.clone();
     let material = library
         .material(&session_material.material_id)
         .ok_or_else(|| anyhow!("material '{}' not found in library", session_material.material_id))?;
-    let generated = runtime::generate_activity(material, seed).context("failed to regenerate activity for scoring")?;
+    if activity_row.evidence_material_id != practice_evidence_material_id(material) {
+        bail!("stored activity evidence scope does not match its material contract");
+    }
+    let generated: GeneratedActivity =
+        serde_json::from_value(activity_row.plan.clone()).context("stored activity plan is invalid")?;
+    if activity_row.mode != run_mode_db(generated.generation_context.run_mode) {
+        bail!("stored activity mode does not match its immutable plan");
+    }
     let runtime_responses = request
         .responses
         .iter()
@@ -1997,12 +2509,17 @@ pub async fn complete_activity_instance(
         .collect::<Vec<_>>();
     let scored =
         runtime::score_activity(material, &generated, &runtime_responses).context("failed to score activity")?;
-    let duration_passed = generated
+    let duration_target_met = generated
         .max_duration_seconds
         .map(|max_seconds| duration_seconds as u32 <= max_seconds)
         .unwrap_or(true);
-    let activity_passed = scored.passed && duration_passed;
-    let completion_reason = if !duration_passed {
+    let target_met = scored.target_met && duration_target_met;
+    let run_outcome = if target_met {
+        crate::domain::RunOutcome::TargetMet
+    } else {
+        crate::domain::RunOutcome::TargetNotMet
+    };
+    let completion_reason = if !duration_target_met {
         "completed_over_time_limit".to_string()
     } else {
         scored.completion_reason.clone()
@@ -2020,12 +2537,43 @@ pub async fn complete_activity_instance(
         material,
         generated: &generated,
         scored: &scored,
-        started_at,
+        started_at: Some(started_at),
         completed_at,
         duration_seconds,
-        passed: activity_passed,
+        run_outcome,
         completion_reason: &completion_reason,
     });
+    let mut readiness = if let Some(target) = material.runtime.as_ref().and_then(|runtime| runtime.readiness.as_ref()) {
+        let (target, override_applied, override_reason) =
+            effective_readiness_target(&state.pool, &session.learner_id, &material.id, target).await?;
+        let mut runs = fetch_activity_attempts_for_material(
+            &state.pool,
+            &state.config.artifacts_root,
+            &session.learner_id,
+            &material.id,
+        )
+        .await?;
+        if generated.generation_context.run_mode == runtime::RunMode::Practice {
+            runs.insert(0, activity_attempt_summary(&generated, &scored, duration_seconds));
+        }
+        Some(build_readiness_summary(
+            &target,
+            &runs,
+            override_applied,
+            &override_reason,
+        ))
+    } else {
+        None
+    };
+    let representative_check = generated.generation_context.run_mode == runtime::RunMode::Check
+        && generated.coverage.representative
+        && generated.coverage.requirements_met;
+    let skill_status = skill_status_for_completed_run(
+        generated.generation_context.run_mode,
+        target_met,
+        representative_check,
+        readiness.as_ref().is_some_and(|summary| summary.ready_for_check),
+    );
     let persisted = persist_session_result(
         state,
         &session,
@@ -2038,36 +2586,67 @@ pub async fn complete_activity_instance(
             artifact_kind: "activity_summary",
             artifact_summary,
             artifact_payload,
+            skill_status,
+            allow_confirmed_downgrade: should_allow_confirmed_downgrade(
+                generated.generation_context.run_mode,
+                target_met,
+            ),
+            complete_session_lifecycle: matches!(
+                generated.generation_context.run_mode,
+                runtime::RunMode::Practice | runtime::RunMode::Check
+            ),
+            activity_completion: Some(ActivityCompletionRecord {
+                activity_instance_id: activity_instance_uuid,
+                run_mode: generated.generation_context.run_mode,
+                run_outcome,
+                result: serde_json::to_value(PersistedActivityResult::from_scored(&scored, target_met))?,
+                completed_at,
+                duration_seconds,
+                material_id: material.id.clone(),
+                evidence_material_id: activity_row.evidence_material_id.clone(),
+                session_material_id: session_material.session_material_id.clone(),
+                fact_results: scored.fact_results.clone(),
+                family_results: scored.family_results.clone(),
+                missed_fact_keys: scored
+                    .corrections
+                    .iter()
+                    .map(|correction| correction.fact_key.clone())
+                    .collect(),
+                weak_family_keys: scored.weak_family_keys.clone(),
+            }),
         },
     )
     .await?;
-    let proficiency = match material
-        .runtime
-        .as_ref()
-        .and_then(|runtime| runtime.proficiency.as_ref())
-    {
-        Some(target) => {
-            let (target, override_applied, override_reason) =
-                effective_proficiency_target(&state.pool, &session.learner_id, &material.id, target).await?;
-            let attempts = fetch_activity_attempts_for_material(
-                &state.pool,
-                &state.config.artifacts_root,
-                &session.learner_id,
-                &material.id,
-            )
-            .await?;
-            Some(build_proficiency_summary(
-                &target,
-                &attempts,
-                override_applied,
-                &override_reason,
-            ))
+    if let Some(summary) = &mut readiness {
+        let actual_status = if persisted
+            .updated_progress
+            .iter()
+            .any(|progress| progress.skill_status == crate::domain::SkillStatus::NeedsPractice)
+        {
+            crate::domain::SkillStatus::NeedsPractice
+        } else if !persisted.updated_progress.is_empty()
+            && persisted
+                .updated_progress
+                .iter()
+                .all(|progress| progress.skill_status == crate::domain::SkillStatus::Confirmed)
+        {
+            crate::domain::SkillStatus::Confirmed
+        } else if persisted.updated_progress.is_empty() {
+            summary.skill_status
+        } else {
+            crate::domain::SkillStatus::ReadyForCheck
+        };
+        summary.skill_status = actual_status;
+        summary.status_label = skill_status_label(actual_status).to_string();
+        if actual_status == crate::domain::SkillStatus::NeedsPractice {
+            summary.ready_for_check = false;
         }
-        None => None,
-    };
-
+    }
     Ok(CompleteActivityResponse {
-        status: "ok".to_string(),
+        run_status: crate::domain::RunStatus::Finished,
+        run_outcome,
+        run_outcome_label: run_outcome_label(generated.generation_context.run_mode, run_outcome).to_string(),
+        retry_available: !scored.corrections.is_empty(),
         evidence: persisted.evidence,
         updated_progress: persisted.updated_progress,
         activity_summary: ActivitySummary {
@@ -2075,14 +2654,14 @@ pub async fn complete_activity_instance(
             correct_count: scored.correct_count,
             item_count: scored.item_count,
             accuracy: scored.accuracy,
-            passed: activity_passed,
             completion_reason,
-            started_at,
+            started_at: Some(started_at),
             completed_at,
             duration_seconds,
-            weak_groups: scored.weak_groups,
+            weak_family_keys: scored.weak_family_keys.clone(),
+            corrections: activity_corrections(&generated, &scored),
         },
-        proficiency,
+        readiness,
     })
 }
 
@@ -2094,6 +2673,26 @@ struct SessionResultRecord<'a> {
     artifact_kind: &'a str,
     artifact_summary: String,
     artifact_payload: JsonValue,
+    skill_status: crate::domain::SkillStatus,
+    allow_confirmed_downgrade: bool,
+    complete_session_lifecycle: bool,
+    activity_completion: Option<ActivityCompletionRecord>,
+}
+
+struct ActivityCompletionRecord {
+    activity_instance_id: Uuid,
+    run_mode: runtime::RunMode,
+    run_outcome: crate::domain::RunOutcome,
+    result: JsonValue,
+    completed_at: DateTime<Utc>,
+    duration_seconds: i32,
+    material_id: String,
+    evidence_material_id: String,
+    session_material_id: String,
+    fact_results: Vec<runtime::FactResult>,
+    family_results: Vec<runtime::FamilyResult>,
+    missed_fact_keys: Vec<String>,
+    weak_family_keys: Vec<String>,
 }
 
 async fn persist_session_result(
@@ -2110,6 +2709,10 @@ async fn persist_session_result(
         artifact_kind,
         artifact_summary,
         artifact_payload,
+        skill_status,
+        allow_confirmed_downgrade,
+        complete_session_lifecycle,
+        activity_completion,
     } = record;
 
     if max_score <= 0.0 {
@@ -2119,7 +2722,32 @@ async fn persist_session_result(
     let now = Utc::now();
     let evidence_id = Uuid::new_v4().to_string();
     let ratio = (score / max_score).clamp(0.0, 1.0);
-    let progress_status = status_from_ratio(ratio);
+    let mut transaction = state.pool.begin().await?;
+
+    let review_origin_id = if let Some(activity) = &activity_completion {
+        query_scalar::<_, Option<String>>(
+            "update activity_instance
+             set status = 'finished', run_outcome = $2, result = $3, finished_at = $4,
+                 duration_seconds = $5
+             where activity_instance_id = $1 and status = 'in_progress'
+             returning review_item_id",
+        )
+        .bind(activity.activity_instance_id)
+        .bind(activity.run_outcome.as_db())
+        .bind(&activity.result)
+        .bind(activity.completed_at)
+        .bind(activity.duration_seconds)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or_else(|| {
+            anyhow!(
+                "activity instance '{}' has already been finished",
+                activity.activity_instance_id
+            )
+        })?
+    } else {
+        None
+    };
 
     query(
         "insert into evidence (evidence_id, session_id, learner_id, score, max_score, duration_minutes, notes, recorded_at)
@@ -2133,8 +2761,16 @@ async fn persist_session_result(
     .bind(duration_minutes)
     .bind(&notes)
     .bind(now)
-    .execute(&state.pool)
+    .execute(&mut *transaction)
     .await?;
+
+    if let Some(activity) = &activity_completion {
+        query("update activity_instance set evidence_id = $2 where activity_instance_id = $1")
+            .bind(activity.activity_instance_id)
+            .bind(&evidence_id)
+            .execute(&mut *transaction)
+            .await?;
+    }
 
     let evidence_relative_path = format!("evidence/{}/{}.json", session.learner_id, evidence_id);
     let evidence_full_path = state.config.artifacts_root.join(&evidence_relative_path);
@@ -2153,31 +2789,116 @@ async fn persist_session_result(
     .bind(artifact_kind)
     .bind(&evidence_relative_path)
     .bind(&artifact_summary)
-    .execute(&state.pool)
+    .execute(&mut *transaction)
     .await?;
 
-    query("update session set status = $2, notes = $3, completed_at = $4 where session_id = $1")
-        .bind(&session.session_id)
-        .bind("completed")
-        .bind(&notes)
-        .bind(now)
-        .execute(&state.pool)
-        .await?;
-
-    query("update session_material set status = 'completed' where session_id = $1")
-        .bind(&session.session_id)
-        .execute(&state.pool)
-        .await?;
-
-    let skill_ids: BTreeSet<_> = materials.iter().map(|material| material.skill_id.as_str()).collect();
-    let mut updated_progress = Vec::new();
-    for skill_id in skill_ids {
-        let progress_row =
-            upsert_skill_progress(&state.pool, &session.learner_id, skill_id, progress_status, ratio, now).await?;
-        updated_progress.push(progress_row_to_summary(progress_row));
+    if complete_session_lifecycle {
+        if let Some(activity) = &activity_completion {
+            query(
+                "update session_material set status = 'completed'
+                 where session_id = $1 and material_id = $2",
+            )
+            .bind(&session.session_id)
+            .bind(&activity.material_id)
+            .execute(&mut *transaction)
+            .await?;
+            let remaining_material_count = query_scalar::<_, i64>(
+                "select count(*) from session_material where session_id = $1 and status <> 'completed'",
+            )
+            .bind(&session.session_id)
+            .fetch_one(&mut *transaction)
+            .await?;
+            let session_status = session_status_after_material_completion(remaining_material_count);
+            query(
+                "update session
+                 set status = $2, notes = $3,
+                     completed_at = case when $2 = 'completed' then $4 else null end
+                 where session_id = $1",
+            )
+            .bind(&session.session_id)
+            .bind(session_status)
+            .bind(&notes)
+            .bind(now)
+            .execute(&mut *transaction)
+            .await?;
+        } else {
+            query("update session set status = 'completed', notes = $2, completed_at = $3 where session_id = $1")
+                .bind(&session.session_id)
+                .bind(&notes)
+                .bind(now)
+                .execute(&mut *transaction)
+                .await?;
+            query("update session_material set status = 'completed' where session_id = $1")
+                .bind(&session.session_id)
+                .execute(&mut *transaction)
+                .await?;
+        }
     }
 
-    rebuild_review_items_for_learner(&state.pool, &session.learner_id).await?;
+    let activity_material_id = activity_completion
+        .as_ref()
+        .map(|activity| activity.material_id.as_str());
+    let skill_ids = materials
+        .iter()
+        .filter(|material| activity_material_id.is_none_or(|material_id| material.material_id == material_id))
+        .map(|material| material.skill_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut updated_progress = Vec::new();
+    let correction_only = activity_completion
+        .as_ref()
+        .is_some_and(|activity| activity.run_mode == runtime::RunMode::Retry);
+    if !correction_only {
+        for skill_id in &skill_ids {
+            let progress_row = upsert_skill_progress(
+                &mut transaction,
+                &session.learner_id,
+                skill_id,
+                skill_status,
+                allow_confirmed_downgrade,
+                ratio,
+                now,
+            )
+            .await?;
+            updated_progress.push(progress_row_to_summary(progress_row));
+        }
+    }
+    let effective_skill_status = if updated_progress
+        .iter()
+        .any(|progress| progress.skill_status == crate::domain::SkillStatus::NeedsPractice)
+    {
+        crate::domain::SkillStatus::NeedsPractice
+    } else if !updated_progress.is_empty()
+        && updated_progress
+            .iter()
+            .all(|progress| progress.skill_status == crate::domain::SkillStatus::Confirmed)
+    {
+        crate::domain::SkillStatus::Confirmed
+    } else if updated_progress.is_empty() {
+        skill_status
+    } else {
+        crate::domain::SkillStatus::ReadyForCheck
+    };
+
+    if let Some(activity) = &activity_completion {
+        persist_practice_aggregates(&mut transaction, &session.learner_id, activity, now).await?;
+        if !correction_only {
+            upsert_review_item_for_activity(
+                &mut transaction,
+                ReviewItemActivityUpdate {
+                    learner_id: &session.learner_id,
+                    session_id: &session.session_id,
+                    skill_ids: &skill_ids,
+                    skill_status: effective_skill_status,
+                    review_origin_id: review_origin_id.as_deref(),
+                    activity,
+                    recorded_at: now,
+                },
+            )
+            .await?;
+        }
+    }
+
+    transaction.commit().await?;
     refresh_assignment_progress(&state.pool, &session.learner_id).await?;
 
     Ok(RecordSessionResponse {
@@ -2192,6 +2913,14 @@ async fn persist_session_result(
         },
         updated_progress,
     })
+}
+
+fn session_status_after_material_completion(remaining_material_count: i64) -> &'static str {
+    if remaining_material_count == 0 {
+        "completed"
+    } else {
+        "active"
+    }
 }
 
 pub async fn rebuild_review_items(
@@ -2213,11 +2942,13 @@ pub async fn rebuild_review_items(
     for learner_id in &learner_ids {
         rebuild_review_items_for_learner(&state.pool, learner_id).await?;
         refresh_assignment_progress(&state.pool, learner_id).await?;
-        let count =
-            query_scalar::<_, i64>("select count(*) from review_item where learner_id = $1 and status = 'pending'")
-                .bind(learner_id)
-                .fetch_one(&state.pool)
-                .await?;
+        let count = query_scalar::<_, i64>(
+            "select count(*) from review_item
+             where learner_id = $1 and is_actionable = true and due_date <= current_date",
+        )
+        .bind(learner_id)
+        .fetch_one(&state.pool)
+        .await?;
         review_item_count += count as usize;
     }
 
@@ -2416,7 +3147,10 @@ fn build_learner_journey(
 ) -> LearnerJourneySummary {
     let playlist = library.playlist(&assignment.playlist_id);
     let pathway = find_pathway_for_playlist(library, &assignment.playlist_id);
-    let completed_session_count = sessions.iter().filter(|session| session.status == "completed").count();
+    let completed_session_count = sessions
+        .iter()
+        .filter(|session| session.status == SessionStatus::Completed)
+        .count();
     let pending_session_count = sessions.len().saturating_sub(completed_session_count);
     let total_material_count = sessions.iter().map(|session| session.materials.len()).sum();
     let live_material_count = sessions
@@ -2432,7 +3166,7 @@ fn build_learner_journey(
         .count();
     let next_session_id = sessions
         .iter()
-        .find(|session| session.status != "completed")
+        .find(|session| session.status != SessionStatus::Completed)
         .map(|session| session.session_id.clone());
 
     LearnerJourneySummary {
@@ -2600,17 +3334,19 @@ async fn build_dashboard_cards(
         } else {
             None
         };
-        let review_item_count =
-            query_scalar::<_, i64>("select count(*) from review_item where learner_id = $1 and status = 'pending'")
-                .bind(&learner.learner_id)
-                .fetch_one(&state.pool)
-                .await?;
+        let review_due_count = query_scalar::<_, i64>(
+            "select count(*) from review_item
+             where learner_id = $1 and is_actionable = true and due_date <= current_date",
+        )
+        .bind(&learner.learner_id)
+        .fetch_one(&state.pool)
+        .await?;
         let progress = fetch_progress(&state.pool, &learner.learner_id).await?;
         let latest_evidence = fetch_latest_evidence_for_learner(&state.pool, &learner.learner_id).await?;
         let (progress_status_counts, stage_progress) =
             summarize_progress(library, active_assignment.as_ref(), &progress);
         let (attention_state, attention_label, next_action_label) =
-            dashboard_attention_summary(active_assignment.as_ref(), today_session.as_ref(), review_item_count);
+            dashboard_attention_summary(active_assignment.as_ref(), today_session.as_ref(), review_due_count);
 
         dashboards.push(LearnerDashboard {
             learner_id: learner.learner_id.clone(),
@@ -2623,7 +3359,7 @@ async fn build_dashboard_cards(
             next_action_label,
             active_assignment,
             today_session,
-            review_item_count,
+            review_due_count,
             progress_status_counts,
             stage_progress,
             latest_evidence,
@@ -2637,49 +3373,75 @@ fn summarize_progress(
     active_assignment: Option<&AssignmentSummary>,
     progress: &[SkillProgressSummary],
 ) -> (BTreeMap<String, i64>, Vec<StageProgress>) {
-    let mut counts: BTreeMap<String, i64> = BTreeMap::new();
-    for state in progress {
-        *counts.entry(state.status.clone()).or_insert(0) += 1;
+    let playlist_ids = active_assignment
+        .map(|assignment| vec![assignment.playlist_id.as_str()])
+        .unwrap_or_default();
+    summarize_progress_for_playlists(library, &playlist_ids, progress)
+}
+
+fn summarize_progress_for_playlists(
+    library: &LibraryBundle,
+    playlist_ids: &[&str],
+    progress: &[SkillProgressSummary],
+) -> (BTreeMap<String, i64>, Vec<StageProgress>) {
+    let playlists = playlist_ids
+        .iter()
+        .filter_map(|playlist_id| library.playlist(playlist_id))
+        .collect::<Vec<_>>();
+    let scoped_skill_ids = playlists
+        .iter()
+        .flat_map(|playlist| playlist.skill_ids.iter().map(String::as_str))
+        .collect::<BTreeSet<_>>();
+    let progress_by_skill = progress
+        .iter()
+        .map(|state| (state.skill_id.as_str(), state.skill_status))
+        .collect::<BTreeMap<_, _>>();
+    let mut counts = [
+        crate::domain::SkillStatus::NotStarted,
+        crate::domain::SkillStatus::NeedsPractice,
+        crate::domain::SkillStatus::ReadyForCheck,
+        crate::domain::SkillStatus::Confirmed,
+    ]
+    .into_iter()
+    .map(|status| (status.as_db().to_string(), 0))
+    .collect::<BTreeMap<_, _>>();
+    for skill_id in &scoped_skill_ids {
+        let status = progress_by_skill
+            .get(skill_id)
+            .copied()
+            .unwrap_or(crate::domain::SkillStatus::NotStarted);
+        *counts.entry(status.as_db().to_string()).or_insert(0) += 1;
     }
 
-    let Some(active_assignment) = active_assignment else {
-        return (counts, Vec::new());
-    };
-    let Some(playlist) = library.playlist(&active_assignment.playlist_id) else {
-        return (counts, Vec::new());
-    };
-
-    let known_skills: BTreeSet<_> = progress.iter().map(|state| state.skill_id.as_str()).collect();
-    let not_started = playlist
-        .skill_ids
+    let confirmed_skills = scoped_skill_ids
         .iter()
-        .filter(|skill_id| !known_skills.contains(skill_id.as_str()))
-        .count() as i64;
-    if not_started > 0 {
-        counts.insert("not_started".to_string(), not_started);
-    }
-
-    let secure_skills: BTreeSet<_> = progress
+        .filter(|skill_id| progress_by_skill.get(*skill_id).copied() == Some(crate::domain::SkillStatus::Confirmed))
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let stage_ids = playlists
         .iter()
-        .filter(|state| state.status == "secure")
-        .map(|state| state.skill_id.as_str())
-        .collect();
-
-    let stage_progress = playlist
-        .stage_ids
+        .flat_map(|playlist| playlist.stage_ids.iter().map(String::as_str))
+        .collect::<BTreeSet<_>>();
+    let stage_progress = stage_ids
         .iter()
         .filter_map(|stage_id| {
-            let stage = library.stages.iter().find(|stage| stage.stage_id == *stage_id)?;
+            let stage = library.stages.iter().find(|stage| stage.stage_id == **stage_id)?;
             let completed_skills = stage
                 .skill_ids
                 .iter()
-                .filter(|skill_id| secure_skills.contains(skill_id.as_str()))
+                .filter(|skill_id| {
+                    scoped_skill_ids.contains(skill_id.as_str()) && confirmed_skills.contains(skill_id.as_str())
+                })
                 .count();
             Some(StageProgress {
                 stage_id: stage.stage_id.clone(),
                 title: stage.title.clone(),
                 completed_skills,
-                total_skills: stage.skill_ids.len(),
+                total_skills: stage
+                    .skill_ids
+                    .iter()
+                    .filter(|skill_id| scoped_skill_ids.contains(skill_id.as_str()))
+                    .count(),
             })
         })
         .collect();
@@ -2713,9 +3475,9 @@ fn build_learner_workspace(
         .iter()
         .filter(|session| {
             session.materials_by_kind.iter().any(|group| {
-                (group.kind == WORKSHEET_KIND && session.status != "completed")
+                (group.kind == WORKSHEET_KIND && session.status != SessionStatus::Completed)
                     || (matches!(group.kind.as_str(), DRILL_KIND | QUICK_CHECK_KIND)
-                        && (session.status != "completed"
+                        && (session.status != SessionStatus::Completed
                             || group.materials.iter().any(|material| material.runtime.is_some())))
             })
         })
@@ -2728,11 +3490,21 @@ fn build_learner_workspace(
             .then_with(|| left.title.cmp(&right.title))
     });
 
-    let (progress_counts, _) = summarize_progress(library, active_assignment, progress);
+    let playlist_ids = if assigned_journeys.is_empty() {
+        active_assignment
+            .map(|assignment| vec![assignment.playlist_id.as_str()])
+            .unwrap_or_default()
+    } else {
+        assigned_journeys
+            .iter()
+            .map(|journey| journey.assignment.playlist_id.as_str())
+            .collect::<Vec<_>>()
+    };
+    let (progress_counts, _) = summarize_progress_for_playlists(library, &playlist_ids, progress);
     let (completed_session_count, pending_session_count) = if assigned_journeys.is_empty() {
         let completed = workspace_sessions
             .iter()
-            .filter(|session| session.status == "completed")
+            .filter(|session| session.status == SessionStatus::Completed)
             .count();
         (completed, workspace_sessions.len().saturating_sub(completed))
     } else {
@@ -2748,10 +3520,14 @@ fn build_learner_workspace(
         )
     };
     let progress_snapshot = LearnerProgressSnapshot {
-        secure_count: progress_counts.get("secure").copied().unwrap_or(0) as usize,
-        developing_count: progress_counts.get("developing").copied().unwrap_or(0) as usize,
+        confirmed_count: progress_counts.get("confirmed").copied().unwrap_or(0) as usize,
+        ready_for_check_count: progress_counts.get("ready_for_check").copied().unwrap_or(0) as usize,
+        needs_practice_count: progress_counts.get("needs_practice").copied().unwrap_or(0) as usize,
         not_started_count: progress_counts.get("not_started").copied().unwrap_or(0) as usize,
-        review_item_count: review_items.len(),
+        review_due_count: review_items
+            .iter()
+            .filter(|item| item.review_status == crate::domain::ReviewStatus::Due)
+            .count(),
         completed_session_count,
         pending_session_count,
     };
@@ -3221,7 +3997,7 @@ async fn build_assigned_journeys(
             .or_else(|| {
                 sessions
                     .iter()
-                    .find(|session| session.status != "completed")
+                    .find(|session| session.status != SessionStatus::Completed)
                     .map(|session| session.session_id.clone())
             });
         journeys.push(crate::domain::LearnerAssignedJourneySummary {
@@ -3448,7 +4224,7 @@ async fn fetch_sessions(
             session_id: row.session_id,
             title: row.title,
             scheduled_date: row.scheduled_date,
-            status: row.status,
+            status: SessionStatus::from_db(&row.status),
             day_offset: row.day_offset,
             sequence_number: ordered_sessions.then_some(index + 1),
             dominant_kind,
@@ -3551,11 +4327,11 @@ fn build_session_material_summaries(
             .into_iter()
             .collect();
         let status = if group.iter().all(|row| row.status == "completed") {
-            "completed".to_string()
+            SessionMaterialStatus::Completed
         } else if group.iter().any(|row| row.status == "active") {
-            "active".to_string()
+            SessionMaterialStatus::Active
         } else {
-            first.status.clone()
+            SessionMaterialStatus::from_db(&first.status)
         };
         summaries.push(SessionMaterialSummary {
             session_material_id: first.session_material_id.clone(),
@@ -3585,7 +4361,7 @@ fn build_session_material_summaries(
                     executable: true,
                 })
             }),
-            proficiency: None,
+            readiness: None,
             gate: None,
         });
     }
@@ -3600,23 +4376,32 @@ async fn enrich_session_material_runtime_state(
     learner_id: &str,
     materials: &mut [SessionMaterialSummary],
 ) -> anyhow::Result<()> {
+    let progress = fetch_progress(pool, learner_id).await?;
+    let progress_by_skill = progress
+        .iter()
+        .map(|item| (item.skill_id.as_str(), item.skill_status))
+        .collect::<BTreeMap<_, _>>();
     for material in materials.iter_mut() {
         let Some(document) = library.material(&material.material_id) else {
             continue;
         };
         if let Some(runtime) = &document.runtime {
-            if let Some(target) = &runtime.proficiency {
+            if let Some(target) = &runtime.readiness {
                 let (target, override_applied, override_reason) =
-                    effective_proficiency_target(pool, learner_id, &material.material_id, target).await?;
+                    effective_readiness_target(pool, learner_id, &material.material_id, target).await?;
                 let attempts =
                     fetch_activity_attempts_for_material(pool, artifacts_root, learner_id, &material.material_id)
                         .await?;
-                material.proficiency = Some(build_proficiency_summary(
-                    &target,
-                    &attempts,
-                    override_applied,
-                    &override_reason,
-                ));
+                let mut summary = build_readiness_summary(&target, &attempts, override_applied, &override_reason);
+                let actual_status = material_skill_status(&document.skill_ids, &progress_by_skill);
+                if actual_status != crate::domain::SkillStatus::NotStarted {
+                    summary.skill_status = actual_status;
+                    summary.status_label = skill_status_label(actual_status).to_string();
+                    if actual_status == crate::domain::SkillStatus::NeedsPractice {
+                        summary.ready_for_check = false;
+                    }
+                }
+                material.readiness = Some(summary);
             }
             if let Some(gate) = &runtime.gate {
                 material.gate = Some(
@@ -3646,15 +4431,15 @@ async fn build_material_gate_summary(
     let prerequisite_title = prerequisite
         .map(|material| material.title.clone())
         .unwrap_or_else(|| prerequisite_material_id.to_string());
-    let proficiency = match prerequisite.and_then(|material| material.runtime.as_ref()) {
-        Some(runtime) => match &runtime.proficiency {
+    let readiness = match prerequisite.and_then(|material| material.runtime.as_ref()) {
+        Some(runtime) => match &runtime.readiness {
             Some(target) => {
                 let (target, override_applied, override_reason) =
-                    effective_proficiency_target(pool, learner_id, prerequisite_material_id, target).await?;
+                    effective_readiness_target(pool, learner_id, prerequisite_material_id, target).await?;
                 let attempts =
                     fetch_activity_attempts_for_material(pool, artifacts_root, learner_id, prerequisite_material_id)
                         .await?;
-                Some(build_proficiency_summary(
+                Some(build_readiness_summary(
                     &target,
                     &attempts,
                     override_applied,
@@ -3665,17 +4450,30 @@ async fn build_material_gate_summary(
         },
         None => None,
     };
-    let enabled = proficiency
+    let readiness_skill_status = readiness
         .as_ref()
-        .map(|summary| summary.ready_to_move_on)
-        .unwrap_or(false);
-    let prerequisite_verdict = proficiency
-        .as_ref()
-        .map(|summary| summary.verdict.clone())
-        .unwrap_or_else(|| "not_configured".to_string());
+        .map(|summary| summary.skill_status)
+        .unwrap_or(crate::domain::SkillStatus::NotStarted);
+    let progress = fetch_progress(pool, learner_id).await?;
+    let progress_by_skill = progress
+        .iter()
+        .map(|item| (item.skill_id.as_str(), item.skill_status))
+        .collect::<BTreeMap<_, _>>();
+    let actual_skill_status = prerequisite
+        .map(|material| material_skill_status(&material.skill_ids, &progress_by_skill))
+        .unwrap_or(crate::domain::SkillStatus::NotStarted);
+    let prerequisite_skill_status = if actual_skill_status == crate::domain::SkillStatus::NotStarted {
+        readiness_skill_status
+    } else {
+        actual_skill_status
+    };
+    let enabled = check_gate_enabled(
+        readiness.as_ref().is_some_and(|summary| summary.ready_for_check),
+        prerequisite_skill_status,
+    );
     let reason_label = if enabled {
         "Assessment is unlocked.".to_string()
-    } else if let Some(summary) = proficiency {
+    } else if let Some(summary) = readiness {
         format!(
             "Keep practising {}. This assessment opens when that practice is ready. {}",
             prerequisite_title, summary.detail_label
@@ -3691,135 +4489,174 @@ async fn build_material_gate_summary(
         enabled,
         prerequisite_material_id: prerequisite_material_id.to_string(),
         prerequisite_title,
-        prerequisite_verdict,
+        prerequisite_skill_status,
         reason_label,
     })
 }
 
 async fn fetch_activity_attempts_for_material(
     pool: &PgPool,
-    artifacts_root: &Path,
+    _artifacts_root: &Path,
     learner_id: &str,
     material_id: &str,
 ) -> anyhow::Result<Vec<ActivityAttemptSummary>> {
-    let rows = query_as::<_, (String,)>(
-        "select ea.storage_path
-         from evidence_artifact ea
-         join evidence e on e.evidence_id = ea.evidence_id
-         where ea.learner_id = $1 and ea.kind = 'activity_summary'
-         order by e.recorded_at desc",
+    let rows = query_as::<_, (JsonValue, JsonValue, i32)>(
+        "select plan, result, duration_seconds
+         from activity_instance
+         where learner_id = $1
+           and material_id = $2
+           and status = 'finished'
+           and mode = 'practice'
+           and result is not null
+         order by finished_at desc",
     )
     .bind(learner_id)
+    .bind(material_id)
     .fetch_all(pool)
     .await?;
 
-    let mut attempts = Vec::new();
-    for (storage_path,) in rows {
-        let payload_path = artifacts_root.join(storage_path);
-        let Ok(raw) = fs::read(&payload_path).await else {
-            continue;
-        };
-        let Ok(payload) = serde_json::from_slice::<JsonValue>(&raw) else {
-            continue;
-        };
-        if payload.get("material_id").and_then(JsonValue::as_str) != Some(material_id) {
-            continue;
-        }
-        let correct_count = payload.get("correct_count").and_then(JsonValue::as_u64).unwrap_or(0) as usize;
-        let item_count = payload.get("item_count").and_then(JsonValue::as_u64).unwrap_or(0) as usize;
-        let accuracy = payload.get("accuracy").and_then(JsonValue::as_f64).unwrap_or_else(|| {
-            if item_count == 0 {
-                0.0
-            } else {
-                correct_count as f64 / item_count as f64
+    Ok(rows
+        .into_iter()
+        .map(|(plan, result, duration_seconds)| {
+            let correct_count = result.get("correct_count").and_then(JsonValue::as_u64).unwrap_or(0) as usize;
+            let item_count = result.get("item_count").and_then(JsonValue::as_u64).unwrap_or(0) as usize;
+            let accuracy = result.get("accuracy").and_then(JsonValue::as_f64).unwrap_or_else(|| {
+                if item_count == 0 {
+                    0.0
+                } else {
+                    correct_count as f64 / item_count as f64
+                }
+            });
+            let fact_results = result
+                .get("fact_results")
+                .and_then(JsonValue::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let attempted_fact_keys = fact_results
+                .iter()
+                .filter(|item| item.get("attempted_count").and_then(JsonValue::as_u64).unwrap_or(0) > 0)
+                .filter_map(|item| item.get("fact_key").and_then(JsonValue::as_str))
+                .map(ToString::to_string)
+                .collect::<BTreeSet<_>>();
+            let attempted_family_keys = result
+                .get("family_results")
+                .and_then(JsonValue::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+                .iter()
+                .filter(|item| item.get("attempted_count").and_then(JsonValue::as_u64).unwrap_or(0) > 0)
+                .filter_map(|item| item.get("family_key").and_then(JsonValue::as_str))
+                .map(ToString::to_string)
+                .collect::<BTreeSet<_>>();
+            let coverage_met = plan
+                .get("coverage")
+                .and_then(|coverage| coverage.get("requirements_met"))
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(false);
+            ActivityAttemptSummary {
+                correct_count,
+                item_count,
+                accuracy,
+                duration_seconds,
+                attempted_fact_keys,
+                attempted_family_keys,
+                coverage_met,
             }
-        });
-        let duration_seconds = payload.get("duration_seconds").and_then(JsonValue::as_i64).unwrap_or(0) as i32;
-        attempts.push(ActivityAttemptSummary {
-            correct_count,
-            item_count,
-            accuracy,
-            duration_seconds,
-        });
-    }
-    Ok(attempts)
+        })
+        .collect())
 }
 
-fn build_proficiency_summary(
-    target: &MaterialRuntimeProficiency,
+fn build_readiness_summary(
+    target: &MaterialRuntimeReadiness,
     attempts: &[ActivityAttemptSummary],
     override_applied: bool,
     override_reason: &str,
-) -> SessionMaterialProficiencySummary {
-    let window_size = target.window_size.max(1);
-    let min_attempts = target.min_attempts.max(1);
-    let consecutive_required = target.consecutive_passes.max(1);
-    let recent_attempts = attempts.iter().take(window_size).collect::<Vec<_>>();
-    let recent_attempt_count = recent_attempts.len();
-    let recent_average_accuracy = if recent_attempts.is_empty() {
+) -> SessionMaterialReadinessSummary {
+    let recent_run_window = target.recent_run_window.max(1);
+    let minimum_runs = target.minimum_runs.max(1);
+    let consecutive_required = target.consecutive_target_runs.max(1);
+    let recent_runs = attempts.iter().take(recent_run_window).collect::<Vec<_>>();
+    let recent_run_count = recent_runs.len();
+    let recent_average_accuracy = if recent_runs.is_empty() {
         0.0
     } else {
-        recent_attempts.iter().map(|attempt| attempt.accuracy).sum::<f64>() / recent_attempts.len() as f64
+        recent_runs.iter().map(|attempt| attempt.accuracy).sum::<f64>() / recent_runs.len() as f64
     };
     let best_correct_count = attempts.iter().map(|attempt| attempt.correct_count).max().unwrap_or(0);
-    let mut consecutive_pass_count = 0usize;
+    let attempted_fact_keys = recent_runs
+        .iter()
+        .flat_map(|attempt| attempt.attempted_fact_keys.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let attempted_family_keys = recent_runs
+        .iter()
+        .flat_map(|attempt| attempt.attempted_family_keys.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let distinct_item_count = attempted_fact_keys.len();
+    let family_count = attempted_family_keys.len();
+    let mut consecutive_target_run_count = 0usize;
     for attempt in attempts {
-        if attempt_meets_proficiency(target, attempt) {
-            consecutive_pass_count += 1;
+        if run_meets_readiness(target, attempt) {
+            consecutive_target_run_count += 1;
         } else {
             break;
         }
     }
-    let ready_to_move_on = attempts.len() >= min_attempts
-        && recent_attempt_count >= window_size.min(min_attempts)
+    let ready_for_check = attempts.len() >= minimum_runs
+        && recent_run_count >= recent_run_window.min(minimum_runs)
         && recent_average_accuracy >= target.target_accuracy
-        && consecutive_pass_count >= consecutive_required;
-    let nearly_secure = !ready_to_move_on
-        && (consecutive_pass_count + 1 >= consecutive_required
-            || (attempts.len() >= min_attempts / 2
-                && recent_average_accuracy >= (target.target_accuracy - 0.05).max(0.0)));
-    let (verdict, verdict_label) = if ready_to_move_on {
-        ("ready_to_move_on", "Ready to move on")
-    } else if nearly_secure {
-        ("nearly_secure", "Nearly secure")
+        && consecutive_target_run_count >= consecutive_required
+        && distinct_item_count >= target.minimum_distinct_items
+        && family_count >= target.minimum_family_count;
+    let (skill_status, status_label) = if attempts.is_empty() {
+        (crate::domain::SkillStatus::NotStarted, "Not started")
+    } else if ready_for_check {
+        (crate::domain::SkillStatus::ReadyForCheck, "Ready for check")
     } else {
-        ("keep_practising", "Keep practising")
+        (crate::domain::SkillStatus::NeedsPractice, "Needs practice")
     };
     let detail_label = format!(
-        "{} attempts, last {} average {:.0}%, {} pass{} in a row",
+        "{} runs, last {} average {:.0}%, {} target run{} in a row, {} distinct items across {} families",
         attempts.len(),
-        recent_attempt_count,
+        recent_run_count,
         recent_average_accuracy * 100.0,
-        consecutive_pass_count,
-        if consecutive_pass_count == 1 { "" } else { "es" },
+        consecutive_target_run_count,
+        if consecutive_target_run_count == 1 { "" } else { "s" },
+        distinct_item_count,
+        family_count,
     );
 
-    SessionMaterialProficiencySummary {
-        min_attempts,
-        window_size,
+    SessionMaterialReadinessSummary {
+        minimum_runs,
+        recent_run_window,
         target_accuracy: target.target_accuracy,
-        consecutive_passes_required: consecutive_required,
+        consecutive_target_runs_required: consecutive_required,
         target_correct_count: target.target_correct_count,
+        minimum_distinct_items: target.minimum_distinct_items,
+        minimum_family_count: target.minimum_family_count,
         max_duration_seconds: target.max_duration_seconds,
         override_applied,
         override_reason: override_reason.to_string(),
-        attempt_count: attempts.len(),
-        recent_attempt_count,
+        run_count: attempts.len(),
+        recent_run_count,
         recent_average_accuracy,
-        consecutive_pass_count,
+        consecutive_target_run_count,
         best_correct_count,
-        ready_to_move_on,
-        verdict: verdict.to_string(),
-        verdict_label: verdict_label.to_string(),
+        distinct_item_count,
+        ready_for_check,
+        skill_status,
+        status_label: status_label.to_string(),
         detail_label,
     }
 }
 
-fn attempt_meets_proficiency(target: &MaterialRuntimeProficiency, attempt: &ActivityAttemptSummary) -> bool {
+fn run_meets_readiness(target: &MaterialRuntimeReadiness, attempt: &ActivityAttemptSummary) -> bool {
     if attempt.item_count == 0 {
         return false;
     }
     if attempt.accuracy < target.target_accuracy {
+        return false;
+    }
+    if !attempt.coverage_met {
         return false;
     }
     if let Some(max_duration_seconds) = target.max_duration_seconds
@@ -3833,15 +4670,29 @@ fn attempt_meets_proficiency(target: &MaterialRuntimeProficiency, attempt: &Acti
         .unwrap_or(true)
 }
 
-async fn effective_proficiency_target(
+async fn effective_readiness_target(
     pool: &PgPool,
     learner_id: &str,
     material_id: &str,
-    authored: &MaterialRuntimeProficiency,
-) -> anyhow::Result<(MaterialRuntimeProficiency, bool, String)> {
-    let row = query_as::<_, (i32, i32, f64, i32, Option<i32>, Option<i32>, String)>(
-        "select min_attempts, window_size, target_accuracy, consecutive_passes, target_correct_count, max_duration_seconds, reason
-         from learner_material_proficiency_override
+    authored: &MaterialRuntimeReadiness,
+) -> anyhow::Result<(MaterialRuntimeReadiness, bool, String)> {
+    let row = query_as::<
+        _,
+        (
+            i32,
+            i32,
+            f64,
+            i32,
+            Option<i32>,
+            Option<i32>,
+            Option<i32>,
+            Option<i32>,
+            String,
+        ),
+    >(
+        "select minimum_runs, recent_run_window, target_accuracy, consecutive_target_runs, target_correct_count,
+                minimum_distinct_items, minimum_family_count, max_duration_seconds, reason
+         from learner_material_readiness_override
          where learner_id = $1 and material_id = $2 and enabled = true",
     )
     .bind(learner_id)
@@ -3850,11 +4701,13 @@ async fn effective_proficiency_target(
     .await?;
 
     let Some((
-        min_attempts,
-        window_size,
+        minimum_runs,
+        recent_run_window,
         target_accuracy,
-        consecutive_passes,
+        consecutive_target_runs,
         target_correct_count,
+        minimum_distinct_items,
+        minimum_family_count,
         max_duration_seconds,
         reason,
     )) = row
@@ -3863,12 +4716,18 @@ async fn effective_proficiency_target(
     };
 
     Ok((
-        MaterialRuntimeProficiency {
-            min_attempts: min_attempts.max(1) as usize,
-            window_size: window_size.max(1) as usize,
+        MaterialRuntimeReadiness {
+            minimum_runs: minimum_runs.max(1) as usize,
+            recent_run_window: recent_run_window.max(1) as usize,
             target_accuracy,
-            consecutive_passes: consecutive_passes.max(1) as usize,
+            consecutive_target_runs: consecutive_target_runs.max(1) as usize,
             target_correct_count: target_correct_count.map(|value| value.max(0) as usize),
+            minimum_distinct_items: minimum_distinct_items
+                .map(|value| value.max(0) as usize)
+                .unwrap_or(authored.minimum_distinct_items),
+            minimum_family_count: minimum_family_count
+                .map(|value| value.max(0) as usize)
+                .unwrap_or(authored.minimum_family_count),
             max_duration_seconds: max_duration_seconds.map(|value| value.max(1) as u32),
         },
         true,
@@ -3886,6 +4745,62 @@ async fn load_session_row(pool: &PgPool, session_id: &str) -> anyhow::Result<Ses
     .fetch_optional(pool)
     .await?
     .ok_or_else(|| anyhow!("session '{session_id}' not found"))
+}
+
+async fn load_activity_instance_row(
+    pool: &PgPool,
+    activity_instance_id: Uuid,
+) -> anyhow::Result<crate::domain::ActivityInstanceRow> {
+    query_as::<_, crate::domain::ActivityInstanceRow>(
+        "select activity_instance_id, learner_id, session_id, session_material_id, material_id, evidence_material_id,
+                mode, status,
+                run_outcome, plan, result, review_item_id, retry_origin_activity_instance_id, evidence_id,
+                started_at, finished_at, duration_seconds
+         from activity_instance
+         where activity_instance_id = $1",
+    )
+    .bind(activity_instance_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow!("activity instance '{activity_instance_id}' not found"))
+}
+
+async fn load_review_item_row(pool: &PgPool, review_item_id: &str) -> anyhow::Result<ReviewItemRow> {
+    query_as::<_, ReviewItemRow>(
+        "select review_item_id, learner_id, skill_ids, session_id, session_material_id, material_id,
+                evidence_material_id,
+                reason, fact_focus, family_focus, due_date, review_step, is_actionable,
+                last_reviewed_at, created_at, updated_at
+         from review_item
+         where review_item_id = $1 and is_actionable = true",
+    )
+    .bind(review_item_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow!("review item '{review_item_id}' not found"))
+}
+
+async fn load_latest_review_session_material(
+    pool: &PgPool,
+    learner_id: &str,
+    material_id: &str,
+    evidence_material_id: &str,
+) -> anyhow::Result<Option<SessionMaterialRow>> {
+    query_as::<_, SessionMaterialRow>(
+        "select sm.session_material_id, sm.session_id, sm.title, sm.skill_id, sm.material_id, sm.status
+         from session_material sm
+         join session s on s.session_id = sm.session_id
+         where s.learner_id = $1 and (sm.material_id = $2 or sm.material_id = $3)
+         order by case when sm.material_id = $2 then 0 else 1 end,
+                  s.scheduled_date desc, s.session_id desc, sm.session_material_id asc
+         limit 1",
+    )
+    .bind(learner_id)
+    .bind(material_id)
+    .bind(evidence_material_id)
+    .fetch_optional(pool)
+    .await
+    .context("failed to resolve a current review activity target")
 }
 
 async fn load_session_material_row(pool: &PgPool, session_material_id: &str) -> anyhow::Result<SessionMaterialRow> {
@@ -3918,7 +4833,7 @@ async fn load_session_and_material_rows(
 }
 
 fn build_activity_notes(material_title: &str, scored: &ScoredActivity, notes: &str) -> String {
-    let automatic = if scored.weak_groups.is_empty() {
+    let automatic = if scored.weak_family_keys.is_empty() {
         format!(
             "{}: {}/{} correct ({:.0}% accuracy)",
             material_title,
@@ -3928,12 +4843,12 @@ fn build_activity_notes(material_title: &str, scored: &ScoredActivity, notes: &s
         )
     } else {
         format!(
-            "{}: {}/{} correct ({:.0}% accuracy). Weak groups: {}",
+            "{}: {}/{} correct ({:.0}% accuracy). Weak families: {}",
             material_title,
             scored.correct_count,
             scored.item_count,
             scored.accuracy * 100.0,
-            scored.weak_groups.join(", "),
+            scored.weak_family_keys.join(", "),
         )
     };
     let trimmed = notes.trim();
@@ -3953,7 +4868,7 @@ struct ActivityArtifactPayloadContext<'a> {
     started_at: Option<DateTime<Utc>>,
     completed_at: DateTime<Utc>,
     duration_seconds: i32,
-    passed: bool,
+    run_outcome: crate::domain::RunOutcome,
     completion_reason: &'a str,
 }
 
@@ -3967,10 +4882,10 @@ fn build_activity_artifact_payload(context: ActivityArtifactPayloadContext<'_>) 
         started_at,
         completed_at,
         duration_seconds,
-        passed,
+        run_outcome,
         completion_reason,
     } = context;
-    let mut payload = json!({
+    json!({
         "session_id": session.session_id,
         "learner_id": session.learner_id,
         "session_material_id": session_material.session_material_id,
@@ -3983,19 +4898,19 @@ fn build_activity_artifact_payload(context: ActivityArtifactPayloadContext<'_>) 
         "correct_count": scored.correct_count,
         "item_count": scored.item_count,
         "accuracy": scored.accuracy,
-        "passed": passed,
+        "run_mode": run_mode_db(generated.generation_context.run_mode),
+        "run_outcome": run_outcome.as_db(),
         "completion_reason": completion_reason,
-        "weak_groups": scored.weak_groups,
+        "weak_family_keys": scored.weak_family_keys,
+        "fact_results": scored.fact_results,
+        "family_results": scored.family_results,
+        "coverage": generated.coverage,
         "started_at": started_at.map(|value| value.to_rfc3339()),
         "completed_at": completed_at.to_rfc3339(),
         "duration_seconds": duration_seconds.max(0),
         "max_duration_seconds": generated.max_duration_seconds,
         "recording_mode": "activity",
-    });
-    if generated.store_response_log {
-        payload["response_log"] = JsonValue::Array(scored.response_log.clone());
-    }
-    payload
+    })
 }
 
 fn duration_minutes_from_seconds(duration_seconds: i32) -> i32 {
@@ -4020,10 +4935,13 @@ async fn fetch_progress(pool: &PgPool, learner_id: &str) -> anyhow::Result<Vec<S
 
 async fn fetch_review_items(pool: &PgPool, learner_id: &str) -> anyhow::Result<Vec<ReviewItemSummary>> {
     let rows = query_as::<_, ReviewItemRow>(
-        "select review_item_id, learner_id, skill_id, reason, due_date, status
+        "select review_item_id, learner_id, skill_ids, session_id, session_material_id, material_id,
+                evidence_material_id,
+                reason, fact_focus, family_focus, due_date, review_step, is_actionable,
+                last_reviewed_at, created_at, updated_at
          from review_item
-         where learner_id = $1
-         order by due_date asc, skill_id asc",
+         where learner_id = $1 and is_actionable = true
+         order by due_date asc, material_id asc",
     )
     .bind(learner_id)
     .fetch_all(pool)
@@ -4032,12 +4950,163 @@ async fn fetch_review_items(pool: &PgPool, learner_id: &str) -> anyhow::Result<V
         .into_iter()
         .map(|row| ReviewItemSummary {
             review_item_id: row.review_item_id,
-            skill_id: row.skill_id,
+            skill_ids: json_string_array(&row.skill_ids),
+            session_id: row.session_id,
+            session_material_id: row.session_material_id,
+            material_id: row.material_id,
+            evidence_material_id: row.evidence_material_id,
             reason: row.reason,
+            fact_focus: json_string_array(&row.fact_focus),
+            family_focus: json_string_array(&row.family_focus),
             due_date: row.due_date,
-            status: row.status,
+            review_status: review_status_for_due_date(row.due_date, Utc::now().date_naive()),
+            action_label: if row.due_date <= Utc::now().date_naive() {
+                "Start review".to_string()
+            } else {
+                "Review scheduled".to_string()
+            },
         })
         .collect())
+}
+
+fn review_status_for_due_date(due_date: NaiveDate, today: NaiveDate) -> crate::domain::ReviewStatus {
+    if due_date <= today {
+        crate::domain::ReviewStatus::Due
+    } else {
+        crate::domain::ReviewStatus::NotDue
+    }
+}
+
+async fn fetch_practice_mastery(
+    pool: &PgPool,
+    library: &LibraryBundle,
+    learner_id: &str,
+    progress: &[SkillProgressSummary],
+    review_items: &[ReviewItemSummary],
+) -> anyhow::Result<Vec<PracticeMasterySummary>> {
+    let rows = query_as::<_, FamilyProgressRow>(
+        "select learner_id, material_id, family_key, attempted_count, correct_count, last_correct,
+                consecutive_correct_count, last_seen_at
+         from learner_family_progress
+         where learner_id = $1
+         order by material_id, family_key",
+    )
+    .bind(learner_id)
+    .fetch_all(pool)
+    .await?;
+    let progress_by_skill = progress
+        .iter()
+        .map(|item| (item.skill_id.as_str(), item.skill_status))
+        .collect::<BTreeMap<_, _>>();
+    let mut review_by_material = BTreeMap::new();
+    for item in review_items {
+        review_by_material
+            .entry(item.evidence_material_id.clone())
+            .and_modify(|status| {
+                if item.review_status == crate::domain::ReviewStatus::Due {
+                    *status = crate::domain::ReviewStatus::Due;
+                }
+            })
+            .or_insert(item.review_status);
+    }
+    let mut grouped = BTreeMap::<String, Vec<FamilyProgressRow>>::new();
+    for row in rows {
+        grouped.entry(row.material_id.clone()).or_default().push(row);
+    }
+    Ok(grouped
+        .into_iter()
+        .filter_map(|(material_id, rows)| {
+            let material = library.material(&material_id)?;
+            let skill_status = material_skill_status(&material.skill_ids, &progress_by_skill);
+            let review_status = review_by_material
+                .get(material_id.as_str())
+                .copied()
+                .unwrap_or(crate::domain::ReviewStatus::NotDue);
+            let runtime_id = material
+                .runtime
+                .as_ref()
+                .map(|runtime| runtime::build_runtime_id(&runtime.engine_id, &runtime.template_id))?;
+            Some(PracticeMasterySummary {
+                material_id,
+                material_title: material.title.clone(),
+                runtime_id,
+                skill_status,
+                review_status,
+                families: rows
+                    .into_iter()
+                    .map(|row| PracticeFamilyMasterySummary {
+                        family_key: row.family_key.clone(),
+                        label: family_label(&row.family_key),
+                        attempted_count: row.attempted_count,
+                        correct_count: row.correct_count,
+                        accuracy: if row.attempted_count == 0 {
+                            0.0
+                        } else {
+                            row.correct_count as f64 / row.attempted_count as f64
+                        },
+                        last_seen_at: row.last_seen_at,
+                    })
+                    .collect(),
+            })
+        })
+        .collect())
+}
+
+fn material_skill_status(
+    skill_ids: &[String],
+    progress_by_skill: &BTreeMap<&str, crate::domain::SkillStatus>,
+) -> crate::domain::SkillStatus {
+    let statuses = skill_ids
+        .iter()
+        .map(|skill_id| progress_by_skill.get(skill_id.as_str()).copied())
+        .collect::<Vec<_>>();
+    if statuses.is_empty() || statuses.iter().all(Option::is_none) {
+        crate::domain::SkillStatus::NotStarted
+    } else if statuses
+        .iter()
+        .any(|status| status.is_none() || *status == Some(crate::domain::SkillStatus::NeedsPractice))
+    {
+        crate::domain::SkillStatus::NeedsPractice
+    } else if statuses
+        .iter()
+        .all(|status| *status == Some(crate::domain::SkillStatus::Confirmed))
+    {
+        crate::domain::SkillStatus::Confirmed
+    } else {
+        crate::domain::SkillStatus::ReadyForCheck
+    }
+}
+
+fn family_label(family_key: &str) -> String {
+    family_key
+        .replace(['_', ':', '-'], " ")
+        .split_whitespace()
+        .map(|part| {
+            let mut characters = part.chars();
+            characters
+                .next()
+                .map(|first| format!("{}{}", first.to_uppercase(), characters.as_str()))
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn skill_status_label(status: crate::domain::SkillStatus) -> &'static str {
+    match status {
+        crate::domain::SkillStatus::NotStarted => "Not started",
+        crate::domain::SkillStatus::NeedsPractice => "Needs practice",
+        crate::domain::SkillStatus::ReadyForCheck => "Ready for check",
+        crate::domain::SkillStatus::Confirmed => "Skill confirmed",
+    }
+}
+
+fn check_gate_enabled(ready_for_check: bool, skill_status: crate::domain::SkillStatus) -> bool {
+    ready_for_check
+        && matches!(
+            skill_status,
+            crate::domain::SkillStatus::ReadyForCheck | crate::domain::SkillStatus::Confirmed
+        )
 }
 
 async fn fetch_latest_evidence_for_learner(pool: &PgPool, learner_id: &str) -> anyhow::Result<Option<EvidenceSummary>> {
@@ -4069,10 +5138,11 @@ async fn fetch_latest_evidence_for_session(pool: &PgPool, session_id: &str) -> a
 }
 
 async fn upsert_skill_progress(
-    pool: &PgPool,
+    transaction: &mut Transaction<'_, Postgres>,
     learner_id: &str,
     skill_id: &str,
-    status: &str,
+    skill_status: crate::domain::SkillStatus,
+    allow_confirmed_downgrade: bool,
     ratio: f64,
     recorded_at: chrono::DateTime<Utc>,
 ) -> anyhow::Result<SkillProgressRow> {
@@ -4081,7 +5151,13 @@ async fn upsert_skill_progress(
             (learner_id, skill_id, status, score_average, last_score, total_evidence, last_evidence_at)
          values ($1, $2, $3, $4, $4, 1, $5)
          on conflict (learner_id, skill_id) do update
-         set status = excluded.status,
+         set status = case
+                 when learner_skill_progress.status = 'confirmed'
+                      and excluded.status <> 'confirmed'
+                      and not $6
+                 then 'confirmed'
+                 else excluded.status
+             end,
              score_average = ((learner_skill_progress.score_average * learner_skill_progress.total_evidence) + excluded.last_score)
                 / (learner_skill_progress.total_evidence + 1),
              last_score = excluded.last_score,
@@ -4091,49 +5167,301 @@ async fn upsert_skill_progress(
     )
     .bind(learner_id)
     .bind(skill_id)
-    .bind(status)
+    .bind(skill_status.as_db())
     .bind(ratio)
     .bind(recorded_at)
-    .fetch_one(pool)
+    .bind(allow_confirmed_downgrade)
+    .fetch_one(&mut **transaction)
     .await
     .context("failed to update skill progress")
 }
 
-async fn rebuild_review_items_for_learner(pool: &PgPool, learner_id: &str) -> anyhow::Result<()> {
-    query("delete from review_item where learner_id = $1")
+async fn persist_practice_aggregates(
+    transaction: &mut Transaction<'_, Postgres>,
+    learner_id: &str,
+    activity: &ActivityCompletionRecord,
+    recorded_at: DateTime<Utc>,
+) -> anyhow::Result<()> {
+    for fact in &activity.fact_results {
+        let last_correct = fact.attempted_count > 0 && fact.correct_count == fact.attempted_count;
+        query(
+            "insert into learner_fact_progress (
+                learner_id, material_id, fact_key, attempted_count, correct_count, last_correct,
+                consecutive_correct_count, last_seen_at
+             ) values ($1, $2, $3, $4, $5, $6, case when $6 then 1 else 0 end, $7)
+             on conflict (learner_id, material_id, fact_key) do update
+             set attempted_count = learner_fact_progress.attempted_count + excluded.attempted_count,
+                 correct_count = learner_fact_progress.correct_count + excluded.correct_count,
+                 last_correct = excluded.last_correct,
+                 consecutive_correct_count = case
+                     when excluded.last_correct then learner_fact_progress.consecutive_correct_count + 1
+                     else 0
+                 end,
+                 last_seen_at = excluded.last_seen_at",
+        )
         .bind(learner_id)
-        .execute(pool)
+        .bind(&activity.evidence_material_id)
+        .bind(&fact.fact_key)
+        .bind(fact.attempted_count as i32)
+        .bind(fact.correct_count as i32)
+        .bind(last_correct)
+        .bind(recorded_at)
+        .execute(&mut **transaction)
         .await?;
+    }
+    for family in activity
+        .family_results
+        .iter()
+        .filter(|family| family.attempted_count > 0)
+    {
+        let last_correct = family.correct_count == family.attempted_count;
+        query(
+            "insert into learner_family_progress (
+                learner_id, material_id, family_key, attempted_count, correct_count, last_correct,
+                consecutive_correct_count, last_seen_at
+             ) values ($1, $2, $3, $4, $5, $6, case when $6 then 1 else 0 end, $7)
+             on conflict (learner_id, material_id, family_key) do update
+             set attempted_count = learner_family_progress.attempted_count + excluded.attempted_count,
+                 correct_count = learner_family_progress.correct_count + excluded.correct_count,
+                 last_correct = excluded.last_correct,
+                 consecutive_correct_count = case
+                     when excluded.last_correct then learner_family_progress.consecutive_correct_count + 1
+                     else 0
+                 end,
+                 last_seen_at = excluded.last_seen_at",
+        )
+        .bind(learner_id)
+        .bind(&activity.evidence_material_id)
+        .bind(&family.family_key)
+        .bind(family.attempted_count as i32)
+        .bind(family.correct_count as i32)
+        .bind(last_correct)
+        .bind(recorded_at)
+        .execute(&mut **transaction)
+        .await?;
+    }
+    Ok(())
+}
 
-    let states = query_as::<_, SkillProgressRow>(
-        "select learner_id, skill_id, status, score_average, last_score, total_evidence, last_evidence_at
-         from learner_skill_progress
-         where learner_id = $1",
+struct ReviewItemActivityUpdate<'a> {
+    learner_id: &'a str,
+    session_id: &'a str,
+    skill_ids: &'a BTreeSet<&'a str>,
+    skill_status: crate::domain::SkillStatus,
+    review_origin_id: Option<&'a str>,
+    activity: &'a ActivityCompletionRecord,
+    recorded_at: DateTime<Utc>,
+}
+
+async fn upsert_review_item_for_activity(
+    transaction: &mut Transaction<'_, Postgres>,
+    update: ReviewItemActivityUpdate<'_>,
+) -> anyhow::Result<()> {
+    let ReviewItemActivityUpdate {
+        learner_id,
+        session_id,
+        skill_ids,
+        skill_status,
+        review_origin_id,
+        activity,
+        recorded_at,
+    } = update;
+    let existing_step = query_scalar::<_, i32>(
+        "select review_step from review_item where learner_id = $1 and evidence_material_id = $2",
+    )
+    .bind(learner_id)
+    .bind(&activity.evidence_material_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    let (review_step, due_date) = next_review_schedule(
+        existing_step,
+        review_origin_id.is_some(),
+        activity.run_outcome,
+        skill_status,
+        recorded_at.date_naive(),
+    );
+    let reason = match skill_status {
+        crate::domain::SkillStatus::NotStarted => "Practice has not started",
+        crate::domain::SkillStatus::NeedsPractice => "Recent facts need focused practice",
+        crate::domain::SkillStatus::ReadyForCheck => "Practice is ready for a balanced check",
+        crate::domain::SkillStatus::Confirmed => "Keep the confirmed skill fresh",
+    };
+    let skill_ids = skill_ids
+        .iter()
+        .map(|skill_id| (*skill_id).to_string())
+        .collect::<Vec<_>>();
+    let fact_focus = activity
+        .missed_fact_keys
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let family_focus = activity
+        .weak_family_keys
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let last_reviewed_at = review_origin_id.map(|_| recorded_at);
+    let is_actionable = skill_status != crate::domain::SkillStatus::ReadyForCheck;
+    query(
+        "insert into review_item (
+            review_item_id, learner_id, skill_ids, session_id, session_material_id, material_id,
+            evidence_material_id, reason,
+            fact_focus, family_focus, due_date, review_step, is_actionable, last_reviewed_at, created_at, updated_at
+         ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+         on conflict (learner_id, evidence_material_id) do update
+         set skill_ids = excluded.skill_ids,
+             session_id = excluded.session_id,
+             session_material_id = excluded.session_material_id,
+             material_id = excluded.material_id,
+             reason = excluded.reason,
+             fact_focus = excluded.fact_focus,
+             family_focus = excluded.family_focus,
+             due_date = excluded.due_date,
+             review_step = excluded.review_step,
+             is_actionable = excluded.is_actionable,
+             last_reviewed_at = coalesce(excluded.last_reviewed_at, review_item.last_reviewed_at),
+             updated_at = excluded.updated_at",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(learner_id)
+    .bind(serde_json::to_value(skill_ids)?)
+    .bind(session_id)
+    .bind(&activity.session_material_id)
+    .bind(&activity.material_id)
+    .bind(&activity.evidence_material_id)
+    .bind(reason)
+    .bind(serde_json::to_value(fact_focus)?)
+    .bind(serde_json::to_value(family_focus)?)
+    .bind(due_date)
+    .bind(review_step)
+    .bind(is_actionable)
+    .bind(last_reviewed_at)
+    .bind(recorded_at)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+fn next_review_schedule(
+    existing_step: Option<i32>,
+    completing_review: bool,
+    run_outcome: crate::domain::RunOutcome,
+    skill_status: crate::domain::SkillStatus,
+    today: NaiveDate,
+) -> (i32, NaiveDate) {
+    let step = if run_outcome == crate::domain::RunOutcome::TargetNotMet
+        || skill_status == crate::domain::SkillStatus::NeedsPractice
+    {
+        0
+    } else if completing_review {
+        match run_outcome {
+            crate::domain::RunOutcome::TargetMet => (existing_step.unwrap_or(0) + 1).min(2),
+            crate::domain::RunOutcome::TargetNotMet => unreachable!("handled above"),
+        }
+    } else {
+        match skill_status {
+            crate::domain::SkillStatus::NotStarted | crate::domain::SkillStatus::NeedsPractice => 0,
+            crate::domain::SkillStatus::ReadyForCheck | crate::domain::SkillStatus::Confirmed => 1,
+        }
+    };
+    let delay_days = match step {
+        0 => 1,
+        1 => 3,
+        _ => 7,
+    };
+    (step, today + Duration::days(delay_days))
+}
+
+async fn rebuild_review_items_for_learner(pool: &PgPool, learner_id: &str) -> anyhow::Result<()> {
+    let latest_material_runs = query_as::<_, (String, String, String, String, JsonValue, DateTime<Utc>)>(
+        "select distinct on (evidence_material_id)
+                session_id, session_material_id, material_id, evidence_material_id, result, finished_at
+         from activity_instance
+         where learner_id = $1 and status = 'finished' and result is not null and mode <> 'retry'
+         order by evidence_material_id, finished_at desc",
     )
     .bind(learner_id)
     .fetch_all(pool)
     .await?;
-    let today = Utc::now().date_naive();
-
-    for state in states {
-        let Some(reason) = review_reason(&state.status) else {
-            continue;
+    for (session_id, session_material_id, material_id, evidence_material_id, result, finished_at) in
+        latest_material_runs
+    {
+        let skill_ids = query_scalar::<_, String>(
+            "select distinct skill_id from session_material where session_id = $1 and material_id = $2 order by skill_id",
+        )
+        .bind(&session_id)
+        .bind(&material_id)
+        .fetch_all(pool)
+        .await?;
+        let statuses = query_scalar::<_, String>(
+            "select status from learner_skill_progress where learner_id = $1 and skill_id = any($2)",
+        )
+        .bind(learner_id)
+        .bind(&skill_ids)
+        .fetch_all(pool)
+        .await?;
+        let skill_status = if statuses.iter().any(|status| status == "needs_practice") {
+            crate::domain::SkillStatus::NeedsPractice
+        } else if !statuses.is_empty() && statuses.iter().all(|status| status == "confirmed") {
+            crate::domain::SkillStatus::Confirmed
+        } else {
+            crate::domain::SkillStatus::ReadyForCheck
         };
-        let due_date = match state.status.as_str() {
-            "needs_review" => today + Duration::days(1),
-            "introduced" => today + Duration::days(3),
-            "practising" => today + Duration::days(2),
-            _ => continue,
+        let persisted: PersistedActivityResult =
+            serde_json::from_value(result).context("stored activity result is invalid")?;
+        let (review_step, due_date) = next_review_schedule(
+            None,
+            false,
+            if persisted.target_met {
+                crate::domain::RunOutcome::TargetMet
+            } else {
+                crate::domain::RunOutcome::TargetNotMet
+            },
+            skill_status,
+            finished_at.date_naive(),
+        );
+        let reason = match skill_status {
+            crate::domain::SkillStatus::NotStarted => "Practice has not started",
+            crate::domain::SkillStatus::NeedsPractice => "Recent facts need focused practice",
+            crate::domain::SkillStatus::ReadyForCheck => "Practice is ready for a balanced check",
+            crate::domain::SkillStatus::Confirmed => "Keep the confirmed skill fresh",
         };
+        let is_actionable = skill_status != crate::domain::SkillStatus::ReadyForCheck;
         query(
-            "insert into review_item (review_item_id, learner_id, skill_id, reason, due_date, status, created_at)
-             values ($1, $2, $3, $4, $5, 'pending', $6)",
+            "insert into review_item (
+                review_item_id, learner_id, skill_ids, session_id, session_material_id, material_id,
+                evidence_material_id, reason,
+                fact_focus, family_focus, due_date, review_step, is_actionable,
+                last_reviewed_at, created_at, updated_at
+             ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, null, $14, $14)
+             on conflict (learner_id, evidence_material_id) do update
+             set skill_ids = excluded.skill_ids,
+                 session_id = excluded.session_id,
+                 session_material_id = excluded.session_material_id,
+                 material_id = excluded.material_id,
+                 reason = excluded.reason,
+                 fact_focus = excluded.fact_focus,
+                 family_focus = excluded.family_focus,
+                 is_actionable = excluded.is_actionable,
+                 updated_at = excluded.updated_at",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(learner_id)
-        .bind(&state.skill_id)
+        .bind(serde_json::to_value(skill_ids)?)
+        .bind(session_id)
+        .bind(session_material_id)
+        .bind(material_id)
+        .bind(evidence_material_id)
         .bind(reason)
+        .bind(serde_json::to_value(persisted.missed_fact_keys)?)
+        .bind(serde_json::to_value(persisted.weak_family_keys)?)
         .bind(due_date)
+        .bind(review_step)
+        .bind(is_actionable)
         .bind(Utc::now())
         .execute(pool)
         .await?;
@@ -4174,15 +5502,6 @@ async fn refresh_assignment_progress(pool: &PgPool, learner_id: &str) -> anyhow:
     Ok(())
 }
 
-fn review_reason(status: &str) -> Option<&'static str> {
-    match status {
-        "introduced" => Some("New skill needs a short revisit"),
-        "practising" => Some("Keep this skill in the active review loop"),
-        "needs_review" => Some("Recent performance was weak and should be repeated soon"),
-        _ => None,
-    }
-}
-
 fn calculate_age(date_of_birth: NaiveDate) -> i32 {
     let today = Utc::now().date_naive();
     let mut age = today.year() - date_of_birth.year();
@@ -4190,18 +5509,6 @@ fn calculate_age(date_of_birth: NaiveDate) -> i32 {
         age -= 1;
     }
     age
-}
-
-fn status_from_ratio(ratio: f64) -> &'static str {
-    if ratio >= 0.9 {
-        "secure"
-    } else if ratio >= 0.75 {
-        "practising"
-    } else if ratio >= 0.5 {
-        "introduced"
-    } else {
-        "needs_review"
-    }
 }
 
 fn assignment_row_to_summary(row: AssignmentRow) -> AssignmentSummary {
@@ -4228,7 +5535,7 @@ fn session_row_to_summary(row: SessionRow) -> SessionSummary {
         session_id: row.session_id,
         title: row.title,
         scheduled_date: row.scheduled_date,
-        status: row.status,
+        status: SessionStatus::from_db(&row.status),
         day_offset: row.day_offset,
         sequence_number: None,
     }
@@ -4248,7 +5555,7 @@ fn evidence_row_to_summary(row: EvidenceRow) -> EvidenceSummary {
 fn progress_row_to_summary(row: SkillProgressRow) -> SkillProgressSummary {
     SkillProgressSummary {
         skill_id: row.skill_id,
-        status: row.status,
+        skill_status: crate::domain::SkillStatus::from_db(&row.status),
         score_average: row.score_average,
         last_score: row.last_score,
         total_evidence: row.total_evidence,
@@ -4369,7 +5676,7 @@ fn learner_safe_session_detail(session: &SessionDetail) -> SessionDetail {
 fn continue_block_for_sessions(sessions: &[SessionDetail]) -> Option<LearnerContinueBlock> {
     sessions
         .iter()
-        .find(|session| session.status != "completed")
+        .find(|session| session.status != SessionStatus::Completed)
         .cloned()
         .map(|session| LearnerContinueBlock {
             title: continue_block_title(&session),
@@ -4414,9 +5721,11 @@ fn session_workspace_order(left: &SessionDetail, right: &SessionDetail) -> Order
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use catalog::{
         BootstrapMembership, BootstrapTeam, BootstrapUser, IdentityBootstrap, LibraryBundle, MaterialDocument,
-        MaterialRuntime, Pathway,
+        MaterialRuntime, MaterialRuntimeGate, MaterialRuntimeScoring, Pathway, Playlist, SessionPattern,
     };
     use chrono::NaiveDate;
     use serde_json::json;
@@ -4424,13 +5733,17 @@ mod tests {
     use crate::domain::{
         AssignmentSummary, EvidenceSummary, LearnerAssignedJourneySummary, LearnerContinueBlock, LearnerJourneySummary,
         LearnerProgressSnapshot, LearnerRecentWinSummary, LearnerWorkspaceSummary, SessionDetail,
-        SessionMaterialKindGroupSummary, SessionMaterialRuntimeSummary, SessionMaterialSummary,
+        SessionMaterialKindGroupSummary, SessionMaterialRuntimeSummary, SessionMaterialStatus, SessionMaterialSummary,
+        SessionStatus, SkillProgressSummary, SkillStatus,
     };
 
     use super::{
-        ActivityAttemptSummary, build_assigned_pathways, build_proficiency_summary, compile_bootstrap,
-        continue_block_for_assigned_journeys, learner_safe_workspace_summary, response_sessions_for_assigned_journeys,
-        validate_supported_material_runtimes,
+        ActivityAttemptSummary, PersistedActivityResult, build_assigned_pathways, build_readiness_summary,
+        check_gate_enabled, compile_bootstrap, continue_block_for_assigned_journeys, learner_safe_workspace_summary,
+        material_skill_status, next_review_schedule, practice_evidence_material_id, practice_progress_needs_focus,
+        resolve_skill_status_transition, response_sessions_for_assigned_journeys, run_outcome_label,
+        session_status_after_material_completion, should_allow_confirmed_downgrade, skill_status_for_completed_run,
+        summarize_progress_for_playlists, validate_supported_material_runtimes,
     };
 
     fn sample_session() -> SessionDetail {
@@ -4446,12 +5759,12 @@ mod tests {
             audience: "learner".to_string(),
             estimated_minutes: 10,
             skill_ids: vec!["skill-1".to_string()],
-            status: "scheduled".to_string(),
+            status: SessionMaterialStatus::Scheduled,
             document_route_path: Some("library/documents/learner".to_string()),
             document_body: Some("Learner body".to_string()),
             printable: true,
             runtime: None,
-            proficiency: None,
+            readiness: None,
             gate: None,
         };
         let teaching_material = SessionMaterialSummary {
@@ -4462,7 +5775,7 @@ mod tests {
             audience: "adult".to_string(),
             estimated_minutes: 5,
             skill_ids: vec!["skill-1".to_string()],
-            status: "scheduled".to_string(),
+            status: SessionMaterialStatus::Scheduled,
             document_route_path: Some("library/documents/adult".to_string()),
             document_body: Some("Adult body".to_string()),
             printable: false,
@@ -4472,14 +5785,14 @@ mod tests {
                 template_id: "template-1".to_string(),
                 executable: true,
             }),
-            proficiency: None,
+            readiness: None,
             gate: None,
         };
         SessionDetail {
             session_id: session_id.to_string(),
             title: title.to_string(),
             scheduled_date: NaiveDate::from_ymd_opt(year, month, day).expect("valid date"),
-            status: "scheduled".to_string(),
+            status: SessionStatus::Scheduled,
             day_offset: 0,
             sequence_number: Some(1),
             dominant_kind: "lesson_note".to_string(),
@@ -4527,10 +5840,11 @@ mod tests {
             }),
             practice_lane: vec![sample_session()],
             progress_snapshot: LearnerProgressSnapshot {
-                secure_count: 1,
-                developing_count: 2,
+                confirmed_count: 1,
+                ready_for_check_count: 2,
+                needs_practice_count: 0,
                 not_started_count: 3,
-                review_item_count: 4,
+                review_due_count: 4,
                 completed_session_count: 0,
                 pending_session_count: 1,
             },
@@ -4689,29 +6003,374 @@ mod tests {
     }
 
     #[test]
-    fn proficiency_target_requires_minimum_window_and_consecutive_passes() {
-        let target = catalog::MaterialRuntimeProficiency {
-            min_attempts: 20,
-            window_size: 20,
+    fn progress_counts_use_the_union_of_visible_playlist_skills_only() {
+        let playlist = |playlist_id: &str, skill_ids: &[&str]| Playlist {
+            playlist_id: playlist_id.to_string(),
+            title: playlist_id.to_string(),
+            subject_id: "maths".to_string(),
+            area_id: "arithmetic".to_string(),
+            recommended_age: 9,
+            recommended_level: "Year 4".to_string(),
+            stage_ids: vec![],
+            skill_ids: skill_ids.iter().map(|skill_id| (*skill_id).to_string()).collect(),
+            duration_days: 1,
+            session_pattern: SessionPattern { sessions: vec![] },
+            source_path: "test.md".to_string(),
+        };
+        let library = LibraryBundle {
+            subjects: vec![],
+            areas: vec![],
+            pathways: vec![],
+            skills: vec![],
+            stages: vec![],
+            playlists: vec![
+                playlist("playlist-1", &["skill-a", "skill-b"]),
+                playlist("playlist-2", &["skill-b", "skill-c"]),
+            ],
+            materials: vec![],
+        };
+        let progress = vec![
+            SkillProgressSummary {
+                skill_id: "skill-a".to_string(),
+                skill_status: SkillStatus::Confirmed,
+                score_average: 1.0,
+                last_score: 1.0,
+                total_evidence: 1,
+                last_evidence_at: None,
+            },
+            SkillProgressSummary {
+                skill_id: "skill-c".to_string(),
+                skill_status: SkillStatus::NeedsPractice,
+                score_average: 0.5,
+                last_score: 0.5,
+                total_evidence: 1,
+                last_evidence_at: None,
+            },
+            SkillProgressSummary {
+                skill_id: "unrelated-skill".to_string(),
+                skill_status: SkillStatus::Confirmed,
+                score_average: 1.0,
+                last_score: 1.0,
+                total_evidence: 1,
+                last_evidence_at: None,
+            },
+        ];
+
+        let (counts, _) = summarize_progress_for_playlists(&library, &["playlist-1", "playlist-2"], &progress);
+
+        assert_eq!(counts.get("confirmed"), Some(&1));
+        assert_eq!(counts.get("needs_practice"), Some(&1));
+        assert_eq!(counts.get("ready_for_check"), Some(&0));
+        assert_eq!(counts.get("not_started"), Some(&1));
+        assert_eq!(counts.values().sum::<i64>(), 3);
+    }
+
+    #[test]
+    fn multi_skill_material_requires_progress_for_every_declared_skill() {
+        let skill_ids = vec!["skill-a".to_string(), "skill-b".to_string()];
+        let confirmed_only = BTreeMap::from([("skill-a", SkillStatus::Confirmed)]);
+        let all_confirmed = BTreeMap::from([("skill-a", SkillStatus::Confirmed), ("skill-b", SkillStatus::Confirmed)]);
+        let ready = BTreeMap::from([
+            ("skill-a", SkillStatus::Confirmed),
+            ("skill-b", SkillStatus::ReadyForCheck),
+        ]);
+
+        assert_eq!(
+            material_skill_status(&skill_ids, &BTreeMap::new()),
+            SkillStatus::NotStarted
+        );
+        assert_eq!(
+            material_skill_status(&skill_ids, &confirmed_only),
+            SkillStatus::NeedsPractice
+        );
+        assert_eq!(
+            material_skill_status(&skill_ids, &all_confirmed),
+            SkillStatus::Confirmed
+        );
+        assert_eq!(material_skill_status(&skill_ids, &ready), SkillStatus::ReadyForCheck);
+    }
+
+    #[test]
+    fn readiness_uses_cumulative_distinct_coverage_across_recent_practice_runs() {
+        let target = catalog::MaterialRuntimeReadiness {
+            minimum_runs: 3,
+            recent_run_window: 3,
             target_accuracy: 0.9,
-            consecutive_passes: 3,
+            consecutive_target_runs: 2,
             target_correct_count: Some(13),
+            minimum_distinct_items: 28,
+            minimum_family_count: 4,
             max_duration_seconds: None,
         };
-        let attempts = (0..20)
-            .map(|_| ActivityAttemptSummary {
-                correct_count: 13,
-                item_count: 14,
-                accuracy: 13.0 / 14.0,
-                duration_seconds: 60,
-            })
-            .collect::<Vec<_>>();
+        let attempt = |start: usize, families: &[&str]| ActivityAttemptSummary {
+            correct_count: 13,
+            item_count: 14,
+            accuracy: 13.0 / 14.0,
+            duration_seconds: 60,
+            attempted_fact_keys: (start..start + 14).map(|index| format!("fact-{index}")).collect(),
+            attempted_family_keys: families.iter().map(|family| (*family).to_string()).collect(),
+            coverage_met: true,
+        };
+        let attempts = vec![
+            attempt(14, &["family-3", "family-4"]),
+            attempt(7, &["family-2", "family-3"]),
+            attempt(0, &["family-1", "family-2"]),
+        ];
 
-        let summary = build_proficiency_summary(&target, &attempts, false, "");
+        let summary = build_readiness_summary(&target, &attempts, false, "");
 
-        assert!(summary.ready_to_move_on);
-        assert_eq!(summary.verdict, "ready_to_move_on");
-        assert_eq!(summary.consecutive_pass_count, 20);
+        assert!(summary.ready_for_check);
+        assert_eq!(summary.skill_status, SkillStatus::ReadyForCheck);
+        assert_eq!(summary.distinct_item_count, 28);
+        assert_eq!(summary.consecutive_target_run_count, 3);
+
+        let narrow_attempts = vec![
+            attempt(0, &["family-1", "family-2"]),
+            attempt(0, &["family-1", "family-2"]),
+            attempt(0, &["family-1", "family-2"]),
+        ];
+        let narrow = build_readiness_summary(&target, &narrow_attempts, false, "");
+        assert!(!narrow.ready_for_check);
+        assert_eq!(narrow.distinct_item_count, 14);
+    }
+
+    #[test]
+    fn readiness_rejects_balanced_looking_runs_without_required_plan_coverage() {
+        let target = catalog::MaterialRuntimeReadiness {
+            minimum_runs: 1,
+            recent_run_window: 1,
+            target_accuracy: 0.9,
+            consecutive_target_runs: 1,
+            target_correct_count: Some(9),
+            minimum_distinct_items: 10,
+            minimum_family_count: 2,
+            max_duration_seconds: None,
+        };
+        let attempt = ActivityAttemptSummary {
+            correct_count: 10,
+            item_count: 10,
+            accuracy: 1.0,
+            duration_seconds: 30,
+            attempted_fact_keys: (0..10).map(|index| format!("fact-{index}")).collect(),
+            attempted_family_keys: ["family-1".to_string(), "family-2".to_string()].into_iter().collect(),
+            coverage_met: false,
+        };
+
+        assert!(!build_readiness_summary(&target, &[attempt], false, "").ready_for_check);
+    }
+
+    #[test]
+    fn readiness_derives_not_started_when_there_are_no_practice_runs() {
+        let target = catalog::MaterialRuntimeReadiness {
+            minimum_runs: 1,
+            recent_run_window: 1,
+            target_accuracy: 0.9,
+            consecutive_target_runs: 1,
+            target_correct_count: None,
+            minimum_distinct_items: 1,
+            minimum_family_count: 1,
+            max_duration_seconds: None,
+        };
+
+        let summary = build_readiness_summary(&target, &[], false, "");
+
+        assert_eq!(summary.skill_status, SkillStatus::NotStarted);
+        assert_eq!(summary.status_label, "Not started");
+        assert!(!summary.ready_for_check);
+    }
+
+    #[test]
+    fn only_a_representative_target_met_check_confirms_a_skill() {
+        use learning_activity_runtime::RunMode;
+
+        assert_eq!(
+            skill_status_for_completed_run(RunMode::Check, true, true, false),
+            SkillStatus::Confirmed
+        );
+        assert_eq!(
+            skill_status_for_completed_run(RunMode::Check, true, false, false),
+            SkillStatus::NeedsPractice
+        );
+        assert_eq!(
+            skill_status_for_completed_run(RunMode::Practice, true, false, true),
+            SkillStatus::ReadyForCheck
+        );
+        assert_ne!(
+            skill_status_for_completed_run(RunMode::Retry, true, false, true),
+            SkillStatus::Confirmed
+        );
+    }
+
+    #[test]
+    fn confirmed_status_is_preserved_by_successful_review_but_downgraded_by_a_missed_review() {
+        use learning_activity_runtime::RunMode;
+
+        assert!(!should_allow_confirmed_downgrade(RunMode::Review, true));
+        assert!(should_allow_confirmed_downgrade(RunMode::Review, false));
+        assert_eq!(
+            resolve_skill_status_transition(SkillStatus::Confirmed, SkillStatus::NeedsPractice, false),
+            SkillStatus::Confirmed
+        );
+        assert_eq!(
+            resolve_skill_status_transition(SkillStatus::Confirmed, SkillStatus::NeedsPractice, true),
+            SkillStatus::NeedsPractice
+        );
+    }
+
+    #[test]
+    fn review_cadence_is_one_three_then_seven_days() {
+        use crate::domain::RunOutcome;
+
+        let today = NaiveDate::from_ymd_opt(2026, 7, 15).expect("valid date");
+        assert_eq!(
+            next_review_schedule(None, false, RunOutcome::TargetNotMet, SkillStatus::Confirmed, today),
+            (0, today + chrono::Duration::days(1))
+        );
+        assert_eq!(
+            next_review_schedule(None, false, RunOutcome::TargetMet, SkillStatus::Confirmed, today),
+            (1, today + chrono::Duration::days(3))
+        );
+        assert_eq!(
+            next_review_schedule(Some(1), true, RunOutcome::TargetMet, SkillStatus::Confirmed, today),
+            (2, today + chrono::Duration::days(7))
+        );
+        assert_eq!(
+            next_review_schedule(
+                Some(2),
+                true,
+                RunOutcome::TargetNotMet,
+                SkillStatus::NeedsPractice,
+                today
+            ),
+            (0, today + chrono::Duration::days(1))
+        );
+        assert_eq!(
+            next_review_schedule(Some(1), true, RunOutcome::TargetMet, SkillStatus::NeedsPractice, today),
+            (0, today + chrono::Duration::days(1))
+        );
+    }
+
+    #[test]
+    fn check_gate_closes_after_a_failed_check_until_practice_is_ready_again() {
+        assert!(check_gate_enabled(true, SkillStatus::ReadyForCheck));
+        assert!(check_gate_enabled(true, SkillStatus::Confirmed));
+        assert!(!check_gate_enabled(true, SkillStatus::NeedsPractice));
+        assert!(!check_gate_enabled(false, SkillStatus::Confirmed));
+    }
+
+    #[test]
+    fn run_outcome_labels_distinguish_checks_from_practice() {
+        use crate::domain::RunOutcome;
+        use learning_activity_runtime::RunMode;
+
+        assert_eq!(run_outcome_label(RunMode::Check, RunOutcome::TargetMet), "Check passed");
+        assert_eq!(
+            run_outcome_label(RunMode::Check, RunOutcome::TargetNotMet),
+            "Check not yet passed"
+        );
+        for mode in [RunMode::Practice, RunMode::Review, RunMode::Retry] {
+            assert_eq!(run_outcome_label(mode, RunOutcome::TargetMet), "Practice target met");
+            assert_eq!(run_outcome_label(mode, RunOutcome::TargetNotMet), "Keep practising");
+        }
+    }
+
+    #[test]
+    fn multi_material_session_stays_active_until_every_material_is_complete() {
+        assert_eq!(session_status_after_material_completion(2), "active");
+        assert_eq!(session_status_after_material_completion(1), "active");
+        assert_eq!(session_status_after_material_completion(0), "completed");
+    }
+
+    #[test]
+    fn check_evidence_is_normalized_to_its_prerequisite_practice_material() {
+        let build_material = |id: &str, gate: Option<MaterialRuntimeGate>| MaterialDocument {
+            id: id.to_string(),
+            kind: if gate.is_some() { "quick_check" } else { "drill" }.to_string(),
+            subject_id: "maths".to_string(),
+            area_id: "arithmetic".to_string(),
+            skill_ids: vec!["multiplication".to_string()],
+            stage_ids: vec!["stage".to_string()],
+            recommended_age: 9,
+            difficulty: "core".to_string(),
+            estimated_minutes: 5,
+            runtime: Some(MaterialRuntime {
+                engine_id: "arithmetic_fact_fluency.v1".to_string(),
+                spec_version: 1,
+                template_id: "multiplication_tables_to_10".to_string(),
+                parameters: json!({}),
+                scoring: Some(MaterialRuntimeScoring {
+                    target_accuracy: Some(0.9),
+                    max_duration_seconds: None,
+                }),
+                readiness: None,
+                gate,
+            }),
+            title: id.to_string(),
+            body: String::new(),
+            source_path: "test.md".to_string(),
+        };
+        let drill = build_material("tables-drill", None);
+        let check = build_material(
+            "tables-check",
+            Some(MaterialRuntimeGate {
+                requires_ready_material_id: drill.id.clone(),
+            }),
+        );
+
+        assert_eq!(practice_evidence_material_id(&drill), "tables-drill");
+        assert_eq!(practice_evidence_material_id(&check), "tables-drill");
+    }
+
+    #[test]
+    fn adaptive_focus_recovers_after_two_correct_runs_and_includes_overdue_facts() {
+        let now = chrono::Utc::now();
+        assert!(!practice_progress_needs_focus(5, 5, true, 5, now, now));
+        assert!(practice_progress_needs_focus(5, 4, false, 0, now, now));
+        assert!(!practice_progress_needs_focus(3, 2, true, 2, now, now));
+        assert!(practice_progress_needs_focus(
+            5,
+            5,
+            true,
+            5,
+            now - chrono::Duration::days(15),
+            now,
+        ));
+    }
+
+    #[test]
+    fn compact_result_keeps_blank_misses_without_persisting_submitted_answers() {
+        let scored = learning_activity_runtime::ScoredActivity {
+            attempted_count: 0,
+            correct_count: 0,
+            item_count: 1,
+            accuracy: 0.0,
+            target_met: false,
+            completion_reason: "target_not_met".to_string(),
+            weak_family_keys: vec!["table-7".to_string()],
+            fact_results: vec![learning_activity_runtime::FactResult {
+                fact_key: "7x8".to_string(),
+                family_keys: vec!["table-7".to_string()],
+                difficulty_band: learning_activity_runtime::DifficultyBand::Challenge,
+                attempted_count: 0,
+                correct_count: 0,
+            }],
+            family_results: vec![],
+            corrections: vec![learning_activity_runtime::ActivityCorrection {
+                item_id: "item-1".to_string(),
+                content: "7 x 8".to_string(),
+                submitted_response: String::new(),
+                expected_response: 56,
+                fact_key: "7x8".to_string(),
+                family_keys: vec!["table-7".to_string()],
+                correction_cue: "Seven groups of eight".to_string(),
+            }],
+        };
+        let compact = PersistedActivityResult::from_scored(&scored, false);
+        let persisted_json = serde_json::to_string(&compact).expect("serialize compact result");
+
+        assert_eq!(compact.missed_fact_keys, vec!["7x8"]);
+        assert!(!persisted_json.contains("submitted_response"));
+        assert!(!persisted_json.contains("expected_response"));
     }
 
     #[test]
@@ -4739,8 +6398,7 @@ mod tests {
                     template_id: "not_registered".to_string(),
                     parameters: json!({}),
                     scoring: None,
-                    persistence: None,
-                    proficiency: None,
+                    readiness: None,
                     gate: None,
                 }),
                 title: "Unsupported".to_string(),
@@ -4754,7 +6412,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("material 'unsupported_material' references unsupported runtime"),
+                .contains("material 'unsupported_material' has invalid or unsupported runtime"),
             "unexpected error: {error}"
         );
     }

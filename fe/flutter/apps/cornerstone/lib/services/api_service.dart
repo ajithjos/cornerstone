@@ -187,27 +187,45 @@ class CornerstoneApiClient {
     return CompleteActivityResponse.fromJson(_decode(response));
   }
 
-  Future<void> setProficiencyOverride({
+  Future<ActivityInstance> retryActivity(String activityInstanceId) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/activity-instances/$activityInstanceId/retry'),
+    );
+    return ActivityStartPayload.fromJson(_decode(response)).activity;
+  }
+
+  Future<ActivityInstance> startReviewItem(String reviewItemId) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/review-items/$reviewItemId/start'),
+    );
+    return ActivityStartPayload.fromJson(_decode(response)).activity;
+  }
+
+  Future<void> setReadinessOverride({
     required String learnerId,
     required String materialId,
-    required int minAttempts,
-    required int windowSize,
+    required int minimumRuns,
+    required int recentRunWindow,
     required double targetAccuracy,
-    required int consecutivePasses,
+    required int consecutiveTargetRunsRequired,
     int? targetCorrectCount,
+    required int minimumDistinctItems,
+    required int minimumFamilyCount,
     int? maxDurationSeconds,
     required String reason,
   }) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/api/v1/learners/$learnerId/proficiency-overrides'),
+      Uri.parse('$baseUrl/api/v1/learners/$learnerId/readiness-overrides'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
         'material_id': materialId,
-        'min_attempts': minAttempts,
-        'window_size': windowSize,
+        'minimum_runs': minimumRuns,
+        'recent_run_window': recentRunWindow,
         'target_accuracy': targetAccuracy,
-        'consecutive_passes': consecutivePasses,
+        'consecutive_target_runs': consecutiveTargetRunsRequired,
         'target_correct_count': ?targetCorrectCount,
+        'minimum_distinct_items': minimumDistinctItems,
+        'minimum_family_count': minimumFamilyCount,
         'max_duration_seconds': ?maxDurationSeconds,
         'reason': reason,
       }),
@@ -215,13 +233,13 @@ class CornerstoneApiClient {
     _decode(response);
   }
 
-  Future<void> clearProficiencyOverride({
+  Future<void> clearReadinessOverride({
     required String learnerId,
     required String materialId,
   }) async {
     final response = await _client.delete(
       Uri.parse(
-        '$baseUrl/api/v1/learners/$learnerId/proficiency-overrides/$materialId',
+        '$baseUrl/api/v1/learners/$learnerId/readiness-overrides/$materialId',
       ),
     );
     _decode(response);

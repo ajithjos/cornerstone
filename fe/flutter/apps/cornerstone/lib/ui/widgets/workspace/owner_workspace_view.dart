@@ -19,8 +19,9 @@ class _OwnerWorkspaceView extends StatelessWidget {
     required this.onOpenLibraryWorkspace,
     required this.onRecordSession,
     required this.onStartActivity,
-    this.onSetProficiencyOverride,
-    this.onClearProficiencyOverride,
+    required this.onStartReview,
+    this.onSetReadinessOverride,
+    this.onClearReadinessOverride,
   });
 
   final ViewerUser? viewer;
@@ -42,17 +43,17 @@ class _OwnerWorkspaceView extends StatelessWidget {
   final VoidCallback onRecordSession;
   final Future<void> Function(SessionDetail session, SessionMaterial material)
   onStartActivity;
+  final Future<void> Function(ReviewItem reviewItem) onStartReview;
+  final Future<void> Function(SessionMaterial material)? onSetReadinessOverride;
   final Future<void> Function(SessionMaterial material)?
-  onSetProficiencyOverride;
-  final Future<void> Function(SessionMaterial material)?
-  onClearProficiencyOverride;
+  onClearReadinessOverride;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final totalReviewItems = learners.fold<int>(
       0,
-      (count, learner) => count + learner.reviewItemCount,
+      (count, learner) => count + learner.reviewDueCount,
     );
     final activeSessionCount = learners
         .where((learner) => learner.todaySession != null)
@@ -74,7 +75,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
     activeSession = continueBlock?.session;
     if (activeSession == null && selectedDetail != null) {
       for (final session in selectedDetail.sessions) {
-        if (session.status != 'completed') {
+        if (session.status != SessionStatus.completed) {
           activeSession = session;
           break;
         }
@@ -107,7 +108,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
             .where((material) => material.isExecutable)
             .toList(growable: false) ??
         const <SessionMaterial>[];
-    final selectedProgressCounts = <String, int>{};
+    final selectedProgressCounts = <SkillStatus, int>{};
     if (selectedDetail != null) {
       for (final state in selectedDetail.progress) {
         selectedProgressCounts.update(
@@ -117,9 +118,14 @@ class _OwnerWorkspaceView extends StatelessWidget {
         );
       }
     }
-    final selectedSecureCount = selectedProgressCounts['secure'] ?? 0;
-    final selectedDevelopingCount = selectedProgressCounts['developing'] ?? 0;
-    final selectedNotStartedCount = selectedProgressCounts['not_started'] ?? 0;
+    final selectedConfirmedCount =
+        selectedProgressCounts[SkillStatus.confirmed] ?? 0;
+    final selectedReadyForCheckCount =
+        selectedProgressCounts[SkillStatus.readyForCheck] ?? 0;
+    final selectedNeedsPracticeCount =
+        selectedProgressCounts[SkillStatus.needsPractice] ?? 0;
+    final selectedNotStartedCount =
+        selectedProgressCounts[SkillStatus.notStarted] ?? 0;
     final selectedReviewCount = selectedDetail?.reviewItems.length ?? 0;
 
     Widget buildSelectionPanel() {
@@ -306,7 +312,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                       ),
                                       _PillBadge(
                                         text:
-                                            '${assignedPathway.pendingSessionCount} pending',
+                                            '${assignedPathway.pendingSessionCount} remaining',
                                         color:
                                             theme.colorScheme.tertiaryContainer,
                                         textColor: theme
@@ -328,7 +334,8 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         assignedJourney.sessions
                                             .where(
                                               (session) =>
-                                                  session.status != 'completed',
+                                                  session.status !=
+                                                  SessionStatus.completed,
                                             )
                                             .cast<SessionDetail?>()
                                             .firstWhere(
@@ -422,7 +429,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                                 ),
                                               _PillBadge(
                                                 text:
-                                                    'Completed: ${assignedJourneyInfo.completedSessionCount}',
+                                                    'Finished: ${assignedJourneyInfo.completedSessionCount}',
                                                 color: theme
                                                     .colorScheme
                                                     .surfaceContainerHighest,
@@ -432,7 +439,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                               ),
                                               _PillBadge(
                                                 text:
-                                                    'Pending: ${assignedJourneyInfo.pendingSessionCount}',
+                                                    'Remaining: ${assignedJourneyInfo.pendingSessionCount}',
                                                 color: theme
                                                     .colorScheme
                                                     .tertiaryContainer,
@@ -509,14 +516,14 @@ class _OwnerWorkspaceView extends StatelessWidget {
                               ),
                             _PillBadge(
                               text:
-                                  'Completed: ${journey.completedSessionCount}',
+                                  'Finished: ${journey.completedSessionCount}',
                               color: theme.colorScheme.primary.withValues(
                                 alpha: 0.12,
                               ),
                               textColor: theme.colorScheme.primary,
                             ),
                             _PillBadge(
-                              text: 'Pending: ${journey.pendingSessionCount}',
+                              text: 'Remaining: ${journey.pendingSessionCount}',
                               color: theme.colorScheme.tertiaryContainer,
                               textColor: theme.colorScheme.onTertiaryContainer,
                             ),
@@ -626,10 +633,10 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         allowPrinting: true,
                                         onOpenLibraryRoute: onOpenLibraryRoute,
                                         onStartActivity: onStartActivity,
-                                        onSetProficiencyOverride:
-                                            onSetProficiencyOverride,
-                                        onClearProficiencyOverride:
-                                            onClearProficiencyOverride,
+                                        onSetReadinessOverride:
+                                            onSetReadinessOverride,
+                                        onClearReadinessOverride:
+                                            onClearReadinessOverride,
                                       ),
                                     )
                                   : Padding(
@@ -664,10 +671,10 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                         allowPrinting: true,
                                         onOpenLibraryRoute: onOpenLibraryRoute,
                                         onStartActivity: onStartActivity,
-                                        onSetProficiencyOverride:
-                                            onSetProficiencyOverride,
-                                        onClearProficiencyOverride:
-                                            onClearProficiencyOverride,
+                                        onSetReadinessOverride:
+                                            onSetReadinessOverride,
+                                        onClearReadinessOverride:
+                                            onClearReadinessOverride,
                                       ),
                                     )
                                   : Padding(
@@ -755,6 +762,32 @@ class _OwnerWorkspaceView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+          if (selectedDetail.reviewItems.isNotEmpty) ...[
+            _Band(
+              title: 'Review due',
+              child: Column(
+                children: selectedDetail.reviewItems
+                    .map(
+                      (item) => ReviewItemActionTile(
+                        item: item,
+                        onStartReview: onStartReview,
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+          if (selectedDetail.practiceMastery.isNotEmpty) ...[
+            _Band(
+              title: 'Practice evidence',
+              child: PracticeMasteryPanel(
+                practiceMastery: selectedDetail.practiceMastery,
+                compact: true,
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
           if (recentWins.isNotEmpty)
             _Band(
               title: 'Recent evidence',
@@ -1004,14 +1037,14 @@ class _OwnerWorkspaceView extends StatelessWidget {
                         textColor: theme.colorScheme.onSecondaryContainer,
                       ),
                       _PillBadge(
-                        text: '$totalReviewItems review items',
+                        text: '$totalReviewItems review due',
                         color: theme.colorScheme.tertiaryContainer,
                         textColor: theme.colorScheme.onTertiaryContainer,
                       ),
                       if (selectedDetail != null)
                         _PillBadge(
                           text:
-                              '${selectedDetail.learner.displayName}: $selectedSecureCount secure / $selectedDevelopingCount developing / $selectedNotStartedCount not started / $selectedReviewCount review',
+                              '${selectedDetail.learner.displayName}: $selectedConfirmedCount confirmed / $selectedReadyForCheckCount ready for check / $selectedNeedsPracticeCount need practice / $selectedNotStartedCount not started / $selectedReviewCount review due',
                           color: theme.colorScheme.surfaceContainerHighest,
                           textColor: theme.colorScheme.onSurfaceVariant,
                         ),
