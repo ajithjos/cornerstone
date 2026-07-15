@@ -186,7 +186,8 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
                     f"fact-fluency quick check {material_id} in playlist {playlist['id']} is missing a gate"
                 )
                 assert gate["requires_ready_material_id"] in drill_material_ids, (
-                    f"fact-fluency quick check {material_id} in playlist {playlist['id']} must gate on that playlist's drill"
+                    f"fact-fluency quick check {material_id} in playlist {playlist['id']} "
+                    "must gate on that playlist's drill"
                 )
                 scoring = runtime.get("scoring")
                 assert scoring is not None and scoring["target_accuracy"] >= 0.9
