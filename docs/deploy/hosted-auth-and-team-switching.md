@@ -1,12 +1,12 @@
 # Hosted Auth and Team Switching
 
-This note defines the smallest sensible move from local-only Cornerstone to an internet-facing deployment on GCP.
+This note records the hosted owner-authentication and family-team design. Hosting now uses provider-selected Linux VMs with AWS as the default; see [VM deployment](runbooks/vm-deploy.md). Google identity and the public origin remain independent of the cloud provider.
 
 The goal is not to build a full enterprise identity system. The goal is to keep the current family-team product model, host it safely on the public internet, and avoid forcing small children to manage their own credentials.
 
-## Current Baseline
+## Initial Baseline
 
-Today Cornerstone is still using a local-first identity shape:
+The original local-first identity shape was:
 
 - `deploy/config/runtime_defaults/identity_bootstrap.yaml` seeds bootstrap-managed teams, users, and memberships
 - both dev compose and the current production template mount the same bootstrap file and auto-apply it at startup
@@ -18,7 +18,7 @@ That is acceptable for local development and home-LAN use. It is not sufficient 
 
 Use this shape first:
 
-- host Cornerstone on a GCP VM using the same VM-oriented compose flow you already use in the CRM repo
+- host Cornerstone on the selected Linux VM using the shared provider-neutral Compose flow
 - put HTTPS and a reverse proxy in front of the stack and serve the Flutter app and API from the same public origin
 - keep `identity_bootstrap.yaml` as seed data for teams, users, and memberships
 - add real hosted authentication only for owners who need privileged access
@@ -263,11 +263,11 @@ Bootstrap validation rules should be:
 - every `learner` in bootstrap must include the learner fields already required for product use
 - bootstrap may optionally pre-link `google_subject`, but should not require it
 
-## GCP Deployment Shape
+## Hosted VM Shape
 
 For now, keep deployment boring.
 
-- use the same GCP project if that reduces friction
+- keep account and project selection in the explicit cloud target
 - use a VM-oriented Docker Compose deployment like the CRM repo
 - attach `scholahouse.com` to the VM through HTTPS
 - expose only the reverse proxy publicly
@@ -286,7 +286,7 @@ Prefer same-origin hosting over cross-origin API calls. It simplifies cookies, C
 
 ### Phase 1: Host the Current Stack Safely
 
-- deploy the existing compose stack to GCP
+- deploy the existing Compose stack to the selected host
 - terminate TLS at the reverse proxy
 - serve frontend and API under one origin
 - keep bootstrap seeding enabled

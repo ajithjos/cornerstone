@@ -1,0 +1,7 @@
+{
+    admin off
+}
+
+{$CORNERSTONE_TLS_DOMAIN} {
+    reverse_proxy 127.0.0.1:{$CORNERSTONE_HTTP_PORT}
+}

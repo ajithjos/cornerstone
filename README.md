@@ -56,3 +56,5 @@ Use `make docs-site-dev` when you want the standalone developer-docs site on
 - `docs_site/`: Docusaurus developer-docs site
 - `deploy/`: dev and production deployment workflows
 - `docs/`: product and operator documentation
+
+Hosted deployment defaults to AWS and supports provider-selected Linux VMs. See [VM deployment](docs/deploy/runbooks/vm-deploy.md) for cloud targets, private inputs and preserving an existing installation.

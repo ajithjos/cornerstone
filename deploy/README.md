@@ -1,21 +1,15 @@
-# Deploy Layout
+# Deployment
 
-Cornerstone uses the same deployment split in both dev and the VM flow:
+The canonical operator workflow is [VM deployment](../docs/deploy/runbooks/vm-deploy.md). AWS is the default; `CLOUD` and `CLOUD_TARGET` select another provider or prepared Linux VM.
 
-- tracked non-secret setup env in `deploy/config/environments/`
-- local development secret JSON in `dev/site_root/secrets/`
-- local hosted-deploy secret JSON in `deploy/vm/local/secrets/`
-- tracked runtime defaults in `deploy/config/runtime_defaults/`
+- `deploy/host.py`: target validation, native DevKit cloud identity and verified transport
+- `deploy/aws_host.py`: bounded, resumable AWS host provisioning
+- `deploy/state_transfer.py`: matched application image, frontend, database and file transfer
+- `deploy/package_release.py`: tracked sources and explicit frontend build packaging
+- `deploy/config/environments/`: cloud targets and shared application settings
+- `deploy/config/build/`: image catalog
+- `deploy/config/runtime_defaults/`: bootstrap identity settings
+- `deploy/vm/`: shared hosted Compose, startup and deployment
+- `deploy/dev/`: local development runtime
 
-Primary entrypoints:
-
-- first hosted rollout guide: `docs/deploy/runbooks/gcp-vm-first-deploy.md`
-- local gcloud profile setup: `make gcloud-setup`
-- one-time VM host prep: `make deploy-setup`
-- local compose: `bash deploy/dev/setup.sh`
-- local live frontend mode: `bash deploy/dev/live_frontend/up.sh`
-- publish hosted runtime secret: `make deploy-secret-push`
-- hosted deploy plan: `make deploy-plan`
-- hosted deploy: `make deploy`
-
-The shared GCP deploy contract lives at `deploy/config/environments/prod.gcp.env`. The shared override variable is `DEPLOY_GCP_ENV_FILE`.
+Real credentials and private host bindings stay outside Git. The retained GCP secret-administration helper uses `prod.gcp.env` explicitly. The [GCP first-rollout record](../docs/deploy/runbooks/gcp-vm-first-deploy.md) describes that existing provider's infrastructure.

@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "id": "cornerstone-gcp",
+  "provider": "gcp",
+  "connection": {
+    "provider": "gcp",
+    "profile": "cornerstone-prod",
+    "account": "ajith@dhenara.com",
+    "project_id": "p601-ephphatha-host"
+  },
+  "transport": {
+    "kind": "gcp-iap",
+    "user": "ajithjose",
+    "instance": "cornerstone-prod-vm",
+    "zone": "us-central1-f"
+  },
+  "application": {
+    "env_file": "deploy/config/environments/prod.vm.env",
+    "tls": "external",
+    "proxy_cidrs": [
+      "35.191.0.0/16",
+      "130.211.0.0/22"
+    ]
+  },
+  "secrets": {
+    "kind": "gcp",
+    "names": {
+      "runtime_env": "cornerstone-runtime-env"
+    }
+  },
+  "infrastructure": {
+    "kind": "prepared",
+    "backend_service": "cornerstone-prod-backend",
+    "minimum_timeout_seconds": 300,
+    "instance_id": "5618608294748383624"
+  }
+}

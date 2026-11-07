@@ -8,6 +8,9 @@ FLUTTER_REQUIRED_VERSION ?= 3.44.1
 CONTENT_ROOT ?= $(CURDIR)/content
 LIVE_FRONTEND_PORT ?= 2255
 LIVE_FRONTEND_API_BASE_URL ?= http://127.0.0.1:8788
+CLOUD ?= aws
+CLOUD_TARGET ?= deploy/config/environments/prod.$(CLOUD).json
+DEPLOY_COMMAND = CLOUD="$(CLOUD)" CLOUD_TARGET="$(CLOUD_TARGET)" bash deploy/vm/deploy.sh
 DEPLOY_GCP_ENV_FILE ?= deploy/config/environments/prod.gcp.env
 DEVKIT_MAKE := $(MAKE) --no-print-directory -C dev/devkit REPO_ROOT=$(CURDIR)
 
@@ -19,7 +22,7 @@ devkit-bootstrap:
 context: devkit-bootstrap
 	@$(DEVKIT_MAKE) context
 	@echo
-	@DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh --context
+	@$(DEPLOY_COMMAND) --context
 
 doctor: devkit-bootstrap
 	@$(DEVKIT_MAKE) doctor
@@ -27,10 +30,10 @@ doctor: devkit-bootstrap
 	@command -v cargo >/dev/null || (echo "Missing cargo. Install Rust with rustup." >&2; exit 2)
 	@command -v flutter >/dev/null || (echo "Missing flutter. Install the pinned Flutter toolchain before frontend work." >&2; exit 2)
 	@command -v docker >/dev/null || (echo "Missing docker. Install/start Docker for make dev-up." >&2; exit 2)
-	@DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh --doctor
+	@$(DEPLOY_COMMAND) --doctor
 
 gcloud-setup: devkit-bootstrap
-	@DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh --gcloud-setup
+	@CLOUD=gcp CLOUD_TARGET=deploy/config/environments/prod.gcp.json bash deploy/vm/deploy.sh --gcloud-setup
 
 setup: devkit-bootstrap
 	$(DEVKIT_MAKE) setup
@@ -157,18 +160,29 @@ dev-live-down:
 frontend-dev: frontend-pub-get
 	@bash -lc 'cd "$(FLUTTER_APP_DIR)" && flutter run -d chrome --web-port $(LIVE_FRONTEND_PORT) --dart-define=CORNERSTONE_API_BASE_URL=$(LIVE_FRONTEND_API_BASE_URL)'
 
-deploy-setup:
-	bash deploy/vm/prepare_host.sh
+deploy-setup: cloud-setup
 
 deploy-secret-push:
 	DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/update_gcp_runtime_env_secret.sh
 
 deploy-plan:
-	DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh --plan
+	$(DEPLOY_COMMAND) --plan
 
 deploy:
-	DEPLOY_GCP_ENV_FILE="$(DEPLOY_GCP_ENV_FILE)" bash deploy/vm/deploy.sh
+	$(DEPLOY_COMMAND)
 
 check-local: fmt-check lint rust-test frontend-sanity content-validate docs-site-build
 
 check: check-local test
+
+.PHONY: cloud-setup cloud-doctor cloud-plan cloud-create deploy-status
+cloud-setup:
+	CLOUD="$(CLOUD)" CLOUD_TARGET="$(CLOUD_TARGET)" python3 deploy/host.py setup
+cloud-doctor:
+	CLOUD="$(CLOUD)" CLOUD_TARGET="$(CLOUD_TARGET)" python3 deploy/host.py doctor
+cloud-plan:
+	CLOUD="$(CLOUD)" CLOUD_TARGET="$(CLOUD_TARGET)" python3 deploy/host.py cloud-plan
+cloud-create:
+	CLOUD="$(CLOUD)" CLOUD_TARGET="$(CLOUD_TARGET)" python3 deploy/host.py cloud-create
+deploy-status:
+	CLOUD="$(CLOUD)" CLOUD_TARGET="$(CLOUD_TARGET)" python3 deploy/host.py status

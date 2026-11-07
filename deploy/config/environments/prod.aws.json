@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "id": "cornerstone-aws",
+  "provider": "aws",
+  "connection": {
+    "provider": "aws",
+    "profile": "dhenara-operator",
+    "account_id": "712394253078",
+    "region": "us-east-2"
+  },
+  "transport": {
+    "kind": "ssh",
+    "user": "ubuntu"
+  },
+  "application": {
+    "env_file": "deploy/config/environments/prod.vm.env",
+    "tls": "direct"
+  },
+  "secrets": {
+    "kind": "files"
+  },
+  "infrastructure": {
+    "kind": "aws",
+    "instance_type": "m6a.large",
+    "disk_gb": 50,
+    "ami_parameter": "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
+    "vpc_id": "vpc-0414cc82c9b880c0a",
+    "subnet_id": "subnet-00d2e08a7c12382c5",
+    "monthly_limit_usd": 100
+  }
+}

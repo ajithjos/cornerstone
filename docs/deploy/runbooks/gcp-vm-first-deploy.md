@@ -1,5 +1,7 @@
 # GCP VM First Deploy
 
+This record is specific to the retained GCP installation. Shared deployment now defaults to AWS; use [VM deployment](vm-deploy.md) for the provider-selected workflow. For commands in this GCP guide, first set `export CLOUD=gcp`. The selected native identity is `ajith@dhenara.com`.
+
 This runbook records the first hosted Cornerstone rollout completed on 2026-06-09 and the exact one-time infrastructure shape now expected by the repo.
 
 After this first-time setup is in place, use [vm-deploy.md](vm-deploy.md) for normal redeploys.

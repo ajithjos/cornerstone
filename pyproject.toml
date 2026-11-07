@@ -31,6 +31,9 @@ include = [
 [tool.uv]
 package = false
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 target-version = "py313"
 line-length = 120

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "cornerstone-example",
+  "provider": "ssh",
+  "connection": {
+    "provider": "ssh"
+  },
+  "transport": {
+    "kind": "ssh",
+    "user": "ubuntu"
+  },
+  "application": {
+    "env_file": "deploy/config/environments/prod.vm.env",
+    "tls": "direct"
+  },
+  "secrets": {
+    "kind": "files"
+  },
+  "infrastructure": {
+    "kind": "prepared"
+  }
+}
