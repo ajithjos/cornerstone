@@ -48,7 +48,18 @@ def package(destination: Path, frontend: Path | None = None) -> None:
             path = ROOT / name
             if path.is_file() or path.is_symlink():
                 archive.add(path, arcname=name, recursive=False)
-        archive.add(frontend, arcname=str(FRONTEND))
+        # Builds can be extracted into an owner-only transfer workarea. Public
+        # static assets must still be readable by nginx's unprivileged worker.
+        def public_asset(item: tarfile.TarInfo) -> tarfile.TarInfo:
+            if item.isdir():
+                item.mode = 0o755
+            elif item.isfile():
+                item.mode = 0o644
+            else:
+                raise ValueError("Frontend assets must be regular files or directories")
+            return item
+
+        archive.add(frontend, arcname=str(FRONTEND), filter=public_asset)
 
 
 if __name__ == "__main__":

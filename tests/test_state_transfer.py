@@ -114,7 +114,7 @@ def test_release_package_omits_untracked_secrets_and_contains_explicit_frontend(
     (repo / "tracked").write_text("application")
     (repo / "untracked-secret").write_text("private")
     frontend = tmp_path / "frontend"
-    frontend.mkdir()
+    frontend.mkdir(mode=0o700)
     (frontend / "index.html").write_text("preserved frontend")
     monkeypatch.setattr(package_release, "ROOT", repo)
     monkeypatch.setattr(package_release.subprocess, "check_output", lambda *a, **k: b"tracked\0")
@@ -123,6 +123,8 @@ def test_release_package_omits_untracked_secrets_and_contains_explicit_frontend(
     with tarfile.open(output) as archive:
         assert "tracked" in archive.getnames()
         assert "untracked-secret" not in archive.getnames()
+        assert archive.getmember(str(package_release.FRONTEND)).mode == 0o755
+        assert archive.getmember(str(package_release.FRONTEND / "index.html")).mode == 0o644
         assert archive.extractfile(str(package_release.FRONTEND / "index.html")).read() == b"preserved frontend"
 
 
