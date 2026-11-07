@@ -349,6 +349,16 @@ mod tests {
         )
     }
 
+    fn bridge_addition_material(question_count: usize) -> MaterialDocument {
+        build_material(
+            "bridge_through_10_addition",
+            json!({
+                "question_count": question_count,
+                "difficulty": "advanced"
+            }),
+        )
+    }
+
     fn fact_keys(activity: &GeneratedActivity) -> BTreeSet<String> {
         activity.items.iter().map(|item| item.fact_key.clone()).collect()
     }
@@ -637,6 +647,53 @@ mod tests {
         assert!(generated.coverage.adaptive_item_count <= generated.coverage.adaptive_item_cap);
         assert_eq!(generated.coverage.adaptive_item_cap, 6);
         assert!(generated.coverage.requirements_met);
+    }
+
+    #[test]
+    fn completed_bridge_practice_can_generate_an_adaptive_repeat() {
+        let material = bridge_addition_material(14);
+        let context = GenerationContext::practice(1)
+            .with_weak_facts([
+                "addition:4+9".to_string(),
+                "addition:5+9".to_string(),
+                "addition:6+6".to_string(),
+                "addition:6+8".to_string(),
+                "addition:7+8".to_string(),
+            ])
+            .with_seen_facts([
+                "addition:4+9".to_string(),
+                "addition:5+6".to_string(),
+                "addition:5+8".to_string(),
+                "addition:6+6".to_string(),
+                "addition:6+7".to_string(),
+                "addition:6+9".to_string(),
+                "addition:7+7".to_string(),
+                "addition:7+8".to_string(),
+                "addition:7+9".to_string(),
+                "addition:8+8".to_string(),
+                "addition:8+9".to_string(),
+                "addition:9+9".to_string(),
+            ])
+            .with_weak_families([
+                "bridge_start:6".to_string(),
+                "bridge_start:7".to_string(),
+                "bridge_start:9".to_string(),
+                "bridge_through_10_for_addition".to_string(),
+                "operation:addition".to_string(),
+            ]);
+
+        for seed in 1..=1_000 {
+            let generated = generate_activity(
+                &material,
+                &GenerationContext {
+                    seed,
+                    ..context.clone()
+                },
+            )
+            .unwrap_or_else(|error| panic!("repeat seed {seed}: {error:#}"));
+            assert_eq!(generated.items.len(), 14, "seed {seed}");
+            assert!(generated.coverage.requirements_met, "seed {seed}");
+        }
     }
 
     #[test]

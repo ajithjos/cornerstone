@@ -389,6 +389,11 @@ fn select_items(
             let over_foundation_cap = enforce_balance
                 && candidate.difficulty_band == DifficultyBand::Foundation
                 && current_band_count >= foundation_item_cap;
+            // The cap already accounts for the pool's non-foundation capacity. Treat it as
+            // a hard constraint so soft adaptive preferences cannot make a repeat invalid.
+            if over_foundation_cap {
+                continue;
+            }
             let exact_focus = focus_fact_keys.contains(candidate.fact_key.as_str());
             let exact_weak = weak_fact_keys.contains(candidate.fact_key.as_str());
             let unseen_practice_fact =
@@ -422,7 +427,6 @@ fn select_items(
                 + i64::from(band_deficit) * 20_000
                 + i64::from(unseen_practice_fact) * 12_000
                 + mode_priority
-                - i64::from(over_foundation_cap) * 200_000
                 - i64::from(over_adaptive_cap) * 300_000;
             if best.is_none_or(|(_, best_score, _)| score > best_score) {
                 best = Some((index, score, allocate_adaptive));
