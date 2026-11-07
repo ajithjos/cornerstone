@@ -177,7 +177,7 @@ render_runtime_env_file() {
     deploy_write_env_line "$destination" CORNERSTONE_TLS_MODE "$CORNERSTONE_TLS_MODE"
     deploy_write_env_line "$destination" CORNERSTONE_TLS_DOMAIN "$VM_DOMAIN"
     deploy_write_env_line "$destination" CORNERSTONE_CADDY_IMAGE "$CORNERSTONE_CADDY_IMAGE"
-    deploy_write_env_line "$destination" CORNERSTONE_CONTROL_PLANE_IMAGE "cornerstone-${RELEASE_NAME}-control-plane"
+    deploy_write_env_line "$destination" CORNERSTONE_CONTROL_PLANE_IMAGE "cornerstone-$(printf '%s' "$RELEASE_NAME" | tr '[:upper:]' '[:lower:]')-control-plane"
 	deploy_write_env_line "$destination" CORNERSTONE_CONTROL_PLANE_PORT "$CORNERSTONE_CONTROL_PLANE_PORT"
 	deploy_write_env_line "$destination" CORNERSTONE_FRONTEND_PORT "$CORNERSTONE_FRONTEND_PORT"
 	deploy_write_env_line "$destination" CORNERSTONE_POSTGRES_PORT "$CORNERSTONE_POSTGRES_PORT"

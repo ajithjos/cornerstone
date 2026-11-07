@@ -306,7 +306,7 @@ def migration_runtime(source: str, values: dict[str, str], release: str, manifes
             "CORNERSTONE_TLS_MODE": values["tls"],
             "CORNERSTONE_TLS_DOMAIN": raw["CORNERSTONE_FRONTEND_PUBLIC_URL"].removeprefix("https://"),
             "CORNERSTONE_RUNTIME_DATA_ROOT": values["runtime_root"],
-            "CORNERSTONE_CONTROL_PLANE_IMAGE": "cornerstone-" + release.rsplit("/", 1)[1] + "-control-plane",
+            "CORNERSTONE_CONTROL_PLANE_IMAGE": "cornerstone-" + release.rsplit("/", 1)[1].lower() + "-control-plane",
             "CORNERSTONE_POSTGRES_IMAGE": "postgres:18-alpine@" + manifest["images"]["postgres"],
             "CORNERSTONE_NGINX_IMAGE": "nginx:1.29-alpine@" + manifest["images"]["frontend"],
             "CORNERSTONE_CADDY_IMAGE": values["caddy_image"],

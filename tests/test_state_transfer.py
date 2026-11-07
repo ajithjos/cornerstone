@@ -77,12 +77,13 @@ def test_migration_keeps_all_credentials_policy_and_unknown_settings():
     result = transfer.migration_runtime(
         "".join(f"{key}={shlex.quote(value)}\n" for key, value in source.items()),
         {"tls": "direct", "runtime_root": "/var/lib/cornerstone", "caddy_image": "test-image"},
-        "/opt/cornerstone/releases/test",
+        "/opt/cornerstone/releases/release-20261107T150000Z-abcdef",
         {"images": {"postgres": "sha256:pg", "frontend": "sha256:web"}},
     )
     assert all(result[key] == value for key, value in source.items())
     assert result["CORNERSTONE_HTTP_BIND"] == "127.0.0.1"
     assert result["CORNERSTONE_TLS_DOMAIN"] == "scholahouse.com"
+    assert result["CORNERSTONE_CONTROL_PLANE_IMAGE"] == "cornerstone-release-20261107t150000z-abcdef-control-plane"
 
 
 def test_bad_checksum_prevents_cloud_access(tmp_path, monkeypatch):
