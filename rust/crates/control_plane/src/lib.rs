@@ -1,3 +1,4 @@
+mod activity_packages;
 mod config;
 mod domain;
 mod http;
@@ -39,6 +40,8 @@ enum Command {
         count: usize,
         #[arg(long)]
         answers: bool,
+        #[arg(long, value_enum, default_value_t = worksheet_print::PrintLayout::Guided)]
+        layout: worksheet_print::PrintLayout,
         #[arg(long)]
         output: std::path::PathBuf,
     },
@@ -76,6 +79,7 @@ pub async fn run_cli() -> anyhow::Result<()> {
             let content_root = config::content_root_from_env()?;
             let (bundle, report) = catalog::load_library_bundle(&content_root)?;
             service::validate_supported_material_runtimes(&bundle)?;
+            activity_packages::validate_library_packages(&content_root, &bundle)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
             println!(
                 "Loaded {} subjects, {} areas, {} pathways, {} skills, {} stages, {} playlists, {} materials",
@@ -94,6 +98,7 @@ pub async fn run_cli() -> anyhow::Result<()> {
             seed,
             count,
             answers,
+            layout,
             output,
         } => {
             let request = learning_activity_runtime::written_arithmetic::WorksheetRequest {
@@ -102,7 +107,7 @@ pub async fn run_cli() -> anyhow::Result<()> {
                 question_count: count,
                 mode: learning_activity_runtime::written_arithmetic::PracticeMode::Assisted,
             };
-            let html = worksheet_print::render(request, answers)?;
+            let html = worksheet_print::render_with_layout(request, answers, layout)?;
             std::fs::write(&output, html).with_context(|| format!("failed to write {}", output.display()))?;
             println!("Open {} in a browser and print or save as PDF.", output.display());
             Ok(())

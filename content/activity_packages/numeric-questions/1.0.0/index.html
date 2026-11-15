@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Number practice · Cornerstone</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="bridge.js" defer></script>
+    <script src="activity.js" defer></script>
+  </head>
+  <body>
+    <main id="activity" aria-busy="true">
+      <header>
+        <p class="eyebrow">Cornerstone · Number practice</p>
+        <div class="title-row"><h1 id="title">Number practice</h1><span id="mode" class="badge" hidden></span></div>
+        <p id="instructions">Getting your questions ready…</p>
+        <p class="guidance">Enter an answer for each question. Check your work before submitting. Corrections appear after submission.</p>
+      </header>
+      <div id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true">Waiting for your lesson.</div>
+      <div id="error" class="error" role="alert" hidden></div>
+      <form id="questions-form" novalidate>
+        <div id="questions" class="questions"></div>
+        <footer id="actions" hidden>
+          <div><p id="result-title" class="result-title">Work carefully, one question at a time.</p><p id="result-detail" class="result-detail">You can change your answers before submitting.</p></div>
+          <button id="submit" type="submit">Finish practice</button>
+        </footer>
+      </form>
+      <noscript>Open this activity in Cornerstone with JavaScript enabled.</noscript>
+    </main>
+  </body>
+</html>

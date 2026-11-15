@@ -265,78 +265,6 @@ class _SurfaceCard extends StatelessWidget {
   }
 }
 
-class _StatChip extends StatelessWidget {
-  const _StatChip({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [_BrandPalette.slateHigh, _BrandPalette.slateRaised]
-              : [Colors.white, _BrandPalette.warmPaper],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.60),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 18,
-            color: theme.colorScheme.primary.withValues(alpha: 0.75),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: theme.colorScheme.primary,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              Text(
-                label.toUpperCase(),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _CompactField extends StatelessWidget {
   const _CompactField({required this.label, required this.controller});
 
@@ -475,14 +403,12 @@ class _PageHeroCard extends StatelessWidget {
     required this.title,
     required this.description,
     this.trailing,
-    this.chips = const <Widget>[],
   });
 
   final String eyebrow;
   final String title;
   final String description;
   final Widget? trailing;
-  final List<Widget> chips;
 
   @override
   Widget build(BuildContext context) {
@@ -557,10 +483,6 @@ class _PageHeroCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (chips.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Wrap(spacing: 12, runSpacing: 12, children: chips),
-              ],
             ],
           );
 

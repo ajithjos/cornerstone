@@ -1,0 +1,14 @@
+{
+  "packages": [
+    {
+      "package_id": "written-arithmetic",
+      "version": "1.0.0",
+      "path": "written-arithmetic/1.0.0"
+    },
+    {
+      "package_id": "numeric-questions",
+      "version": "1.0.0",
+      "path": "numeric-questions/1.0.0"
+    }
+  ]
+}

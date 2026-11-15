@@ -1,0 +1,82 @@
+:root {
+  color-scheme: light;
+  font-family: ui-rounded, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  color: #183346;
+  background: #f5f8fc;
+  --ink: #183346;
+  --blue: #135eaa;
+  --border: #b1c2d3;
+  --success: #1a653a;
+  --error: #9d2f27;
+  --cell-size: 2.8rem;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input { font: inherit; }
+button { touch-action: manipulation; }
+[hidden] { display: none !important; }
+main { max-width: 76rem; margin: 0 auto; padding: 1.25rem; }
+.activity-header { padding: .5rem .2rem 1rem; }
+.eyebrow { color: #42617a; font-size: .74rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; margin: 0 0 .6rem; }
+.title-row { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem 1rem; }
+h1 { margin: 0; font-size: clamp(1.4rem, 3.2vw, 2rem); line-height: 1.2; }
+#instructions { max-width: 65rem; font-size: 1rem; line-height: 1.55; margin: .8rem 0 .5rem; }
+.mode-badge { display: inline-block; padding: .4rem .7rem; color: #12457b; background: #e3efff; border: 1px solid #a6c3e8; border-radius: 999px; font-size: .8rem; font-weight: 750; white-space: nowrap; }
+.mode-badge.assessment { color: #5c4012; background: #fff0cc; border-color: #d5b97b; }
+.mode-guidance { font-size: .88rem; color: #42617a; line-height: 1.5; margin: .5rem 0 0; }
+.notice, .error-notice { padding: .8rem 1rem; margin-bottom: 1rem; border-radius: .7rem; line-height: 1.45; }
+.notice { background: #e9f2fb; border: 1px solid #bdcfe2; color: #234c73; }
+.error-notice { background: #fff1ee; color: #84251e; border: 1px solid #d7a29b; }
+.exercise-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); align-items: start; gap: 1.1rem; }
+.exercise { background: #fff; border: 1px solid #c4d1df; border-radius: 1rem; padding: 1.2rem; box-shadow: 0 2px 7px #1c345609; min-width: 0; }
+.exercise-header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+.question-number { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; height: 2rem; padding: .2rem; color: #285c8e; background: #eaf3fd; border-radius: .55rem; font-size: .85rem; font-weight: 750; }
+h2 { margin: 0; font-size: 1.35rem; font-weight: 700; line-height: 1.25; }
+.grid-scroll { overflow-x: auto; max-width: 100%; padding: .15rem .2rem .6rem; scrollbar-width: thin; }
+.grid-scroll:focus-visible { outline: 3px solid #4b91d8; outline-offset: 1px; }
+.written-grid { border-collapse: separate; border-spacing: 0 .22rem; table-layout: fixed; margin: 0 auto; }
+.written-grid th { min-width: 6.5rem; width: 6.5rem; max-width: 8rem; padding: 0 .65rem 0 0; text-align: right; color: #526779; font-size: .75rem; font-weight: 550; line-height: 1.3; overflow-wrap: break-word; }
+.written-grid td { min-width: var(--cell-size); width: var(--cell-size); height: var(--cell-size); padding: .1rem; text-align: center; vertical-align: middle; }
+.written-grid .operand th, .written-grid .dividend th { color: var(--ink); font-size: 1.12rem; }
+.written-grid .answer td { border-top: 2px solid #345672; padding-top: .35rem; }
+.written-grid .dividend td { border-top: 2px solid #345672; padding-top: .35rem; }
+.written-grid .working td { border-bottom: 1px solid #e0e8f0; }
+.cell-content { position: relative; height: 100%; min-height: 2.5rem; }
+.fixed-value { display: flex; align-items: center; justify-content: center; min-height: 2.5rem; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 1.5rem; font-weight: 650; }
+.digit-input { width: 100%; min-height: 2.5rem; height: 100%; padding: .15rem .1rem; color: #132f47; background: #fcfdff; border: 1.5px solid #a9bed3; border-radius: .35rem; text-align: center; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 1.4rem; font-weight: 650; caret-color: #135eaa; }
+.annotation .digit-input, .annotation .fixed-value { font-size: 1.13rem; }
+.digit-input:focus { outline: 3px solid #77b5ed; outline-offset: 1px; background: #fff; }
+.digit-input:disabled { opacity: 1; color: #244057; -webkit-text-fill-color: #244057; cursor: default; }
+.digit-input.correct { border-color: var(--success); background: #f1faf4; }
+.digit-input.incorrect { border: 2px solid var(--error); background: #fff4ef; }
+.cell-marker { position: absolute; top: -.38rem; right: -.15rem; display: flex; align-items: center; justify-content: center; min-width: .85rem; height: .85rem; padding: .04rem; border-radius: 50%; background: #fff; color: var(--success); font: 800 .7rem system-ui, sans-serif; pointer-events: none; }
+.cell-marker.incorrect { color: var(--error); }
+.exercise-actions { margin-top: .85rem; display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-height: 2.8rem; border: 1.5px solid #87a5c3; border-radius: .6rem; padding: .65rem 1rem; background: #f2f7ff; color: #174c80; font-weight: 700; line-height: 1.3; cursor: pointer; }
+.button:hover:not(:disabled) { background: #e1eeff; }
+.button:focus-visible { outline: 3px solid #77b5ed; outline-offset: 3px; }
+.button:disabled { opacity: .6; cursor: default; }
+.button.primary { background: #155eaa; border-color: #155eaa; color: #fff; }
+.button.primary:hover:not(:disabled) { background: #114f90; }
+.exercise-feedback { margin-top: .9rem; font-size: .88rem; line-height: 1.5; }
+.feedback-list { list-style: none; margin: 0; padding: 0; }
+.feedback-list li { color: #7d2b23; background: #fff5ef; border-left: 3px solid #bb6652; padding: .6rem .7rem; margin: .5rem 0; border-radius: 0 .4rem .4rem 0; }
+.feedback-location { display: block; font-weight: 750; margin-bottom: .15rem; }
+.exercise-ok { color: #205c3b; margin: 0; }
+.actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 1.2rem; margin-top: 1.2rem; background: #fff; border: 1px solid #c4d1df; border-radius: 1rem; }
+.completion-title { font-weight: 750; margin: 0 0 .3rem; }
+.completion-detail { font-size: .86rem; color: #526779; margin: 0; line-height: 1.4; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 480px) {
+  :root { --cell-size: 2.55rem; }
+  main { padding: .6rem; }
+  .exercise { padding: .85rem .55rem; }
+  .written-grid th { min-width: 5.2rem; width: 5.2rem; padding-right: .45rem; font-size: .68rem; }
+  .digit-input { font-size: 1.2rem; }
+  .fixed-value { font-size: 1.3rem; }
+  .actions .button { width: 100%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .button, .digit-input { transition: background-color .12s ease, border-color .12s ease; }
+}

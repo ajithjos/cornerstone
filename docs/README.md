@@ -22,3 +22,6 @@ These docs describe the canonical Cornerstone model and the authoring workflow a
 - `authoring/authoring-workflow.md`: how to brief, generate, review, and validate curriculum work
 - `authoring/curriculum-slice-brief-template.md`: the fillable brief for one subject-area slice
 - `authoring/examples/arithmetic-fact-fluency-brief.md`: a worked arithmetic example of the brief template
+
+- [Written arithmetic practice](./authoring/written-arithmetic-practice.md): assignable written-method levels, assisted and assessment modes, and guided or compact printable worksheets
+- [Activity packages](./authoring/activity-packages.md): versioned static presentations, manifest integrity, and the shared host protocol

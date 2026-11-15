@@ -106,7 +106,7 @@ Do not reintroduce old aliases such as `capability`, `milestone`, `resource`, `p
 - Use canonical material kind names exactly in authored content and downstream APIs.
 - `lesson_note` is the learner-facing explanation and durable reference material for what is being learned.
 - `teaching_note` is adult-facing guidance for prompts, misconceptions, and delivery choices.
-- `worksheet` is learner practice for paper, offline work, or printing; it is not the primary reference page.
+- `worksheet` is learner practice for paper, printing, or a supported interactive worksheet runtime; it is not the primary reference page.
 - `drill` is repetitive or live learner practice.
 - `quick_check` is a short learner check or stop point.
 - Do not use `teaching_note` as a substitute for learner-facing instruction.
@@ -120,7 +120,7 @@ Do not reintroduce old aliases such as `capability`, `milestone`, `resource`, `p
 - Every active pathway must contain real downstream curriculum, not just a top-level pathway document.
 - Every skill must appear in at least one stage, one material, and one playlist session.
 - Every stage must be used by at least one material and one playlist.
-- Every material file inside a pathway must be used by at least one playlist session unless it is clearly marked as a reference note in the pathway.
+- Materials may be referenced by playlist sessions or offered directly in Materials for individual assignment. A material does not need a playlist reference to be valid; it must retain valid pathway, stage, and skill ownership.
 - Session materials must match the session skills and stay within the playlist's pathway and stages.
 - Every non-diagnostic playlist must include at least one `lesson_note`, at least one practice material (`worksheet` or `drill`), and at least one `quick_check`.
 - Skills checked in a `quick_check` or practised in a standalone `drill` must already appear in a prior `lesson_note` or guided instruction step.
@@ -140,7 +140,7 @@ Before accepting authored output, check that:
 2. every referenced `stage_id` exists
 3. every playlist references real materials
 4. subject, area, and pathway ids are consistent across the whole slice
-5. every skill, stage, and material has downstream usage and no orphan remains
+5. every skill and stage has downstream usage, and every material is either part of a playlist or intentionally available for direct use
 6. there is no stray markdown outside the owning pathway directory
 7. no duplicate object exists for the same teaching job
 8. all explicit constraints from the brief are respected

@@ -117,7 +117,9 @@ class CornerstoneApiClient {
 
   Future<void> createAssignment({
     required String learnerId,
-    required String playlistId,
+    String? playlistId,
+    String? materialId,
+    String? activityMode,
     String? startDate,
   }) async {
     final response = await _client.post(
@@ -125,7 +127,9 @@ class CornerstoneApiClient {
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
         'learner_id': learnerId,
-        'playlist_id': playlistId,
+        'playlist_id': ?playlistId,
+        'material_id': ?materialId,
+        'activity_mode': ?activityMode,
         if (startDate != null && startDate.isNotEmpty) 'start_date': startDate,
       }),
     );
@@ -274,7 +278,7 @@ class CornerstoneApiClient {
     return WrittenWorksheet.fromJson(_decode(response));
   }
 
-  Future<WrittenCheckResult> checkWrittenWorksheet({
+  Future<Map<String, dynamic>> checkWrittenWorksheet({
     required WrittenWorksheetRequest worksheet,
     required Map<String, String> responses,
     required bool finish,
@@ -290,12 +294,13 @@ class CornerstoneApiClient {
         'finish': finish,
       }),
     );
-    return WrittenCheckResult.fromJson(_decode(response));
+    return _decode(response);
   }
 
   Future<String> writtenWorksheetHtml({
     required WrittenWorksheetRequest worksheet,
     required bool includeAnswers,
+    String layout = 'guided',
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/written-arithmetic/print'),
@@ -303,8 +308,40 @@ class CornerstoneApiClient {
       body: jsonEncode({
         'worksheet': worksheet.toJson(),
         'include_answers': includeAnswers,
+        'layout': layout,
       }),
     );
     return _decode(response)['html'] as String;
+  }
+
+  Future<Map<String, dynamic>> checkPackageActivity(
+    String activityInstanceId,
+    List<Map<String, String>> responses,
+  ) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/activity-instances/$activityInstanceId/check'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'responses': responses}),
+    );
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> completePackageActivity(
+    String activityInstanceId,
+    List<Map<String, String>> responses,
+    int durationSeconds,
+  ) async {
+    final response = await _client.post(
+      Uri.parse(
+        '$baseUrl/api/v1/activity-instances/$activityInstanceId/complete',
+      ),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'responses': responses,
+        'duration_seconds': durationSeconds,
+        'notes': '',
+      }),
+    );
+    return _decode(response);
   }
 }

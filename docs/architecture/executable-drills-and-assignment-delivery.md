@@ -5,8 +5,8 @@ This note fills the gap between the existing curriculum model and the live activ
 Cornerstone already has the right planning spine:
 
 - pathway = the whole route
-- playlist = the assignable teaching block
-- session = one work block inside the playlist
+- playlist = an ordered assignable teaching block
+- session = one scheduled work block, created from a playlist or a directly assigned material
 - material = what the learner or parent actually uses
 
 The missing piece is the contract for materials that behave like live drills or quick checks instead of static markdown.
@@ -33,7 +33,7 @@ Use these as the default product decisions.
 
 Do not introduce a new top-level planning object for exercises.
 
-Drills and quick checks stay as material kinds inside playlist sessions.
+Drills and quick checks stay as material kinds. They may appear in playlist sessions or be assigned individually. Written worksheets can also carry a supported executable runtime.
 
 That preserves the current model:
 
@@ -42,11 +42,9 @@ That preserves the current model:
 - session decides the order inside the block
 - material decides what the learner does
 
-### 2. Never execute arbitrary code from authored content
+### 2. Separate curriculum declarations from presentation code
 
-Content files may describe a drill, but they should not ship raw executable code.
-
-Instead, an executable material points to a trusted backend-owned engine and a validated parameter block.
+Material Markdown points to a trusted backend-owned engine and a validated parameter block. It does not embed executable scripts. A separate, registered HTML/JS/CSS package renders the backend payload inside the shared sandboxed host; see [Activity packages](../authoring/activity-packages.md).
 
 That gives a stable contract, keeps runtime safe, and still leaves room for future AI-assisted authoring.
 
@@ -62,7 +60,7 @@ The backend should:
 - score the submission
 - persist only the summary evidence that Cornerstone actually needs
 
-The client should render trusted interaction primitives from JSON. It should not run remote code.
+The client hosts a registered, version-pinned presentation package served from the control-plane origin. The package renders the backend payload and requests permitted host actions; it has no API credentials and cannot generate authoritative answers, score work, or update progress.
 
 ### 4. Persist summary evidence, not every answer forever
 
@@ -130,6 +128,7 @@ Recommended contract fields:
 - `parameters`: limits for generation, item forms, timing, and batch size
 - `scoring`: the target for this one run
 - `readiness`: representative-practice thresholds for becoming ready for a check
+- `presentation`: the registered package ID and version for the interaction renderer
 
 This keeps the content expressive without letting content become code.
 Persistence is intentionally not authored: the control plane stores compact evidence and never a long-lived raw response log.

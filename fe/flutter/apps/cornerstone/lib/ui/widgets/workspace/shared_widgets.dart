@@ -60,7 +60,7 @@ String _materialActionLabel(String kind, {bool repeat = false}) {
     case 'teaching_note':
       return 'Open teaching note';
     case 'worksheet':
-      return 'Open practice sheet';
+      return repeat ? 'Practise again' : 'Start practice';
     case 'drill':
       return repeat ? 'Practice again' : 'Start drill';
     case 'quick_check':
@@ -223,7 +223,9 @@ class PracticeMasteryPanel extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     _PillBadge(
-                      text: mastery.skillStatus.label,
+                      text: mastery.statusLabel.isEmpty
+                          ? mastery.skillStatus.label
+                          : mastery.statusLabel,
                       color: _skillStatusBackgroundColor(
                         theme,
                         mastery.skillStatus,
@@ -330,22 +332,6 @@ Color _markdownCodeBackgroundColor(ThemeData theme) {
   return theme.brightness == Brightness.dark
       ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.42)
       : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.92);
-}
-
-double _desktopStudioHeight(
-  BuildContext context, {
-  double subtract = 240,
-  double minHeight = 680,
-  double maxHeight = 960,
-}) {
-  final height = MediaQuery.sizeOf(context).height - subtract;
-  if (height < minHeight) {
-    return minHeight;
-  }
-  if (height > maxHeight) {
-    return maxHeight;
-  }
-  return height;
 }
 
 MarkdownStyleSheet _workspaceMarkdownStyle(ThemeData theme) {
@@ -715,90 +701,6 @@ class _SessionMaterialGroupPanel extends StatelessWidget {
   }
 }
 
-class _WorkspaceMaterialGroupPanel extends StatelessWidget {
-  const _WorkspaceMaterialGroupPanel({
-    required this.group,
-    required this.onOpenLibraryRoute,
-  });
-
-  final WorkspaceMaterialKindGroup group;
-  final ValueChanged<String> onOpenLibraryRoute;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.62),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ContractChipRow(
-            children: [
-              _ContractChip(domain: 'material_kind', value: group.kind),
-              _PillBadge(
-                text: 'count:${group.materialCount}',
-                color: theme.colorScheme.surfaceContainerHighest,
-                textColor: theme.colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...group.materials.map(
-            (material) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(material.title, style: theme.textTheme.titleSmall),
-                        const SizedBox(height: 4),
-                        _ContractChipRow(
-                          children: [
-                            _ContractChip(
-                              domain: 'entity',
-                              value: 'session_material',
-                            ),
-                            _ContractChip(
-                              domain: 'material_kind',
-                              value: material.kind,
-                            ),
-                            _PillBadge(
-                              text: '${material.estimatedMinutes} min',
-                              color: theme.colorScheme.surfaceContainerHighest,
-                              textColor: theme.colorScheme.onSurfaceVariant,
-                            ),
-                            if (material.executable)
-                              _ContractChip(domain: 'status', value: 'live'),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (material.routePath != null)
-                    TextButton(
-                      onPressed: () => onOpenLibraryRoute(material.routePath!),
-                      child: const Text('Open'),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _SessionWorkspaceAudiencePanel extends StatelessWidget {
   const _SessionWorkspaceAudiencePanel({
     required this.title,
@@ -940,172 +842,6 @@ class _SessionWorkspaceAudiencePanel extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _MissingLearnerContentNotice extends StatelessWidget {
-  const _MissingLearnerContentNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: theme.colorScheme.error.withValues(alpha: 0.22),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'This session is missing learner content.',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onErrorContainer,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Ask your parent or teacher to add learner-facing material for this step before you continue.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onErrorContainer,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DesktopSidebarButton extends StatelessWidget {
-  const _DesktopSidebarButton({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-    this.level = 0,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-  final int level;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final accentColor = switch (level) {
-      0 => theme.colorScheme.secondary,
-      1 => theme.colorScheme.primary,
-      2 => theme.colorScheme.tertiary,
-      _ => theme.colorScheme.onSurfaceVariant,
-    };
-    final baseColor = switch (level) {
-      0 =>
-        isDark
-            ? Color.alphaBlend(
-                theme.colorScheme.secondary.withValues(alpha: 0.08),
-                theme.colorScheme.surfaceContainerHigh,
-              )
-            : theme.colorScheme.secondaryContainer.withValues(alpha: 0.82),
-      1 => Color.alphaBlend(
-        theme.colorScheme.primary.withValues(alpha: isDark ? 0.08 : 0.10),
-        isDark
-            ? theme.colorScheme.surfaceContainerLow
-            : theme.colorScheme.surface,
-      ),
-      2 => Color.alphaBlend(
-        theme.colorScheme.tertiary.withValues(alpha: isDark ? 0.08 : 0.10),
-        isDark
-            ? theme.colorScheme.surfaceContainerLow
-            : theme.colorScheme.surface,
-      ),
-      _ =>
-        isDark
-            ? theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.74)
-            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.92),
-    };
-    final baseTextColor = switch (level) {
-      0 => theme.colorScheme.onSurface,
-      1 => theme.colorScheme.primary,
-      2 => theme.colorScheme.tertiary,
-      _ => theme.colorScheme.onSurfaceVariant,
-    };
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(
-          horizontal: 14 - (level > 2 ? 2 : 0),
-          vertical: level >= 2 ? 11 : 13,
-        ),
-        decoration: BoxDecoration(
-          color: selected
-              ? baseColor.withValues(alpha: 0.88)
-              : baseColor.withValues(alpha: level == 0 ? 0.42 : 0.28),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected
-                ? baseTextColor.withValues(alpha: 0.22)
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.72),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              height: level >= 2 ? 20 : 26,
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: selected ? 0.92 : 0.36),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              width: level >= 2 ? 24 : 28,
-              height: level >= 2 ? 24 : 28,
-              decoration: BoxDecoration(
-                color: selected
-                    ? accentColor.withValues(alpha: isDark ? 0.16 : 0.10)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                icon,
-                size: level >= 2 ? 14 : 16,
-                color: selected
-                    ? baseTextColor
-                    : accentColor.withValues(alpha: 0.84),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                style:
-                    (level >= 2
-                            ? theme.textTheme.bodySmall
-                            : theme.textTheme.titleSmall)
-                        ?.copyWith(
-                          color: selected ? baseTextColor : null,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w600,
-                        ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

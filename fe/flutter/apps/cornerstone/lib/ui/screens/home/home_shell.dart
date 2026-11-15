@@ -1,21 +1,16 @@
 part of '../../../main.dart';
 
 enum _ShellDestination {
-  owner('Team', 'Learners and sessions.', CornerstoneIcons.team),
+  owner('Learners', 'Students, sessions, and progress.', CornerstoneIcons.team),
   learner(
-    'Learning',
+    'My work',
     'Current pathway and session work.',
     CornerstoneIcons.learning,
   ),
   library(
-    'Pathways',
-    'Review authored routes, playlists, and materials.',
+    'Library',
+    'Pathways, sessions, and learning materials.',
     CornerstoneIcons.library,
-  ),
-  writtenArithmetic(
-    'Written arithmetic',
-    'Column practice and printable worksheets.',
-    CornerstoneIcons.writtenArithmetic,
   ),
   account(
     'Profile',
@@ -60,7 +55,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   LearnerWorkspacePayload? _learnerWorkspace;
   String? _selectedLearnerId;
   String? _selectedLibraryRoutePath;
-  _ShellDestination _selectedDestination = _ShellDestination.owner;
+  String? _requestedLibraryPreviewRoute;
+  _ShellDestination _selectedDestination = _ShellDestination.library;
   bool _shellNavExpanded = true;
   bool _sessionLoading = true;
   bool _loading = true;
@@ -101,16 +97,14 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     if (viewer == null) return const <_ShellDestination>[];
     if (viewer.canManageTeam) {
       return <_ShellDestination>[
+        if (viewer.canReadLibrary) _ShellDestination.library,
         _ShellDestination.owner,
         _ShellDestination.learner,
-        _ShellDestination.writtenArithmetic,
-        if (viewer.canReadLibrary) _ShellDestination.library,
         _ShellDestination.account,
       ];
     }
     return const <_ShellDestination>[
       _ShellDestination.learner,
-      _ShellDestination.writtenArithmetic,
       _ShellDestination.account,
     ];
   }
@@ -132,6 +126,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   _ShellDestination _defaultDestinationForViewer(ViewerUser viewer) {
     return viewer.isLearner || viewer.learnerId != null
         ? _ShellDestination.learner
+        : viewer.canReadLibrary
+        ? _ShellDestination.library
         : _ShellDestination.owner;
   }
 
@@ -455,6 +451,11 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         : null;
   }
 
+  Future<void> _openLibraryDocumentFromWork(String routePath) async {
+    setState(() => _requestedLibraryPreviewRoute = routePath);
+    await _selectLibraryDocument(routePath);
+  }
+
   Future<void> _selectLibraryDocument(String routePath) async {
     if (!_viewerCanReadLibrary) {
       return;
@@ -539,18 +540,40 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     }
   }
 
-  Future<void> _createAssignment(String learnerId, String playlistId) async {
+  Future<void> _showAssignment({
+    required String title,
+    required List<PlaylistAssignmentTarget> targets,
+    String? materialId,
+    String? playlistId,
+    bool offerActivityMode = false,
+  }) async {
     if (!_viewerCanManage) return;
+    final selection = await showDialog<AssignmentSelection>(
+      context: context,
+      builder: (_) => AssignMaterialDialog(
+        title: title,
+        targets: targets,
+        offerActivityMode: offerActivityMode,
+      ),
+    );
+    if (selection == null || !mounted) return;
     setState(() {
       _busy = true;
       _errorMessage = null;
     });
     try {
       await _apiClient.createAssignment(
-        learnerId: learnerId,
+        learnerId: selection.learnerId,
         playlistId: playlistId,
+        materialId: materialId,
+        activityMode: selection.activityMode,
       );
       await _loadAll();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Assigned $title.')));
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -615,6 +638,20 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   }
 
   Future<void> _openExecutableActivity(ActivityInstance activity) async {
+    final presentation = activity.presentation;
+    if (presentation != null) {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => ActivityPackagePage(
+            apiBaseUrl: _apiClient.baseUrl,
+            run: _packageRun(activity),
+          ),
+        ),
+      );
+      if (mounted) await _loadAll();
+      return;
+    }
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -626,6 +663,25 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       ),
     );
   }
+
+  ActivityPackageRun _packageRun(ActivityInstance activity) =>
+      ActivityPackageRun(
+        id: activity.activityInstanceId,
+        title: activity.materialTitle,
+        presentation: activity.presentation!,
+        onCheck: (responses, _) => _apiClient.checkPackageActivity(
+          activity.activityInstanceId,
+          responses,
+        ),
+        onComplete: (responses, duration) => _apiClient.completePackageActivity(
+          activity.activityInstanceId,
+          responses,
+          duration,
+        ),
+        onRetry: () async => _packageRun(
+          await _apiClient.retryActivity(activity.activityInstanceId),
+        ),
+      );
 
   Future<ActivityInstance> _retryExecutableActivity(
     ActivityInstance activity,
@@ -1002,6 +1058,11 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     return null;
   }
 
+  String _destinationLabel(_ShellDestination destination) =>
+      destination == _ShellDestination.learner && _viewerCanManage
+      ? 'Student work'
+      : destination.label;
+
   void _setDestination(_ShellDestination d) {
     if (!_availableDestinations.contains(d)) return;
     setState(() => _selectedDestination = d);
@@ -1045,7 +1106,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       _ShellDestination.owner => 1460,
       _ShellDestination.learner => 1360,
       _ShellDestination.library => 1780,
-      _ShellDestination.writtenArithmetic => 1080,
       _ShellDestination.account => 1080,
     };
   }
@@ -1528,7 +1588,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        destination.label,
+                        _destinationLabel(destination),
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                           color: selected
@@ -1705,7 +1765,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
             ..._availableDestinations.map(
               (d) => ListTile(
                 leading: Icon(d.icon),
-                title: Text(d.label),
+                title: Text(_destinationLabel(d)),
                 subtitle: Text(
                   d.subtitle,
                   maxLines: 2,
@@ -1774,7 +1834,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         title: _BrandLockup(
           compact: isMobile,
           toolbarVariant: true,
-          onTap: () => _setDestination(_ShellDestination.owner),
+          onTap: () =>
+              _setDestination(_defaultDestinationForViewer(_activeViewer!)),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -1862,8 +1923,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       durationController: _durationController,
       notesController: _notesController,
       onSelectLearner: _selectLearner,
-      onCreateAssignment: _createAssignment,
-      onOpenLibraryRoute: _selectLibraryDocument,
+      onOpenLibraryRoute: _openLibraryDocumentFromWork,
       onOpenLibraryWorkspace: () => _setDestination(_ShellDestination.library),
       onRecordSession: _recordCurrentSession,
       onStartActivity: _startActivityForMaterial,
@@ -1878,11 +1938,11 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   }
 
   Widget _buildLearnerView(BuildContext context) {
-    return _LearnerWorkspaceView(
+    return LearnerWorkspaceView(
       viewer: _currentViewer,
       workspace: _learnerWorkspace,
       viewerCanReadLibrary: _viewerCanReadLibrary,
-      onOpenLibraryRoute: _selectLibraryDocument,
+      onOpenLibraryRoute: _openLibraryDocumentFromWork,
       onStartActivity: _startActivityForMaterial,
       onStartReview: _startReviewItem,
       onSetReadinessOverride: _viewerCanManage
@@ -1898,14 +1958,36 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     BuildContext context,
     LibraryWorkspacePayload libraryWorkspace,
   ) {
-    return _LibraryWorkspaceView(
-      libraryWorkspace: libraryWorkspace,
+    return MaterialsWorkspaceView(
+      library: libraryWorkspace,
       documents: _libraryDocuments,
       activeDocument: _selectedLibraryDocument,
-      libraryDocumentBusy: _libraryDocumentBusy,
-      viewerCanManage: _viewerCanManage,
-      onCreateAssignment: _createAssignment,
-      onOpenLibraryRoute: _selectLibraryDocument,
+      requestedPreviewRoute: _requestedLibraryPreviewRoute,
+      onPreviewRequestHandled: () => setState(() {
+        _requestedLibraryPreviewRoute = null;
+      }),
+      documentBusy: _libraryDocumentBusy,
+      canAssign: _viewerCanManage,
+      onAssignMaterial: (material) => _showAssignment(
+        title: material.title,
+        targets: material.assignmentTargets,
+        materialId: material.materialId,
+        offerActivityMode: material.activityLevelId != null,
+      ),
+      onAssignPlaylist: (playlist) => _showAssignment(
+        title: playlist.title,
+        targets: playlist.assignmentTargets,
+        playlistId: playlist.playlistId,
+      ),
+      onOpenDocument: _selectLibraryDocument,
+      onCreateWorksheet: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => WrittenArithmeticScreen(
+            apiClient: _apiClient,
+            canPrintAnswers: _viewerCanManage,
+          ),
+        ),
+      ),
     );
   }
 }

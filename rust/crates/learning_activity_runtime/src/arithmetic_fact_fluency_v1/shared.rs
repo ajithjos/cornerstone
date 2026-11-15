@@ -221,6 +221,8 @@ pub(super) fn build_generated_activity(
     )?;
 
     Ok(GeneratedActivity {
+        written_plan: None,
+        package_descriptor: None,
         generation_context: context.clone(),
         runtime_id: runtime_id.to_string(),
         engine_id: runtime.engine_id.clone(),

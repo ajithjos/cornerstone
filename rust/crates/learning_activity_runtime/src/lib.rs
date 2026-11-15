@@ -147,6 +147,10 @@ pub struct GeneratedActivity {
     pub coverage: ActivityCoverage,
     pub target_accuracy: f64,
     pub max_duration_seconds: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub written_plan: Option<written_arithmetic::StoredWorksheet>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_descriptor: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -222,6 +226,9 @@ pub fn validate_material_runtime(material: &MaterialDocument) -> anyhow::Result<
 }
 
 pub fn validate_runtime(runtime: &MaterialRuntime) -> anyhow::Result<()> {
+    if runtime.engine_id == written_arithmetic::ENGINE_ID {
+        return written_arithmetic::validate_runtime(runtime);
+    }
     let program = resolve_program(runtime)?;
     (program.validate)(runtime).with_context(|| format!("runtime '{}' is invalid", program.runtime_id))
 }
@@ -234,6 +241,9 @@ pub fn generate_activity(
         .runtime
         .as_ref()
         .ok_or_else(|| anyhow!("material '{}' is not executable", material.id))?;
+    if runtime.engine_id == written_arithmetic::ENGINE_ID {
+        return written_arithmetic::generate_activity(runtime, context);
+    }
     let program = resolve_program(runtime)?;
     (program.generate)(runtime, context)
         .with_context(|| format!("runtime '{}' failed to generate activity", program.runtime_id))
@@ -248,6 +258,12 @@ pub fn score_activity(
         .runtime
         .as_ref()
         .ok_or_else(|| anyhow!("material '{}' is not executable", material.id))?;
+    if generated.engine_id == written_arithmetic::ENGINE_ID {
+        if runtime.engine_id != generated.engine_id {
+            bail!("stored activity runtime does not match its material");
+        }
+        return written_arithmetic::score_activity(generated, responses);
+    }
     let program = resolve_program(runtime)?;
     if generated.runtime_id != program.runtime_id {
         bail!(
@@ -318,6 +334,7 @@ mod tests {
             difficulty: "introductory".to_string(),
             estimated_minutes: 5,
             runtime: Some(MaterialRuntime {
+                presentation: None,
                 engine_id: "arithmetic_fact_fluency.v1".to_string(),
                 spec_version: 1,
                 template_id: template_id.to_string(),

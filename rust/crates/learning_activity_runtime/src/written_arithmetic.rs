@@ -346,7 +346,7 @@ pub fn levels() -> Vec<WrittenLevel> {
     LEVELS.iter().map(|level| level.public()).collect()
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Answer {
     expected: String,
     explanation: String,
@@ -354,8 +354,9 @@ struct Answer {
     max_digits: usize,
 }
 
-struct Plan {
-    worksheet: Worksheet,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredWorksheet {
+    pub worksheet: Worksheet,
     answers: BTreeMap<String, Answer>,
 }
 
@@ -379,19 +380,28 @@ pub fn generate_solved(request: WorksheetRequest) -> Result<Worksheet> {
     Ok(plan.worksheet)
 }
 
+pub fn generate_stored(request: WorksheetRequest) -> Result<StoredWorksheet> {
+    build(request)
+}
+
 pub fn check(request: CheckRequest) -> Result<CheckResult> {
     ensure!(
         request.worksheet.seed.is_some(),
         "checking requires the worksheet's generated seed"
     );
+    let plan = build(request.worksheet)?;
+    check_stored(&plan, &request.responses, request.finish)
+}
+
+/// Grade the immutable snapshot. Never regenerate a persisted run from its seed.
+pub fn check_stored(plan: &StoredWorksheet, responses: &[CellResponse], finish: bool) -> Result<CheckResult> {
     ensure!(
-        request.finish || request.worksheet.mode == PracticeMode::Assisted,
+        finish || plan.worksheet.request.mode == PracticeMode::Assisted,
         "assessment feedback is available only after submission"
     );
-    let plan = build(request.worksheet)?;
-    ensure!(request.responses.len() <= plan.answers.len(), "too many cell responses");
+    ensure!(responses.len() <= plan.answers.len(), "too many cell responses");
     let mut submitted = BTreeMap::new();
-    for response in request.responses {
+    for response in responses {
         let answer = plan
             .answers
             .get(&response.cell_id)
@@ -408,14 +418,14 @@ pub fn check(request: CheckRequest) -> Result<CheckResult> {
             response.cell_id,
             answer.max_digits
         );
-        submitted.insert(response.cell_id, value);
+        submitted.insert(response.cell_id.clone(), value);
     }
     let mut feedback = Vec::new();
     let mut correct_count = 0;
     let mut total_count = 0;
     for (cell_id, answer) in &plan.answers {
         let value = submitted.get(cell_id);
-        if !request.finish && value.is_none() {
+        if !finish && value.is_none() {
             continue;
         }
         let value = value.map(String::as_str).unwrap_or("");
@@ -434,8 +444,8 @@ pub fn check(request: CheckRequest) -> Result<CheckResult> {
         feedback.push(CellFeedback {
             cell_id: cell_id.clone(),
             correct,
-            expected: (!correct || request.finish).then(|| answer.expected.clone()),
-            explanation: if correct && !request.finish {
+            expected: (!correct || finish).then(|| answer.expected.clone()),
+            explanation: if correct && !finish {
                 "Correct.".into()
             } else {
                 answer.explanation.clone()
@@ -445,7 +455,7 @@ pub fn check(request: CheckRequest) -> Result<CheckResult> {
     Ok(CheckResult {
         correct_count,
         total_count,
-        complete: request.finish,
+        complete: finish,
         feedback,
     })
 }
@@ -468,7 +478,7 @@ impl Generator {
     }
 }
 
-fn build(mut request: WorksheetRequest) -> Result<Plan> {
+fn build(mut request: WorksheetRequest) -> Result<StoredWorksheet> {
     ensure!(
         (1..=24).contains(&request.question_count),
         "question_count must be between 1 and 24"
@@ -528,7 +538,7 @@ fn build(mut request: WorksheetRequest) -> Result<Plan> {
         problems.len() == request.question_count,
         "could not generate the requested distinct practice set"
     );
-    Ok(Plan {
+    Ok(StoredWorksheet {
         worksheet: Worksheet {
             request,
             level: spec.public(),
@@ -1041,6 +1051,277 @@ fn division(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answer>
     grid.problem
 }
 
+pub const ENGINE_ID: &str = "written_arithmetic.v1";
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RuntimeParameters {
+    question_count: usize,
+}
+
+pub fn validate_runtime(runtime: &catalog::MaterialRuntime) -> Result<()> {
+    ensure!(
+        runtime.engine_id == ENGINE_ID && runtime.spec_version == 1,
+        "unsupported written arithmetic runtime"
+    );
+    ensure!(
+        LEVELS.iter().any(|level| level.id == runtime.template_id),
+        "unknown written arithmetic level"
+    );
+    let parameters: RuntimeParameters = serde_json::from_value(runtime.parameters.clone())?;
+    ensure!(
+        (1..=24).contains(&parameters.question_count),
+        "question_count must be between 1 and 24"
+    );
+    let target = runtime
+        .scoring
+        .as_ref()
+        .and_then(|scoring| scoring.target_accuracy)
+        .ok_or_else(|| anyhow!("target_accuracy is required"))?;
+    ensure!(
+        target > 0.0 && target <= 1.0,
+        "target_accuracy must be greater than 0 and at most 1"
+    );
+    ensure!(
+        runtime.readiness.is_none() && runtime.gate.is_none(),
+        "written worksheets record practice evidence; readiness and mastery gates are not supported yet"
+    );
+    Ok(())
+}
+
+pub fn generate_activity(
+    runtime: &catalog::MaterialRuntime,
+    context: &crate::GenerationContext,
+) -> Result<crate::GeneratedActivity> {
+    validate_runtime(runtime)?;
+    let parameters: RuntimeParameters = serde_json::from_value(runtime.parameters.clone())?;
+    let request = WorksheetRequest {
+        level_id: runtime.template_id.clone(),
+        seed: Some(context.seed & u64::from(u32::MAX)),
+        question_count: parameters.question_count,
+        mode: if context.run_mode == crate::RunMode::Check {
+            PracticeMode::Assessment
+        } else {
+            PracticeMode::Assisted
+        },
+    };
+    let mut stored = build(request)?;
+    let spec = LEVELS
+        .iter()
+        .find(|level| level.id == runtime.template_id)
+        .expect("validated level");
+    // Retry the same semantic problems, using a fresh immutable instance. Review keeps a mixed component.
+    let focus = if matches!(context.run_mode, crate::RunMode::Retry | crate::RunMode::Review)
+        && !context.focus_fact_keys.is_empty()
+    {
+        &context.focus_fact_keys
+    } else {
+        &context.weak_fact_keys
+    };
+    if !focus.is_empty() && context.run_mode != crate::RunMode::Check {
+        let limit = if context.run_mode == crate::RunMode::Retry {
+            parameters.question_count
+        } else {
+            parameters.question_count.saturating_sub(1).min(3)
+        };
+        let mut selected = Vec::new();
+        let mut seen = BTreeSet::new();
+        for key in focus {
+            if let Some((a, b)) = parse_fact_key(key, spec) {
+                if seen.insert((a, b)) {
+                    selected.push((a, b));
+                }
+                if selected.len() == limit {
+                    break;
+                }
+            }
+        }
+        if context.run_mode != crate::RunMode::Retry || selected.is_empty() {
+            for problem in &stored.worksheet.problems {
+                let (a, b) = operands(problem);
+                if selected.len() < parameters.question_count && seen.insert((a, b)) {
+                    selected.push((a, b));
+                }
+            }
+        }
+        stored.answers.clear();
+        stored.worksheet.problems = selected
+            .into_iter()
+            .enumerate()
+            .map(|(index, (a, b))| problem(spec.operation, a, b, index + 1, &mut stored.answers))
+            .collect();
+        stored.worksheet.request.question_count = stored.worksheet.problems.len();
+    }
+    let family = format!("written-level:{}", spec.id);
+    let items = stored
+        .worksheet
+        .problems
+        .iter()
+        .map(|problem| {
+            let (a, b) = operands(problem);
+            let expected = match spec.operation {
+                Operation::Addition => a + b,
+                Operation::Subtraction => a - b,
+                Operation::Multiplication => a * b,
+                Operation::Division => a / b,
+            };
+            crate::GeneratedActivityItem {
+                item_id: problem.id.clone(),
+                fact_key: fact_key(spec, a, b),
+                family_keys: vec![family.clone()],
+                coverage_keys: vec![family.clone()],
+                difficulty_band: crate::DifficultyBand::Core,
+                content: problem.prompt.clone(),
+                response_kind: "written_grid".into(),
+                expected_response: expected as i32,
+                correction_cue: stored.worksheet.level.instructions.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+    Ok(crate::GeneratedActivity {
+        generation_context: context.clone(),
+        runtime_id: crate::build_runtime_id(ENGINE_ID, spec.id),
+        engine_id: ENGINE_ID.into(),
+        template_id: spec.id.into(),
+        instructions: stored.worksheet.level.instructions.clone(),
+        coverage: crate::ActivityCoverage {
+            required_family_keys: vec![family.clone()],
+            covered_family_keys: vec![family],
+            required_difficulty_bands: vec![crate::DifficultyBand::Core],
+            difficulty_counts: vec![crate::DifficultyCoverage {
+                difficulty_band: crate::DifficultyBand::Core,
+                item_count: items.len(),
+            }],
+            foundation_item_cap: 0,
+            adaptive_item_cap: parameters.question_count,
+            adaptive_item_count: 0,
+            requirements_met: true,
+            // A selected level is an assessment of that exercise, not proof of an unrestricted written-method skill.
+            representative: false,
+        },
+        items,
+        target_accuracy: runtime
+            .scoring
+            .as_ref()
+            .and_then(|scoring| scoring.target_accuracy)
+            .expect("validated target"),
+        max_duration_seconds: runtime
+            .scoring
+            .as_ref()
+            .and_then(|scoring| scoring.max_duration_seconds),
+        written_plan: Some(stored),
+        package_descriptor: None,
+    })
+}
+
+fn operands(problem: &WrittenProblem) -> (u32, u32) {
+    let parts = problem.prompt.split_whitespace().collect::<Vec<_>>();
+    (
+        parts[0].parse().expect("generated operand"),
+        parts[2].parse().expect("generated operand"),
+    )
+}
+fn fact_key(spec: &LevelSpec, mut a: u32, mut b: u32) -> String {
+    if matches!(spec.operation, Operation::Addition | Operation::Multiplication)
+        && a < b
+        && spec.top_digits == spec.bottom_digits
+    {
+        std::mem::swap(&mut a, &mut b);
+    }
+    format!("written:{}:{a}:{b}", spec.id)
+}
+fn parse_fact_key(key: &str, spec: &LevelSpec) -> Option<(u32, u32)> {
+    let parts = key.split(':').collect::<Vec<_>>();
+    if parts.len() != 4 || parts[0] != "written" || parts[1] != spec.id {
+        return None;
+    }
+    let (a, b) = (parts[2].parse::<u32>().ok()?, parts[3].parse::<u32>().ok()?);
+    if digits(a) != spec.top_digits as usize
+        || digits(b) != spec.bottom_digits as usize
+        || b == 0
+        || (spec.operation == Operation::Subtraction && a < b)
+    {
+        return None;
+    }
+    Some((a, b))
+}
+
+pub fn score_activity(
+    generated: &crate::GeneratedActivity,
+    responses: &[crate::ActivityResponseInput],
+) -> Result<crate::ScoredActivity> {
+    let plan = generated
+        .written_plan
+        .as_ref()
+        .ok_or_else(|| anyhow!("written activity has no stored grading plan"))?;
+    let cells = responses
+        .iter()
+        .map(|response| CellResponse {
+            cell_id: response.item_id.clone(),
+            value: response.value.clone(),
+        })
+        .collect::<Vec<_>>();
+    let result = check_stored(plan, &cells, true)?;
+    let mut fact_results = Vec::new();
+    let mut corrections = Vec::new();
+    let mut attempted_count = 0;
+    let mut correct_count = 0;
+    for item in &generated.items {
+        let prefix = format!("{}.", item.item_id);
+        let attempted = cells
+            .iter()
+            .any(|cell| cell.cell_id.starts_with(&prefix) && !cell.value.trim().is_empty());
+        let incorrect = result
+            .feedback
+            .iter()
+            .find(|cell| cell.cell_id.starts_with(&prefix) && !cell.correct);
+        let correct = incorrect.is_none();
+        attempted_count += usize::from(attempted);
+        correct_count += usize::from(correct);
+        fact_results.push(crate::FactResult {
+            fact_key: item.fact_key.clone(),
+            family_keys: item.family_keys.clone(),
+            difficulty_band: item.difficulty_band,
+            attempted_count: usize::from(attempted),
+            correct_count: usize::from(correct),
+        });
+        if let Some(error) = incorrect {
+            corrections.push(crate::ActivityCorrection {
+                item_id: item.item_id.clone(),
+                content: item.content.clone(),
+                submitted_response: "Working needs correction".into(),
+                expected_response: item.expected_response,
+                fact_key: item.fact_key.clone(),
+                family_keys: item.family_keys.clone(),
+                correction_cue: error.explanation.clone(),
+            });
+        }
+    }
+    let item_count = generated.items.len();
+    let accuracy = correct_count as f64 / item_count.max(1) as f64;
+    let family = format!("written-level:{}", generated.template_id);
+    Ok(crate::ScoredActivity {
+        attempted_count,
+        correct_count,
+        item_count,
+        accuracy,
+        target_met: accuracy >= generated.target_accuracy,
+        completion_reason: "submitted".into(),
+        weak_family_keys: if correct_count < item_count {
+            vec![family.clone()]
+        } else {
+            vec![]
+        },
+        fact_results,
+        family_results: vec![crate::FamilyResult {
+            family_key: family,
+            attempted_count,
+            correct_count,
+        }],
+        corrections,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1053,7 +1334,7 @@ mod tests {
             mode: PracticeMode::Assisted,
         }
     }
-    fn values(plan: &Plan) -> Vec<CellResponse> {
+    fn values(plan: &StoredWorksheet) -> Vec<CellResponse> {
         plan.answers
             .iter()
             .map(|(cell_id, answer)| CellResponse {
@@ -1082,6 +1363,78 @@ mod tests {
                     .unwrap_or(&cell.text)
             })
             .collect::<String>()
+    }
+
+    fn registered_runtime(level: &str) -> catalog::MaterialRuntime {
+        catalog::MaterialRuntime {
+            engine_id: ENGINE_ID.into(),
+            spec_version: 1,
+            template_id: level.into(),
+            parameters: serde_json::json!({"question_count": 6}),
+            scoring: Some(catalog::MaterialRuntimeScoring {
+                target_accuracy: Some(0.9),
+                max_duration_seconds: None,
+            }),
+            readiness: None,
+            gate: None,
+            presentation: None,
+        }
+    }
+
+    #[test]
+    fn persisted_snapshot_grades_its_cells_without_regenerating() {
+        let mut stored = build(request("addition_2_carry", 31, 2)).unwrap();
+        let responses = values(&stored);
+        stored.worksheet.request.seed = Some(9999);
+        let serialized = serde_json::to_value(&stored).unwrap();
+        assert!(serialized.get("answers").is_some());
+        let restored: StoredWorksheet = serde_json::from_value(serialized).unwrap();
+        let scored = check_stored(&restored, &responses, true).unwrap();
+        assert_eq!(scored.correct_count, scored.total_count);
+        let public = serde_json::to_value(&restored.worksheet).unwrap();
+        assert!(public.get("answers").is_none());
+    }
+
+    #[test]
+    fn assigned_runtime_scores_problems_and_retries_exact_missed_facts() {
+        let runtime = registered_runtime("division_3_remainders");
+        let generated = generate_activity(&runtime, &crate::GenerationContext::practice(52)).unwrap();
+        let stored = generated.written_plan.as_ref().unwrap();
+        let responses = values(stored)
+            .into_iter()
+            .map(|cell| crate::ActivityResponseInput {
+                item_id: cell.cell_id,
+                value: cell.value,
+            })
+            .collect::<Vec<_>>();
+        let score = score_activity(&generated, &responses).unwrap();
+        assert_eq!(score.correct_count, 6);
+        assert_eq!(score.item_count, 6);
+        assert_eq!(score.fact_results.len(), 6);
+        assert!(score.target_met);
+        let check = generate_activity(&runtime, &crate::GenerationContext::check(52)).unwrap();
+        assert!(!check.coverage.representative);
+        assert!(check_stored(check.written_plan.as_ref().unwrap(), &[], false).is_err());
+        let missed = generated
+            .items
+            .iter()
+            .take(2)
+            .map(|item| item.fact_key.clone())
+            .collect::<Vec<_>>();
+        let retry = generate_activity(
+            &runtime,
+            &crate::GenerationContext::retry(900).with_focus_facts(missed.clone()),
+        )
+        .unwrap();
+        assert_eq!(
+            retry.items.iter().map(|item| &item.fact_key).collect::<BTreeSet<_>>(),
+            missed.iter().collect()
+        );
+        assert_eq!(retry.items.len(), 2);
+        let empty = score_activity(&generated, &[]).unwrap();
+        assert_eq!(empty.correct_count, 0);
+        assert_eq!(empty.attempted_count, 0);
+        assert_eq!(empty.corrections.len(), 6);
     }
 
     #[test]

@@ -10,6 +10,8 @@ Share it with whoever is doing the work: a teacher, subject expert, contractor, 
 - the stable curriculum model and file ownership
 - authoring rules for tone, vocabulary, naming, reuse, and validation
 - arithmetic teaching guidance for pathway design and material generation
+- written-arithmetic assignments and fresh guided or compact worksheets
+- independently versioned activity presentation packages
 - family and cultural-context guidance for names, examples, and tone
 - the practical workflow for creating, revising, or reviewing curriculum
 - a fillable brief template for one curriculum slice
@@ -29,6 +31,8 @@ Architecture decisions about planning objects and runtime surfaces live under `.
 6. [Planning, authoring, and runtime](../architecture/planning-authoring-and-runtime.md) if you need the whole-system mental model
 7. [Arithmetic fact fluency brief](./examples/arithmetic-fact-fluency-brief.md) for a concrete first curriculum slice
 8. [Arithmetic written methods brief](./examples/arithmetic-written-methods-brief.md) for the scalable whole-number algorithms route
+9. [Written arithmetic practice](./written-arithmetic-practice.md) for assignment modes and worksheet generation
+10. [Activity packages](./activity-packages.md) for independently loadable HTML/JS/CSS presentations
 
 ## How To Use This Directory
 

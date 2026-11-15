@@ -106,35 +106,12 @@ class _LibraryDocumentReader extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'entity:${_contractTermLabel(activeDocument.kind)} · material_kind:${_contractTermLabel(resolvedMaterialKind)} · ${activeDocument.routePath}',
+                    activeDocument.kind == 'material'
+                        ? _materialKindLabel(resolvedMaterialKind)
+                        : _humanizeLabel(activeDocument.kind),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  _ContractChipRow(
-                    children: [
-                      _ContractChip(
-                        domain: 'entity',
-                        value: activeDocument.kind,
-                      ),
-                      if (activeDocument.kind == 'material')
-                        const _ContractChip(
-                          domain: 'entity',
-                          value: 'session_material',
-                        ),
-                      _ContractChip(
-                        domain: 'material_kind',
-                        value: resolvedMaterialKind,
-                      ),
-                      _PillBadge(
-                        text: 'pathway_id:${activeDocument.pathwayId}',
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: 0.12,
-                        ),
-                        textColor: theme.colorScheme.primary,
-                      ),
-                    ],
                   ),
                 ],
               ),
@@ -166,9 +143,7 @@ class _LibraryDocumentReader extends StatelessWidget {
                 );
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Markdown copied to clipboard.'),
-                  ),
+                  const SnackBar(content: Text('Text copied to clipboard.')),
                 );
               },
               icon: const Icon(Icons.content_copy_rounded, size: 18),

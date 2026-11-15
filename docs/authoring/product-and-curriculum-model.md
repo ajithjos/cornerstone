@@ -14,7 +14,7 @@ Authors need to understand the delivery chain that their work feeds:
 
 1. Adults browse curriculum by subject and area.
 2. Adults choose a pathway as the whole route.
-3. A playlist becomes an assignment for one learner.
+3. A playlist or an individual material becomes an assignment for one learner.
 4. An assignment schedules sessions.
 5. Sessions use real materials.
 6. Completed sessions produce evidence.
@@ -83,11 +83,11 @@ A material is one reusable artifact such as a `lesson_note`, `teaching_note`, `w
 
 Use `lesson_note` for the learner-facing durable reference: the textbook or notebook page the learner can return to after the session. It should contain the taught idea, reference tables or models when needed, worked examples, and the correct language for the skill.
 
-Use `worksheet` for consumable learner practice. It should ask the learner to retrieve, write, solve, explain, or check, without duplicating the whole reference page.
+Use `worksheet` for consumable learner practice on paper or through a supported interactive worksheet runtime. It should ask the learner to retrieve, write, solve, explain, or check, without duplicating the whole reference page.
 
 Use `teaching_note` for adult-facing delivery guidance.
 
-Each material should point back to real `skill_ids` and `stage_ids`.
+Each material should point back to real `skill_ids` and `stage_ids`. Materials can be browsed and assigned individually; a playlist is optional for a standalone material. See [Written arithmetic practice](./written-arithmetic-practice.md) for an example.
 
 ### Playlist
 
@@ -104,7 +104,7 @@ Authors do not usually edit runtime objects directly, but they should know how t
 - Team: the learning team.
 - User: one person in the team.
 - Learner: a user who receives assignments.
-- Assignment: one learner's live use of one playlist over time.
+- Assignment: one learner's scheduled use of a playlist or an individual material. A direct material assignment creates one session.
 - Session: a scheduled unit of work inside an assignment.
 - Evidence: the recorded outcome of a completed session.
 - Progress: the learner's current state for each skill, derived from evidence.
@@ -117,7 +117,7 @@ Authors do not usually edit runtime objects directly, but they should know how t
 - A stage groups a meaningful set of skills.
 - A material supports one or more skills and one or more stages.
 - A playlist sequences materials into sessions for delivery.
-- An assignment instantiates one playlist for one learner.
+- An assignment instantiates a playlist or an individual material for one learner.
 - A session produces evidence.
 - Evidence updates progress.
 
@@ -130,7 +130,7 @@ Authors do not usually edit runtime objects directly, but they should know how t
 - `content/library/{subject}/{area}/{pathway}/playlists/*.md`
 - `content/library/{subject}/{area}/{pathway}/materials/*.md`
 
-The brief stays in `docs/authoring/examples/` as the planning source. The canonical authored curriculum lives under `content/library/`.
+The brief stays in `docs/authoring/examples/` as the planning source. The canonical authored curriculum lives under `content/library/`. Separately versioned HTML/JS/CSS presentations live under `content/activity_packages/`; see [Activity packages](./activity-packages.md). The Rust control plane owns generation, scoring, assignments, and progress.
 
 ## Recommended Authoring Order
 

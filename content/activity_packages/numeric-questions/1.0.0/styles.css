@@ -1,0 +1,35 @@
+:root { color-scheme: light; font-family: ui-rounded, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #193647; background: #f5f8fc; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+main { max-width: 64rem; padding: 1.25rem; margin: 0 auto; }
+header { padding: .5rem .2rem 1rem; }
+.eyebrow { color: #42617a; font-size: .74rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; margin: 0 0 .6rem; }
+.title-row { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem 1rem; }
+h1 { font-size: clamp(1.4rem, 3.2vw, 2rem); line-height: 1.2; margin: 0; }
+.badge { display: inline-block; padding: .4rem .7rem; color: #12457b; background: #e3efff; border: 1px solid #a6c3e8; border-radius: 999px; font-size: .8rem; font-weight: 750; }
+.badge.assessment { color: #5c4012; background: #fff0cc; border-color: #d5b97b; }
+#instructions { margin: .85rem 0 .5rem; line-height: 1.55; }
+.guidance { font-size: .88rem; line-height: 1.5; color: #42617a; margin: .5rem 0 0; }
+.notice, .error { padding: .8rem 1rem; margin-bottom: 1rem; border-radius: .7rem; line-height: 1.45; }
+.notice { background: #e9f2fb; border: 1px solid #bdcfe2; color: #234c73; }
+.error { background: #fff1ee; border: 1px solid #d7a29b; color: #84251e; }
+.questions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr)); gap: .9rem; align-items: start; }
+.question { min-width: 0; background: white; border: 1px solid #c4d1df; border-radius: .85rem; padding: 1rem; box-shadow: 0 2px 7px #1c345609; }
+.question-row { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+.question-number { display: inline-flex; align-items: center; justify-content: center; width: 1.9rem; height: 1.9rem; flex: 0 0 auto; border-radius: .5rem; background: #eaf3fd; color: #285c8e; font-size: .82rem; font-weight: 750; }
+.question-label { flex: 1 1 8rem; min-width: 5rem; font-size: 1.2rem; font-weight: 650; line-height: 1.45; overflow-wrap: anywhere; }
+.answer { width: 6.7rem; min-height: 3rem; padding: .4rem; font: 650 1.35rem ui-monospace, "SFMono-Regular", Consolas, monospace; border: 1.5px solid #a9bed3; border-radius: .45rem; color: #132f47; background: #fcfdff; text-align: center; }
+.answer:focus { outline: 3px solid #77b5ed; outline-offset: 1px; background: white; }
+.answer:disabled { opacity: 1; -webkit-text-fill-color: #244057; color: #244057; }
+.answer.incorrect { border: 2px solid #9d2f27; background: #fff4ef; }
+.correction { margin-top: .75rem; font-size: .9rem; line-height: 1.5; color: #7d2b23; background: #fff5ef; border-left: 3px solid #bb6652; border-radius: 0 .4rem .4rem 0; padding: .65rem .75rem; }
+.correction strong { display: block; margin-bottom: .15rem; }
+footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1.1rem; margin-top: 1.1rem; background: white; border: 1px solid #c4d1df; border-radius: .85rem; }
+.result-title { margin: 0 0 .3rem; font-weight: 750; }
+.result-detail { margin: 0; color: #526779; font-size: .88rem; line-height: 1.4; }
+button { min-height: 2.8rem; padding: .65rem 1.2rem; background: #155eaa; color: white; border: 1.5px solid #155eaa; border-radius: .6rem; font: 700 1rem system-ui, sans-serif; line-height: 1.3; cursor: pointer; touch-action: manipulation; }
+button:hover:not(:disabled) { background: #114f90; }
+button:focus-visible { outline: 3px solid #77b5ed; outline-offset: 3px; }
+button:disabled { opacity: .6; cursor: default; }
+@media (max-width: 480px) { main { padding: .6rem; } .question { padding: .85rem .7rem; } .question-row { gap: .6rem; } .answer { width: 5.7rem; } footer button { width: 100%; } }

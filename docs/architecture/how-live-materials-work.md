@@ -8,13 +8,13 @@ If you want the exact code contract for adding or registering runtime programs, 
 
 Yes, the normal product flow is simple:
 
-1. A parent, teacher, or owner assigns a playlist to a learner.
-2. That assignment creates scheduled sessions from the playlist session pattern.
+1. A parent, teacher, or owner assigns a playlist or an individual material to a learner.
+2. A playlist assignment creates its ordered sessions; a direct material assignment creates one session.
 3. If one of those session materials has a `runtime` block, the app shows it as a live item.
 4. When the learner starts it, the backend generates the activity items, the client renders them, and the backend scores the completed submission.
-5. The result becomes session evidence and updates skill progress.
+5. The result becomes session evidence; the backend applies the runtime's progress rules. A selected written level does not confirm the broader written-method skill.
 
-The important rule is that authored content never executes code directly. The runtime block is only a contract that tells trusted backend code what kind of activity to generate.
+Material Markdown declares which trusted Rust runtime generates and scores the activity. Its optional presentation reference selects a separate, versioned HTML/JS/CSS package. See [Activity packages](../authoring/activity-packages.md) for the asset and host protocol.
 
 ## What This Does Not Mean
 
@@ -44,19 +44,20 @@ The real execution path is:
 3. The library and learner APIs expose enough metadata for the UI to know that the material is executable.
 4. The Flutter app calls a start endpoint for the current session material.
 5. The Rust control plane selects the run mode and focus; the runtime generates a balanced or deliberately focused immutable activity plan.
-6. Flutter renders those items using normal UI widgets.
+6. Flutter opens the versioned activity package in its shared iframe host and passes the backend presentation payload. The package renders the interaction.
 7. The learner submits answers.
 8. The Rust control plane scores the persisted plan, writes compact fact and family evidence, finishes the run, and returns corrections and the next action.
 
-So the runtime block maps to real execution through a fixed backend dispatch, not through dynamic code loading.
+Generation and scoring use registered Rust runtime dispatch. Presentation assets are loaded separately from `content/activity_packages/`, so a supported presentation can change through a new package version without recompiling Flutter.
 
 ## Where The Program Actually Lives
 
-The program is the Rust code already compiled into the control-plane service.
+Generation and scoring run in Rust code compiled into the control-plane service. Interaction presentation runs in a separately versioned static package served by that service.
 
 Right now the live arithmetic runtime is implemented in the dedicated runtime layer:
 
 - `rust/crates/learning_activity_runtime/src/lib.rs`
+- `rust/crates/learning_activity_runtime/src/written_arithmetic.rs`
 - `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/readiness_within_5.rs`
 - `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/mixed_add_sub_to_10.rs`
 - `rust/crates/learning_activity_runtime/src/arithmetic_fact_fluency_v1/mixed_add_sub_to_20.rs`
@@ -64,10 +65,11 @@ Right now the live arithmetic runtime is implemented in the dedicated runtime la
 
 That is the important distinction:
 
-- content files describe which approved runtime to use
-- backend code contains the actual program that runs
+- material frontmatter selects an approved runtime and, where applicable, a presentation package
+- backend code owns generation, scoring, and evidence
+- package HTML/JS/CSS owns the supplied interaction layout and local input collection
 
-So if you were expecting a real program on the backend, that expectation was correct. The program is just not authored inside the content files. It is authored in Rust code and deployed as part of the control plane.
+Changing a generation or scoring algorithm requires a Rust change. Adding or replacing a presentation package that uses the shared protocol does not require a Flutter change.
 
 ## The Main Files
 
@@ -79,7 +81,9 @@ These are the key handoff points.
 - `rust/crates/control_plane/src/service.rs`: creates assignments, starts and completes activities, and persists results.
 - `fe/flutter/apps/cornerstone/lib/services/api_service.dart`: calls the start and complete endpoints.
 - `fe/flutter/apps/cornerstone/lib/ui/screens/home/home_shell.dart`: launches live activities from the current learner session.
-- `fe/flutter/apps/cornerstone/lib/ui/widgets/home/activity_dialog.dart`: renders the executable activity dialog, correction, and retry flow.
+- `content/activity_packages/`: registry and versioned presentation assets.
+- `rust/crates/control_plane/src/activity_packages.rs`: validates manifests and serves pinned package assets.
+- `fe/flutter/apps/cornerstone/lib/ui/widgets/activity_package/`: generic iframe host and authenticated action bridge.
 
 ## The Runtime Contract
 
@@ -119,6 +123,7 @@ Today that means:
 - `parameters` tune item generation
 - `scoring` defines this run's target
 - `readiness` defines sufficient representative practice before a check
+- `presentation` selects a package ID and version when the runtime requires an explicit presentation
 
 The control plane always persists the immutable plan plus compact run, fact, and family summaries. Authored content cannot enable raw response logging.
 
@@ -137,9 +142,7 @@ This is the part that is easy to miss.
 
 You do not assign a runtime directly.
 
-You assign a playlist.
-
-The playlist already contains ordered sessions, and each session already contains material ids. One of those materials may be executable.
+You assign a playlist or a material. A playlist contains ordered sessions and material IDs. A direct material assignment creates one session containing that material. Both routes use the same activity-instance lifecycle.
 
 That means the real product rule is:
 
@@ -147,7 +150,7 @@ That means the real product rule is:
 - the current session decides what the learner can do now
 - the material inside that session decides whether the work is static or live
 
-So yes, from the parent's point of view it is mostly as simple as assigning a playlist to a learner. The live runtime becomes available because the assigned session contains a material with a valid runtime block.
+The live activity becomes available because the assigned session contains a material with a valid runtime block. Written materials support an assigned assisted or assessment mode; the backend owns that choice.
 
 ## Student And Parent Flow
 
@@ -157,7 +160,7 @@ Use this as the mental model.
 
 1. Open the library view.
 2. Inspect the pathway, playlist, sessions, and materials.
-3. Assign the playlist to a learner.
+3. Assign the playlist or selected material to a learner.
 4. Open the learner's current session.
 5. If the session contains a live material, start it.
 
@@ -181,7 +184,7 @@ When Flutter calls the start endpoint, the backend:
 2. finds the matching material in the library bundle
 3. checks that the material has a supported runtime
 4. generates activity items from a backend seed
-5. persists the exact plan and returns an `activity_instance_id`, item list, instructions, and scoring summary
+5. persists the exact plan and package descriptor, then returns an `activity_instance_id`, presentation payload, instructions, and scoring summary; an existing in-progress attempt resumes its stored plan
 6. marks the session and material active
 
 In the current arithmetic implementation, this happens in `start_session_material_activity`, which calls `generate_activity`.
@@ -230,7 +233,7 @@ Steps:
 1. Add a new material file with a `runtime` block.
 2. Reuse an existing `engine_id` and `template_id`.
 3. Adjust `parameters`, `scoring`, and `estimated_minutes`.
-4. Add the material id to a playlist session.
+4. Offer the material for direct assignment, or add its ID to a playlist session when it belongs in that teaching sequence.
 5. Validate content.
 
 In this case you usually do not need backend or frontend changes.
@@ -247,7 +250,7 @@ Steps:
 4. Add or update authored materials to use the new template.
 5. Validate the end-to-end flow.
 
-If the items still use the current integer-response UI, Flutter may not need any changes.
+If the items use the current integer-response payload, the `numeric-questions` package can render them without a Flutter change.
 
 ### 3. New engine or new interaction type
 
@@ -265,7 +268,7 @@ Steps:
 1. Add backend support for the new `engine_id`.
 2. Define the render model and scoring behavior.
 3. Extend the activity payloads if the client needs new prompt fields.
-4. Extend Flutter so it can render the new prompt type.
+4. Add a versioned presentation package using the shared host protocol. Extend the host only if a new capability is actually needed.
 5. Add authored materials that use the new engine.
 6. Validate with a real start and complete flow.
 

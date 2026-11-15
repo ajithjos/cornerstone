@@ -183,6 +183,15 @@ pub struct MaterialRuntime {
     pub scoring: Option<MaterialRuntimeScoring>,
     pub readiness: Option<MaterialRuntimeReadiness>,
     pub gate: Option<MaterialRuntimeGate>,
+    #[serde(default)]
+    pub presentation: Option<MaterialPresentation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct MaterialPresentation {
+    pub package_id: String,
+    pub version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1560,7 +1569,14 @@ fn validate_catalog(
                 material.kind
             );
         }
-        if material.runtime.is_some() && !runtime_allowed_for_kind(material.kind.as_str()) {
+        if material.runtime.is_some()
+            && !runtime_allowed_for_kind(material.kind.as_str())
+            && !(material.kind == WORKSHEET_KIND
+                && material
+                    .runtime
+                    .as_ref()
+                    .is_some_and(|runtime| runtime.engine_id == "written_arithmetic.v1"))
+        {
             bail!(
                 "material '{}' uses runtime but kind '{}' is not executable",
                 material.id,
@@ -1819,17 +1835,8 @@ fn validate_catalog(
         }
     }
 
-    for material in material_documents {
-        if !playlists.iter().any(|playlist| {
-            playlist
-                .session_pattern
-                .sessions
-                .iter()
-                .any(|session| session.material_ids.contains(&material.id))
-        }) {
-            bail!("material '{}' is not used by any playlist session", material.id);
-        }
-    }
+    // Valid standalone materials are assignable directly from the materials catalog.
+    // Playlist references are still validated above when a playlist includes a material.
 
     Ok(())
 }
@@ -1943,6 +1950,7 @@ mod tests {
     #[test]
     fn gated_check_requires_the_same_runtime_evidence_domain_as_its_drill() {
         let runtime = |template_id: &str, parameters: JsonValue| MaterialRuntime {
+            presentation: None,
             engine_id: "arithmetic_fact_fluency.v1".to_string(),
             spec_version: 1,
             template_id: template_id.to_string(),

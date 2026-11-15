@@ -175,6 +175,7 @@ pub struct LibraryWorkspaceResponse {
     pub status: String,
     pub featured_route_path: Option<String>,
     pub pathways: Vec<PathwayWorkspaceSummary>,
+    pub materials: Vec<MaterialCatalogSummary>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -190,6 +191,13 @@ pub struct PathwayWorkspaceSummary {
     pub route_path: Option<String>,
     pub entry_points: Vec<PathwayEntryPointSummary>,
     pub playlists: Vec<PlaylistWorkspaceSummary>,
+    pub extra_practice_groups: Vec<LibraryPracticeGroupSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LibraryPracticeGroupSummary {
+    pub title: String,
+    pub material_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -267,6 +275,33 @@ pub struct MaterialWorkspaceSummary {
     pub skill_ids: Vec<String>,
     pub executable: bool,
     pub route_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MaterialCatalogSummary {
+    #[serde(flatten)]
+    pub material: MaterialWorkspaceSummary,
+    pub description: String,
+    pub subject_title: String,
+    pub area_title: String,
+    pub recommended_age: u8,
+    pub difficulty: String,
+    pub assignable: bool,
+    pub assignment_targets: Vec<PlaylistAssignmentTargetSummary>,
+    pub activity_level_id: Option<String>,
+    pub context_label: String,
+    pub contexts: Vec<MaterialContextSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MaterialContextSummary {
+    pub pathway_id: String,
+    pub pathway_title: String,
+    pub playlist_id: Option<String>,
+    pub playlist_title: Option<String>,
+    pub authored_session_id: Option<String>,
+    pub session_title: Option<String>,
+    pub session_index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -424,7 +459,10 @@ pub struct LearnerAssignedPathwaySummary {
     pub total_session_count: usize,
     pub completed_session_count: usize,
     pub pending_session_count: usize,
-    pub assigned_playlists: Vec<LearnerAssignedJourneySummary>,
+    pub assignments: Vec<LearnerAssignedJourneySummary>,
+    pub assignment_count: usize,
+    pub material_assignment_count: usize,
+    pub summary_label: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -466,6 +504,11 @@ pub struct LearnerRecentWinSummary {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LearnerJourneySummary {
+    pub title: String,
+    pub description: String,
+    pub source_kind: String,
+    pub source_label: String,
+    pub source_material_id: Option<String>,
     pub pathway_id: Option<String>,
     pub pathway_title: Option<String>,
     pub pathway_description: Option<String>,
@@ -498,6 +541,9 @@ pub struct LearnerSummary {
 pub struct AssignmentSummary {
     pub assignment_id: String,
     pub playlist_id: String,
+    pub source_kind: String,
+    pub material_id: Option<String>,
+    pub activity_mode: Option<String>,
     pub title: String,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
@@ -529,12 +575,24 @@ pub struct SessionDetail {
     pub requires_adult_support: bool,
     pub estimated_minutes: u32,
     pub live_material_count: usize,
+    pub primary_activity_material_id: Option<String>,
+    pub next_step: Option<SessionNextStepSummary>,
     pub learner_material_count: usize,
     pub adult_material_count: usize,
     pub notes: String,
     pub materials_by_kind: Vec<SessionMaterialKindGroupSummary>,
     pub materials: Vec<SessionMaterialSummary>,
     pub latest_evidence: Option<EvidenceSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionNextStepSummary {
+    pub session_material_id: Option<String>,
+    pub title: String,
+    pub instruction: String,
+    pub action_label: String,
+    pub action_kind: String,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -668,6 +726,8 @@ pub struct PracticeMasterySummary {
     pub material_title: String,
     pub runtime_id: String,
     pub skill_status: SkillStatus,
+    pub status_label: String,
+    pub skill_confirmation_available: bool,
     pub review_status: ReviewStatus,
     pub families: Vec<PracticeFamilyMasterySummary>,
 }
@@ -691,9 +751,12 @@ pub struct StageProgress {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AssignmentRequest {
     pub learner_id: String,
-    pub playlist_id: String,
+    pub playlist_id: Option<String>,
+    pub material_id: Option<String>,
+    pub activity_mode: Option<learning_activity_runtime::written_arithmetic::PracticeMode>,
     pub start_date: Option<NaiveDate>,
 }
 
@@ -740,6 +803,21 @@ pub struct ActivityInstance {
     pub started_at: DateTime<Utc>,
     pub scoring: ActivityScoringSummary,
     pub items: Vec<ActivityItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<ActivityPresentation>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ActivityPresentation {
+    #[serde(flatten)]
+    pub package: crate::activity_packages::PackageDescriptor,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckActivityRequest {
+    pub responses: Vec<ActivityResponseInput>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -779,6 +857,8 @@ pub struct CompleteActivityResponse {
     pub updated_progress: Vec<SkillProgressSummary>,
     pub activity_summary: ActivitySummary,
     pub readiness: Option<SessionMaterialReadinessSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub check_result: Option<learning_activity_runtime::written_arithmetic::CheckResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -893,6 +973,9 @@ pub struct AssignmentRow {
     pub assignment_id: String,
     pub learner_id: String,
     pub playlist_id: String,
+    pub source_kind: String,
+    pub material_id: Option<String>,
+    pub activity_mode: Option<String>,
     pub title: String,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,

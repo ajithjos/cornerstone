@@ -1,3 +1,5 @@
+import 'activity_presentation.dart';
+
 enum SessionStatus {
   scheduled('scheduled', 'Scheduled'),
   active('active', 'In progress'),
@@ -225,6 +227,7 @@ class LibraryWorkspacePayload {
   LibraryWorkspacePayload({
     required this.status,
     required this.pathways,
+    this.materials = const [],
     this.featuredRoutePath,
   });
 
@@ -232,6 +235,12 @@ class LibraryWorkspacePayload {
     return LibraryWorkspacePayload(
       status: json['status'] as String,
       featuredRoutePath: json['featured_route_path'] as String?,
+      materials: ((json['materials'] as List?) ?? const [])
+          .map(
+            (item) =>
+                LibraryCatalogMaterial.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
       pathways: (json['pathways'] as List<dynamic>)
           .map(
             (item) =>
@@ -244,6 +253,113 @@ class LibraryWorkspacePayload {
   final String status;
   final String? featuredRoutePath;
   final List<LibraryWorkspacePathway> pathways;
+  final List<LibraryCatalogMaterial> materials;
+}
+
+class LibraryCatalogMaterial extends LibraryWorkspaceMaterial {
+  LibraryCatalogMaterial({
+    required super.materialId,
+    required super.title,
+    required super.kind,
+    required super.audience,
+    required super.estimatedMinutes,
+    required super.skillIds,
+    required super.executable,
+    super.routePath,
+    required this.description,
+    required this.subjectTitle,
+    required this.areaTitle,
+    required this.recommendedAge,
+    required this.difficulty,
+    required this.assignable,
+    required this.assignmentTargets,
+    this.activityLevelId,
+    this.contexts = const [],
+    this.contextLabel = '',
+  });
+  final String description;
+  final String subjectTitle;
+  final String areaTitle;
+  final int recommendedAge;
+  final String difficulty;
+  final bool assignable;
+  final List<PlaylistAssignmentTarget> assignmentTargets;
+  final String? activityLevelId;
+  final List<LibraryMaterialContext> contexts;
+  final String contextLabel;
+
+  factory LibraryCatalogMaterial.fromJson(Map<String, dynamic> json) =>
+      LibraryCatalogMaterial(
+        materialId: json['material_id'] as String,
+        title: json['title'] as String,
+        kind: json['kind'] as String,
+        audience: json['audience'] as String,
+        estimatedMinutes: (json['estimated_minutes'] as num).toInt(),
+        skillIds: (json['skill_ids'] as List).cast<String>(),
+        executable: json['executable'] as bool,
+        routePath: json['route_path'] as String?,
+        description: json['description'] as String,
+        subjectTitle: json['subject_title'] as String,
+        areaTitle: json['area_title'] as String,
+        recommendedAge: (json['recommended_age'] as num).toInt(),
+        difficulty: json['difficulty'] as String,
+        assignable: json['assignable'] as bool,
+        activityLevelId: json['activity_level_id'] as String?,
+        contexts: ((json['contexts'] as List?) ?? const [])
+            .map(
+              (item) =>
+                  LibraryMaterialContext.fromJson(item as Map<String, dynamic>),
+            )
+            .toList(),
+        contextLabel: json['context_label'] as String? ?? '',
+        assignmentTargets: (json['assignment_targets'] as List)
+            .map(
+              (item) => PlaylistAssignmentTarget.fromJson(
+                item as Map<String, dynamic>,
+              ),
+            )
+            .toList(),
+      );
+}
+
+class LibraryMaterialContext {
+  const LibraryMaterialContext({
+    required this.pathwayId,
+    required this.pathwayTitle,
+    this.playlistId,
+    this.playlistTitle,
+    this.authoredSessionId,
+    this.sessionTitle,
+    this.sessionIndex,
+  });
+  final String pathwayId;
+  final String pathwayTitle;
+  final String? playlistId;
+  final String? playlistTitle;
+  final String? authoredSessionId;
+  final String? sessionTitle;
+  final int? sessionIndex;
+  factory LibraryMaterialContext.fromJson(Map<String, dynamic> json) =>
+      LibraryMaterialContext(
+        pathwayId: json['pathway_id'] as String,
+        pathwayTitle: json['pathway_title'] as String,
+        playlistId: json['playlist_id'] as String?,
+        playlistTitle: json['playlist_title'] as String?,
+        authoredSessionId: json['authored_session_id'] as String?,
+        sessionTitle: json['session_title'] as String?,
+        sessionIndex: (json['session_index'] as num?)?.toInt(),
+      );
+}
+
+class LibraryPracticeGroup {
+  const LibraryPracticeGroup({required this.title, required this.materialIds});
+  final String title;
+  final List<String> materialIds;
+  factory LibraryPracticeGroup.fromJson(Map<String, dynamic> json) =>
+      LibraryPracticeGroup(
+        title: json['title'] as String,
+        materialIds: (json['material_ids'] as List).cast<String>(),
+      );
 }
 
 class LibraryWorkspacePathway {
@@ -259,6 +375,7 @@ class LibraryWorkspacePathway {
     required this.entryPoints,
     required this.playlists,
     this.routePath,
+    this.extraPracticeGroups = const [],
   });
 
   factory LibraryWorkspacePathway.fromJson(Map<String, dynamic> json) {
@@ -272,6 +389,13 @@ class LibraryWorkspacePathway {
       stageCount: (json['stage_count'] as num).toInt(),
       playlistCount: (json['playlist_count'] as num).toInt(),
       routePath: json['route_path'] as String?,
+      extraPracticeGroups:
+          ((json['extra_practice_groups'] as List?) ?? const [])
+              .map(
+                (item) =>
+                    LibraryPracticeGroup.fromJson(item as Map<String, dynamic>),
+              )
+              .toList(),
       entryPoints: (json['entry_points'] as List<dynamic>)
           .map(
             (item) => PathwayEntryPoint.fromJson(item as Map<String, dynamic>),
@@ -297,6 +421,7 @@ class LibraryWorkspacePathway {
   final String? routePath;
   final List<PathwayEntryPoint> entryPoints;
   final List<LibraryWorkspacePlaylist> playlists;
+  final List<LibraryPracticeGroup> extraPracticeGroups;
 }
 
 class PathwayEntryPoint {
@@ -963,18 +1088,13 @@ class LearnerDetailPayload {
                   LearnerAssignedJourney.fromJson(item as Map<String, dynamic>),
             )
             .toList();
-    var assignedPathways =
+    final assignedPathways =
         ((json['assigned_pathways'] as List<dynamic>?) ?? const <dynamic>[])
             .map(
               (item) =>
                   LearnerAssignedPathway.fromJson(item as Map<String, dynamic>),
             )
             .toList();
-    if (assignedPathways.isEmpty && assignedJourneys.isNotEmpty) {
-      assignedPathways = LearnerAssignedPathway.groupFromJourneys(
-        assignedJourneys,
-      );
-    }
     return LearnerDetailPayload(
       learner: LearnerSummary.fromJson(json['learner'] as Map<String, dynamic>),
       activeAssignment: json['active_assignment'] == null
@@ -1050,18 +1170,13 @@ class LearnerWorkspacePayload {
                   LearnerAssignedJourney.fromJson(item as Map<String, dynamic>),
             )
             .toList();
-    var assignedPathways =
+    final assignedPathways =
         ((json['assigned_pathways'] as List<dynamic>?) ?? const <dynamic>[])
             .map(
               (item) =>
                   LearnerAssignedPathway.fromJson(item as Map<String, dynamic>),
             )
             .toList();
-    if (assignedPathways.isEmpty && assignedJourneys.isNotEmpty) {
-      assignedPathways = LearnerAssignedPathway.groupFromJourneys(
-        assignedJourneys,
-      );
-    }
     return LearnerWorkspacePayload(
       status: json['status'] as String,
       workspaceView: json['workspace_view'] as String? ?? 'learner',
@@ -1223,94 +1338,48 @@ class LearnerAssignedPathway {
     required this.totalSessionCount,
     required this.completedSessionCount,
     required this.pendingSessionCount,
-    required this.assignedPlaylists,
+    required this.assignments,
     this.pathwayId,
     this.pathwayRoutePath,
+    this.assignmentCount = 0,
+    this.materialAssignmentCount = 0,
+    this.summaryLabel = '',
   });
-
-  factory LearnerAssignedPathway.fromJson(Map<String, dynamic> json) {
-    return LearnerAssignedPathway(
-      pathwayId: json['pathway_id'] as String?,
-      pathwayTitle: json['pathway_title'] as String? ?? 'Assigned pathway',
-      pathwayDescription: json['pathway_description'] as String? ?? '',
-      pathwayRoutePath: json['pathway_route_path'] as String?,
-      playlistCount: (json['playlist_count'] as num?)?.toInt() ?? 0,
-      totalSessionCount: (json['total_session_count'] as num?)?.toInt() ?? 0,
-      completedSessionCount:
-          (json['completed_session_count'] as num?)?.toInt() ?? 0,
-      pendingSessionCount:
-          (json['pending_session_count'] as num?)?.toInt() ?? 0,
-      assignedPlaylists:
-          ((json['assigned_playlists'] as List<dynamic>?) ?? const <dynamic>[])
-              .map(
-                (item) => LearnerAssignedJourney.fromJson(
-                  item as Map<String, dynamic>,
-                ),
-              )
-              .toList(),
-    );
-  }
-
-  static List<LearnerAssignedPathway> groupFromJourneys(
-    List<LearnerAssignedJourney> journeys,
-  ) {
-    final groupedJourneys = <String, List<LearnerAssignedJourney>>{};
-    final orderedKeys = <String>[];
-    final pathwayMeta = <String, LearnerJourney>{};
-
-    for (final assignedJourney in journeys) {
-      final key = _groupKey(assignedJourney.journey);
-      if (!groupedJourneys.containsKey(key)) {
-        orderedKeys.add(key);
-      }
-      groupedJourneys
-          .putIfAbsent(key, () => <LearnerAssignedJourney>[])
-          .add(assignedJourney);
-      pathwayMeta[key] = assignedJourney.journey;
-    }
-
-    return orderedKeys
-        .map((key) {
-          final grouped =
-              groupedJourneys[key] ?? const <LearnerAssignedJourney>[];
-          final meta = pathwayMeta[key]!;
-          return LearnerAssignedPathway(
-            pathwayId: meta.pathwayId,
-            pathwayTitle: meta.pathwayTitle ?? meta.playlistTitle,
-            pathwayDescription: meta.pathwayDescription ?? '',
-            pathwayRoutePath: meta.pathwayRoutePath,
-            playlistCount: grouped.length,
-            totalSessionCount: grouped.fold<int>(
-              0,
-              (count, item) => count + item.journey.totalSessionCount,
-            ),
-            completedSessionCount: grouped.fold<int>(
-              0,
-              (count, item) => count + item.journey.completedSessionCount,
-            ),
-            pendingSessionCount: grouped.fold<int>(
-              0,
-              (count, item) => count + item.journey.pendingSessionCount,
-            ),
-            assignedPlaylists: grouped,
-          );
-        })
-        .toList(growable: false);
-  }
-
-  static String _groupKey(LearnerJourney journey) {
-    return journey.pathwayId ?? 'playlist:${journey.playlistId}';
-  }
-
+  factory LearnerAssignedPathway.fromJson(Map<String, dynamic> json) =>
+      LearnerAssignedPathway(
+        pathwayId: json['pathway_id'] as String?,
+        pathwayTitle: json['pathway_title'] as String? ?? 'Assigned learning',
+        pathwayDescription: json['pathway_description'] as String? ?? '',
+        pathwayRoutePath: json['pathway_route_path'] as String?,
+        playlistCount: (json['playlist_count'] as num?)?.toInt() ?? 0,
+        assignmentCount: (json['assignment_count'] as num?)?.toInt() ?? 0,
+        materialAssignmentCount:
+            (json['material_assignment_count'] as num?)?.toInt() ?? 0,
+        summaryLabel: json['summary_label'] as String? ?? '',
+        totalSessionCount: (json['total_session_count'] as num?)?.toInt() ?? 0,
+        completedSessionCount:
+            (json['completed_session_count'] as num?)?.toInt() ?? 0,
+        pendingSessionCount:
+            (json['pending_session_count'] as num?)?.toInt() ?? 0,
+        assignments: ((json['assignments'] as List?) ?? const [])
+            .map(
+              (item) =>
+                  LearnerAssignedJourney.fromJson(item as Map<String, dynamic>),
+            )
+            .toList(),
+      );
   final String? pathwayId;
   final String pathwayTitle;
   final String pathwayDescription;
   final String? pathwayRoutePath;
   final int playlistCount;
+  final int assignmentCount;
+  final int materialAssignmentCount;
+  final String summaryLabel;
   final int totalSessionCount;
   final int completedSessionCount;
   final int pendingSessionCount;
-  final List<LearnerAssignedJourney> assignedPlaylists;
+  final List<LearnerAssignedJourney> assignments;
 }
 
 class LearnerProgressSnapshot {
@@ -1390,6 +1459,11 @@ class LearnerJourney {
     this.pathwayRoutePath,
     this.playlistRoutePath,
     this.nextSessionId,
+    this.title = '',
+    this.description = '',
+    this.sourceKind = '',
+    this.sourceLabel = '',
+    this.sourceMaterialId,
   });
 
   factory LearnerJourney.fromJson(Map<String, dynamic> json) {
@@ -1411,6 +1485,15 @@ class LearnerJourney {
       totalMaterialCount: (json['total_material_count'] as num).toInt(),
       liveMaterialCount: (json['live_material_count'] as num).toInt(),
       nextSessionId: json['next_session_id'] as String?,
+      title:
+          json['title'] as String? ?? json['playlist_title'] as String? ?? '',
+      description:
+          json['description'] as String? ??
+          json['playlist_description'] as String? ??
+          '',
+      sourceKind: json['source_kind'] as String? ?? '',
+      sourceLabel: json['source_label'] as String? ?? '',
+      sourceMaterialId: json['source_material_id'] as String?,
     );
   }
 
@@ -1431,6 +1514,11 @@ class LearnerJourney {
   final int totalMaterialCount;
   final int liveMaterialCount;
   final String? nextSessionId;
+  final String title;
+  final String description;
+  final String sourceKind;
+  final String sourceLabel;
+  final String? sourceMaterialId;
 }
 
 class LearnerSummary {
@@ -1544,6 +1632,8 @@ class SessionDetail extends SessionSummary {
     required this.materialsByKind,
     required this.materials,
     this.latestEvidence,
+    this.primaryActivityMaterialId,
+    this.nextStep,
   });
 
   factory SessionDetail.fromJson(Map<String, dynamic> json) {
@@ -1576,6 +1666,11 @@ class SessionDetail extends SessionSummary {
           : EvidenceSummary.fromJson(
               json['latest_evidence'] as Map<String, dynamic>,
             ),
+      primaryActivityMaterialId:
+          json['primary_activity_material_id'] as String?,
+      nextStep: json['next_step'] == null
+          ? null
+          : SessionNextStep.fromJson(json['next_step'] as Map<String, dynamic>),
     );
   }
 
@@ -1589,6 +1684,39 @@ class SessionDetail extends SessionSummary {
   final List<SessionMaterialKindGroup> materialsByKind;
   final List<SessionMaterial> materials;
   final EvidenceSummary? latestEvidence;
+  final String? primaryActivityMaterialId;
+  final SessionNextStep? nextStep;
+  SessionMaterial? get primaryActivity => materials
+      .where(
+        (material) => material.sessionMaterialId == primaryActivityMaterialId,
+      )
+      .firstOrNull;
+}
+
+class SessionNextStep {
+  const SessionNextStep({
+    this.sessionMaterialId,
+    required this.title,
+    required this.instruction,
+    required this.actionLabel,
+    required this.actionKind,
+    required this.enabled,
+  });
+  final String? sessionMaterialId;
+  final String title;
+  final String instruction;
+  final String actionLabel;
+  final String actionKind;
+  final bool enabled;
+  factory SessionNextStep.fromJson(Map<String, dynamic> json) =>
+      SessionNextStep(
+        sessionMaterialId: json['session_material_id'] as String?,
+        title: json['title'] as String,
+        instruction: json['instruction'] as String,
+        actionLabel: json['action_label'] as String,
+        actionKind: json['action_kind'] as String,
+        enabled: json['enabled'] as bool,
+      );
 }
 
 class SessionMaterial {
@@ -1932,6 +2060,8 @@ class PracticeMastery {
     required this.skillStatus,
     required this.reviewStatus,
     required this.families,
+    this.statusLabel = '',
+    this.skillConfirmationAvailable = true,
   });
 
   factory PracticeMastery.fromJson(Map<String, dynamic> json) {
@@ -1941,6 +2071,9 @@ class PracticeMastery {
       runtimeId: json['runtime_id'] as String,
       skillStatus: SkillStatus.fromJson(json['skill_status']),
       reviewStatus: ReviewStatus.fromJson(json['review_status']),
+      statusLabel: json['status_label'] as String? ?? '',
+      skillConfirmationAvailable:
+          json['skill_confirmation_available'] as bool? ?? true,
       families: (json['families'] as List<dynamic>)
           .map(
             (item) =>
@@ -1956,6 +2089,8 @@ class PracticeMastery {
   final SkillStatus skillStatus;
   final ReviewStatus reviewStatus;
   final List<PracticeMasteryFamily> families;
+  final String statusLabel;
+  final bool skillConfirmationAvailable;
 }
 
 class PracticeMasteryFamily {
@@ -2387,6 +2522,7 @@ class ActivityInstance {
     required this.runMode,
     required this.scoring,
     required this.items,
+    this.presentation,
   });
 
   factory ActivityInstance.fromJson(Map<String, dynamic> json) {
@@ -2410,6 +2546,11 @@ class ActivityInstance {
       items: (json['items'] as List<dynamic>)
           .map((item) => ActivityItem.fromJson(item as Map<String, dynamic>))
           .toList(),
+      presentation: json['presentation'] == null
+          ? null
+          : ActivityPresentation.fromJson(
+              json['presentation'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -2428,6 +2569,7 @@ class ActivityInstance {
   final RunMode runMode;
   final ActivityScoringSummary scoring;
   final List<ActivityItem> items;
+  final ActivityPresentation? presentation;
 }
 
 class ActivityScoringSummary {

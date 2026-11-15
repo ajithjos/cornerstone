@@ -38,7 +38,7 @@ class _ContractChip extends StatelessWidget {
         ? _materialKindLabel(normalizedValue)
         : _contractTermLabel(normalizedValue);
     return _PillBadge(
-      text: '${_contractTermLabel(normalizedDomain)}:$displayValue',
+      text: displayValue,
       color: backgroundColor,
       textColor: foregroundColor,
     );

@@ -14,7 +14,6 @@ class _OwnerWorkspaceView extends StatelessWidget {
     required this.durationController,
     required this.notesController,
     required this.onSelectLearner,
-    required this.onCreateAssignment,
     required this.onOpenLibraryRoute,
     required this.onOpenLibraryWorkspace,
     required this.onRecordSession,
@@ -36,8 +35,6 @@ class _OwnerWorkspaceView extends StatelessWidget {
   final TextEditingController durationController;
   final TextEditingController notesController;
   final ValueChanged<String> onSelectLearner;
-  final Future<void> Function(String learnerId, String playlistId)
-  onCreateAssignment;
   final ValueChanged<String> onOpenLibraryRoute;
   final VoidCallback onOpenLibraryWorkspace;
   final VoidCallback onRecordSession;
@@ -294,8 +291,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                     runSpacing: 8,
                                     children: [
                                       _PillBadge(
-                                        text:
-                                            '${assignedPathway.playlistCount} playlists',
+                                        text: assignedPathway.summaryLabel,
                                         color: theme.colorScheme.primary
                                             .withValues(alpha: 0.12),
                                         textColor: theme.colorScheme.primary,
@@ -322,7 +318,7 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                     ],
                                   ),
                                   const SizedBox(height: 12),
-                                  ...assignedPathway.assignedPlaylists.map((
+                                  ...assignedPathway.assignments.map((
                                     assignedJourney,
                                   ) {
                                     final assignedJourneyInfo =
@@ -386,13 +382,12 @@ class _OwnerWorkspaceView extends StatelessWidget {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            assignedJourneyInfo.playlistTitle,
+                                            assignedJourneyInfo.title,
                                             style: theme.textTheme.titleMedium,
                                           ),
                                           const SizedBox(height: 6),
                                           Text(
-                                            assignedJourneyInfo
-                                                .playlistDescription,
+                                            assignedJourneyInfo.description,
                                             style: theme.textTheme.bodySmall
                                                 ?.copyWith(
                                                   color: theme
@@ -490,13 +485,10 @@ class _OwnerWorkspaceView extends StatelessWidget {
                           ),
                         ],
                         const SizedBox(height: 10),
-                        Text(
-                          journey.playlistTitle,
-                          style: theme.textTheme.titleMedium,
-                        ),
+                        Text(journey.title, style: theme.textTheme.titleMedium),
                         const SizedBox(height: 4),
                         Text(
-                          journey.playlistDescription,
+                          journey.description,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -1011,13 +1003,13 @@ class _OwnerWorkspaceView extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Team teaching workspace',
+                          'Learners',
                           style: theme.textTheme.titleLarge,
                         ),
                       ),
                       TextButton(
                         onPressed: onOpenLibraryWorkspace,
-                        child: const Text('Pathway planning'),
+                        child: const Text('Browse materials'),
                       ),
                     ],
                   ),

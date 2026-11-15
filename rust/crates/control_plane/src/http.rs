@@ -14,24 +14,22 @@ use url::Url;
 use uuid::Uuid;
 
 use catalog::LibraryBundle;
-use learning_activity_runtime::written_arithmetic::{
-    self, CheckRequest, CheckResult, Worksheet, WorksheetRequest, WrittenLevel,
-};
+use learning_activity_runtime::written_arithmetic::{self, CheckRequest, CheckResult, WorksheetRequest, WrittenLevel};
 
 use crate::domain::{
-    ActivityStartResponse, AssignmentReconcileRequest, AssignmentRequest, CompleteActivityRequest,
-    CompleteActivityResponse, LibraryDocumentResponse, LibraryDocumentsResponse, LibraryReloadResponse,
-    OperationStatusResponse, RecordSessionRequest, ReviewRebuildRequest, SwitchActiveTeamRequest,
-    SwitchActiveUserRequest, ViewerSessionResponse,
+    ActivityStartResponse, AssignmentReconcileRequest, AssignmentRequest, CheckActivityRequest,
+    CompleteActivityRequest, CompleteActivityResponse, LibraryDocumentResponse, LibraryDocumentsResponse,
+    LibraryReloadResponse, OperationStatusResponse, RecordSessionRequest, ReviewRebuildRequest,
+    SwitchActiveTeamRequest, SwitchActiveUserRequest, ViewerSessionResponse,
 };
 use crate::service::{
-    AppState, apply_bootstrap, clear_readiness_override, complete_activity_instance, create_assignment,
-    delete_viewer_session, fetch_auth_options, fetch_dashboard, fetch_learner_detail, fetch_learner_workspace,
-    fetch_library, fetch_library_document, fetch_library_workspace, fetch_viewer_session, finish_google_oauth_flow,
-    list_learners, list_library_documents, rebuild_review_items, reconcile_assignments_from_library, record_session,
-    reload_library, resolve_session_context, retry_missed_activity_facts, set_readiness_override,
-    start_google_oauth_flow, start_review_item_activity, start_session_material_activity, switch_active_team,
-    switch_active_user,
+    AppState, apply_bootstrap, check_activity_instance, clear_readiness_override, complete_activity_instance,
+    create_assignment, delete_viewer_session, fetch_auth_options, fetch_dashboard, fetch_learner_detail,
+    fetch_learner_workspace, fetch_library, fetch_library_document, fetch_library_workspace, fetch_viewer_session,
+    finish_google_oauth_flow, list_learners, list_library_documents, rebuild_review_items,
+    reconcile_assignments_from_library, record_session, reload_library, resolve_session_context,
+    retry_missed_activity_facts, set_readiness_override, start_google_oauth_flow, start_review_item_activity,
+    start_session_material_activity, switch_active_team, switch_active_user,
 };
 
 const SESSION_COOKIE_NAME: &str = "cornerstone_session";
@@ -79,6 +77,13 @@ struct WrittenPrintRequest {
     worksheet: WorksheetRequest,
     #[serde(default)]
     include_answers: bool,
+    #[serde(default)]
+    layout: crate::worksheet_print::PrintLayout,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PackageAssetQuery {
+    integrity: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -172,6 +177,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/written-arithmetic/generate", post(post_written_generate))
         .route("/api/v1/written-arithmetic/check", post(post_written_check))
         .route("/api/v1/written-arithmetic/print", post(post_written_print))
+        .route(
+            "/api/v1/activity-packages/{package_id}/{version}/{*asset_path}",
+            get(get_activity_package_asset),
+        )
         .route("/api/v1/bootstrap/apply", post(post_bootstrap_apply))
         .route("/api/v1/dashboard", get(get_dashboard))
         .route("/api/v1/learners", get(get_learners))
@@ -191,6 +200,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/v1/sessions/{session_id}/materials/{session_material_id}/start",
             post(post_start_session_material_activity),
+        )
+        .route(
+            "/api/v1/activity-instances/{activity_instance_id}/check",
+            post(post_check_activity_instance),
         )
         .route(
             "/api/v1/activity-instances/{activity_instance_id}/complete",
@@ -243,9 +256,53 @@ async fn post_written_generate(
     jar: CookieJar,
     State(state): State<Arc<AppState>>,
     Json(request): Json<WorksheetRequest>,
-) -> Result<Json<Worksheet>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     session_context_from_jar(&jar, &state).await?;
-    Ok(Json(written_arithmetic::generate(request)?))
+    let worksheet = written_arithmetic::generate(request)?;
+    let descriptor =
+        crate::activity_packages::resolve_package(&state.config.content_root, "written-arithmetic", "1.0.0")?;
+    let mut presentation = serde_json::to_value(descriptor).map_err(Error::from)?;
+    presentation["payload"] = serde_json::json!({"worksheet": worksheet, "mode": worksheet.request.mode});
+    let mut response = serde_json::to_value(&worksheet).map_err(Error::from)?;
+    response["presentation"] = presentation;
+    Ok(Json(response))
+}
+
+async fn get_activity_package_asset(
+    Path((package_id, version, asset_path)): Path<(String, String, String)>,
+    Query(query): Query<PackageAssetQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Response, ApiError> {
+    let content_root = state.config.content_root.clone();
+    let asset = tokio::task::spawn_blocking(move || {
+        crate::activity_packages::load_asset(
+            &content_root,
+            &package_id,
+            &version,
+            &asset_path,
+            query.integrity.as_deref(),
+        )
+    })
+    .await
+    .map_err(Error::from)??;
+    let frontend_origin = Url::parse(&state.config.frontend_public_url)
+        .map_err(Error::from)?
+        .origin()
+        .ascii_serialization();
+    let policy = format!(
+        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self' {frontend_origin}; sandbox allow-scripts"
+    );
+    Ok((
+        [
+            ("Content-Type", asset.content_type.to_owned()),
+            ("Content-Security-Policy", policy),
+            ("Cache-Control", "no-cache".to_owned()),
+            ("X-Content-Type-Options", "nosniff".to_owned()),
+            ("Referrer-Policy", "no-referrer".to_owned()),
+        ],
+        asset.bytes,
+    )
+        .into_response())
 }
 
 async fn post_written_check(
@@ -269,7 +326,7 @@ async fn post_written_print(
         )));
     }
     Ok(Json(WrittenPrintResponse {
-        html: crate::worksheet_print::render(request.worksheet, request.include_answers)?,
+        html: crate::worksheet_print::render_with_layout(request.worksheet, request.include_answers, request.layout)?,
     }))
 }
 
@@ -493,6 +550,18 @@ async fn post_start_session_material_activity(
     let context = session_context_from_jar(&jar, &state).await?;
     Ok(Json(
         start_session_material_activity(&state, &context, &session_id, &session_material_id).await?,
+    ))
+}
+
+async fn post_check_activity_instance(
+    Path(activity_instance_id): Path<String>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<CheckActivityRequest>,
+) -> Result<Json<CheckResult>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        check_activity_instance(&state, &context, &activity_instance_id, request).await?,
     ))
 }
 

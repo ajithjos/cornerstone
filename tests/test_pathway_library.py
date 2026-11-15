@@ -198,7 +198,9 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
 
     assert set(stages) <= stage_ids_from_skills | stage_ids_from_materials | playlist_stage_ids
     assert set(skills) <= skill_ids_in_materials | playlist_skill_ids
-    assert set(materials) == material_ids_seen == playlist_material_ids
+    assert set(materials) == material_ids_seen
+    # Standalone materials are selectable and directly assignable from Materials.
+    assert playlist_material_ids <= set(materials)
     assert set(playlists) == set(pathway["playlist_ids"])
 
 
