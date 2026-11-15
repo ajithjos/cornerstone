@@ -8,6 +8,8 @@ class _LearnerWorkContent extends StatefulWidget {
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
     required this.onStartReview,
+    required this.onLoadPathways,
+    required this.onLoadPathway,
     this.onSetReadinessOverride,
     this.onClearReadinessOverride,
     this.onCreateWorksheetForLevel,
@@ -26,6 +28,13 @@ class _LearnerWorkContent extends StatefulWidget {
   final Future<void> Function(SessionMaterial)? onClearReadinessOverride;
   final ValueChanged<String>? onCreateWorksheetForLevel;
   final Future<void> Function(SessionDetail)? onRecordPaperResult;
+  final Future<LearnerPathwayCatalog> Function(
+    String scope,
+    String query,
+    int page,
+  )
+  onLoadPathways;
+  final Future<LearnerPathwayMap> Function(String pathwayId) onLoadPathway;
   @override
   State<_LearnerWorkContent> createState() => _LearnerWorkContentState();
 }
@@ -35,6 +44,18 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
   String? _sectionId;
   String? _readingId;
   String? _selectedLevelId;
+  String? _pathwayId;
+  LearnerPathwayMap? _pathway;
+  LearnerPathwayCatalog? _catalog;
+  final _search = TextEditingController();
+  final _scroll = ScrollController();
+  double _homeScrollOffset = 0;
+  Timer? _searchTimer;
+  int _catalogRequest = 0;
+  bool _catalogBusy = false;
+  bool _pathwayBusy = false;
+  String? _catalogError;
+  String? _pathwayError;
   bool _progressOpen = false;
   bool _restored = false;
   LearnerWorkspacePayload get _data => widget.workspace;
@@ -64,12 +85,23 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
       identifier: 'playbook-work-${_data.learner.learnerId}',
     );
     if (saved is Map) {
+      _homeScrollOffset = saved['homeScroll'] as double? ?? 0;
+      _pathwayId = saved['pathwayId'] as String?;
+      _pathway = saved['pathway'] as LearnerPathwayMap?;
+      _catalog = saved['catalog'] as LearnerPathwayCatalog?;
       _assignmentId = saved['assignment'] as String?;
       _sectionId = saved['section'] as String?;
       _readingId = saved['reading'] as String?;
       _selectedLevelId = saved['level'] as String?;
     }
+    _catalog ??= _data.pathwayCatalog;
+    _search.text = _catalog!.query;
+    // Keep the browsing position, but refresh progress after an activity.
+    if (saved is Map && saved['catalog'] != null) {
+      _loadCatalog(_catalog!.scope, _catalog!.query, _catalog!.page);
+    }
     _applyInitialAssignment();
+    if (_pathwayId != null) _loadPathway(_pathwayId!);
   }
 
   void _applyInitialAssignment() {
@@ -87,6 +119,10 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
     setState(change);
     if (_restored) {
       PageStorage.maybeOf(context)?.writeState(context, {
+        'homeScroll': _homeScrollOffset,
+        'pathwayId': _pathwayId,
+        'pathway': _pathway,
+        'catalog': _catalog,
         'assignment': _assignmentId,
         'section': _sectionId,
         'reading': _readingId,
@@ -105,12 +141,124 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
       _assignmentId = null;
       _readingId = null;
     }
+    if (oldWidget.workspace != widget.workspace) {
+      if (_pathwayId != null) _loadPathway(_pathwayId!);
+      final catalog = _catalog ?? _data.pathwayCatalog;
+      _loadCatalog(catalog.scope, catalog.query, catalog.page);
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchTimer?.cancel();
+    _search.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCatalog(String scope, String query, int page) async {
+    final request = ++_catalogRequest;
+    setState(() {
+      _catalogBusy = true;
+      _catalogError = null;
+    });
+    try {
+      final catalog = await widget.onLoadPathways(scope, query, page);
+      if (!mounted || request != _catalogRequest) return;
+      _change(() {
+        _catalog = catalog;
+        _catalogBusy = false;
+      });
+    } catch (_) {
+      if (mounted && request == _catalogRequest) {
+        setState(() {
+          _catalogBusy = false;
+          _catalogError = 'The pathways could not be loaded. Try again.';
+        });
+      }
+    }
+  }
+
+  void _searchPathways(String query) {
+    _searchTimer?.cancel();
+    ++_catalogRequest;
+    setState(() {});
+    _searchTimer = Timer(
+      const Duration(milliseconds: 300),
+      () => _loadCatalog(_catalog!.scope, query, 1),
+    );
+  }
+
+  Future<void> _loadPathway(String id) async {
+    setState(() {
+      _pathwayBusy = true;
+      _pathwayError = null;
+    });
+    try {
+      final path = await widget.onLoadPathway(id);
+      if (!mounted || _pathwayId != id) return;
+      _change(() {
+        _pathway = path;
+        _pathwayBusy = false;
+      });
+    } catch (_) {
+      if (mounted && _pathwayId == id) {
+        setState(() {
+          _pathwayBusy = false;
+          _pathwayError = 'This pathway could not be loaded. Try again.';
+        });
+      }
+    }
+  }
+
+  void _rememberHomePosition() {
+    if (_pathwayId == null && _assignmentId == null && _scroll.hasClients) {
+      _homeScrollOffset = _scroll.offset;
+    }
+  }
+
+  void _scrollTo(double offset) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scroll.hasClients) {
+          _scroll.jumpTo(offset.clamp(0, _scroll.position.maxScrollExtent));
+        }
+      });
+
+  void _openPathway(String id) {
+    _rememberHomePosition();
+    _scrollTo(0);
+    _change(() {
+      _pathwayId = id;
+      _pathway = null;
+      _assignmentId = null;
+      _readingId = null;
+    });
+    _loadPathway(id);
+  }
+
+  void _openAssignmentById(String id) {
+    final assigned = _data.assignedJourneys
+        .where((a) => a.assignment.assignmentId == id)
+        .firstOrNull;
+    if (assigned != null) _openAssignment(assigned);
+  }
+
+  void _home() {
+    _change(() {
+      _assignmentId = null;
+      _pathwayId = null;
+      _pathway = null;
+      _readingId = null;
+    });
+    _scrollTo(_homeScrollOffset);
   }
 
   void _openAssignment(
     LearnerAssignedJourney assignment, {
     bool resume = false,
   }) {
+    _rememberHomePosition();
+    _scrollTo(0);
     var section = assignment.sections.firstOrNull;
     String? reading;
     if (resume) {
@@ -129,11 +277,14 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
       }
     }
     _change(() {
+      _pathwayId = assignment.journey.pathwayId;
+      if (_pathway?.summary.pathwayId != _pathwayId) _pathway = null;
       _assignmentId = assignment.assignment.assignmentId;
       _sectionId = section?.sectionId;
       _readingId = reading;
       _progressOpen = false;
     });
+    if (_pathwayId != null && _pathway == null) _loadPathway(_pathwayId!);
   }
 
   void _selectSection(String id) => _change(() {
@@ -174,7 +325,14 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  current.journey.pathwayTitle ?? 'Continue learning',
+                  'CONTINUE LEARNING',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  current.journey.pathwayTitle ?? 'Your next playbook',
                   style: theme.textTheme.labelLarge,
                 ),
                 const SizedBox(height: 8),
@@ -192,7 +350,7 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
                   key: const ValueKey('continue-learning'),
                   onPressed: () => _openAssignment(current, resume: true),
                   icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                  label: const Text('Continue'),
+                  label: const Text('Continue learning'),
                 ),
               ],
             ),
@@ -200,29 +358,28 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
           ),
           const SizedBox(height: 28),
         ],
-        Text('Your pathways', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 6),
-        Text(
-          'See where you are going. Open an assigned playbook; the quieter steps show what comes next.',
-          style: theme.textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 18),
-        if (_data.assignedJourneys.isEmpty)
+        if (_data.assignedJourneys.isEmpty) ...[
           _panel(
             Text(
               _support
-                  ? 'Assign a playbook from the library to get started.'
-                  : 'Your teacher will choose your first playbook.',
+                  ? 'Choose a playbook from the library to start this learner’s journey.'
+                  : 'Your teacher will choose your first playbook. You can explore the pathways below.',
             ),
           ),
-        _LearningPathwayMap(
-          pathways: _data.learningPathways,
-          onOpenAssignment: (id) {
-            final assignment = _data.assignedJourneys
-                .where((a) => a.assignment.assignmentId == id)
-                .firstOrNull;
-            if (assignment != null) _openAssignment(assignment);
+          const SizedBox(height: 24),
+        ],
+        _LearnerPathwayBrowser(
+          catalog: _catalog ?? _data.pathwayCatalog,
+          search: _search,
+          busy: _catalogBusy,
+          error: _catalogError,
+          onSearch: _searchPathways,
+          onScope: (scope) {
+            _searchTimer?.cancel();
+            _loadCatalog(scope, _search.text, 1);
           },
+          onPage: (page) => _loadCatalog(_catalog!.scope, _search.text, page),
+          onOpen: _openPathway,
         ),
       ],
     );
@@ -460,24 +617,13 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => _change(() {
-              _assignmentId = null;
-              _readingId = null;
-            }),
-            icon: const Icon(Icons.arrow_back, size: 18),
-            label: const Text('Your pathways'),
-          ),
-        ),
-        const SizedBox(height: 12),
-        if ((assignment.journey.pathwayTitle ?? '').isNotEmpty)
-          _status(assignment.journey.pathwayTitle!),
-        const SizedBox(height: 6),
         Text(
           assignment.journey.title,
           style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 8),
+        _status(
+          '${assignment.assignment.completedCheckpointCount} of ${assignment.assignment.checkpointCount} checkpoints complete',
         ),
         const SizedBox(height: 20),
         _PlaybookSectionTabs(
@@ -521,6 +667,168 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
       ],
     );
   }
+
+  String get _playbookPositionLabel {
+    final path = _pathway;
+    final assignment = _assignment;
+    if (path == null || assignment == null) return 'Playbook';
+    final index = path.playbooks.indexWhere(
+      (p) => p.playlistId == assignment.assignment.playlistId,
+    );
+    return index < 0
+        ? 'Playbook'
+        : 'Playbook ${index + 1} of ${path.playbooks.length}';
+  }
+
+  Widget _trail() => Padding(
+    padding: const EdgeInsets.only(bottom: 22),
+    child: Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        TextButton.icon(
+          key: const ValueKey('learning-home'),
+          onPressed: _home,
+          icon: const Icon(Icons.arrow_back, size: 16),
+          label: const Text('My learning'),
+        ),
+        if (_pathwayId != null) ...[
+          const Icon(Icons.chevron_right, size: 14),
+          TextButton(
+            onPressed: _assignment == null
+                ? null
+                : () => _change(() {
+                    _assignmentId = null;
+                    _readingId = null;
+                    _scrollTo(0);
+                  }),
+            child: Text(
+              _pathway?.summary.title ??
+                  _assignment?.journey.pathwayTitle ??
+                  'Pathway',
+            ),
+          ),
+        ],
+        if (_assignment != null) ...[
+          const Icon(Icons.chevron_right, size: 14),
+          Text(
+            _playbookPositionLabel,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ],
+    ),
+  );
+
+  Widget _pathwayPage() {
+    final theme = Theme.of(context);
+    final path = _pathway;
+    if (_pathwayError != null) {
+      return _InlineBrowseError(
+        message: _pathwayError!,
+        onRetry: () => _loadPathway(_pathwayId!),
+      );
+    }
+    if (path == null) {
+      return const Padding(
+        padding: EdgeInsets.all(40),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'LEARNING PATHWAY',
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 1.2,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(path.summary.title, style: theme.textTheme.headlineMedium),
+        const SizedBox(height: 12),
+        Text(path.summary.description, style: theme.textTheme.bodyLarge),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(child: Text(path.summary.progressLabel)),
+            Text(
+              '${path.summary.assignedPlaybookCount} assigned',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ExcludeSemantics(
+          child: LinearProgressIndicator(
+            value: path.summary.completionPercent / 100,
+            minHeight: 4,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(height: 30),
+        Text('One playbook at a time', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 6),
+        const Text(
+          'Open your assigned work. The quieter steps show the rest of this pathway.',
+        ),
+        const SizedBox(height: 24),
+        _LearningPathwayMap(
+          pathway: path,
+          onOpenAssignment: _openAssignmentById,
+        ),
+      ],
+    );
+  }
+
+  Widget _playbookWithPathway() => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < 1000 || _pathway == null) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_pathwayBusy) const LinearProgressIndicator(),
+            if (_pathwayError != null)
+              _InlineBrowseError(
+                message: _pathwayError!,
+                onRetry: () => _loadPathway(_pathwayId!),
+              ),
+            _playbook(),
+          ],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 250,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'IN THIS PATHWAY',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(letterSpacing: 1.2),
+                ),
+                const SizedBox(height: 16),
+                _LearningPathwayMap(
+                  pathway: _pathway!,
+                  onOpenAssignment: _openAssignmentById,
+                  selectedPlaylistId: _assignment!.assignment.playlistId,
+                  compact: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 28),
+          Expanded(child: _playbook()),
+        ],
+      );
+    },
+  );
 
   void _showReadiness(SessionMaterial material) {
     final readiness = material.readiness;
@@ -631,6 +939,7 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
 
   @override
   Widget build(BuildContext context) => ListView(
+    controller: _scroll,
     padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 700 ? 16 : 28),
     children: [
       Row(
@@ -640,7 +949,9 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _support ? '${_data.learner.displayName}’s work' : 'My work',
+                  _support
+                      ? '${_data.learner.displayName}’s learning'
+                      : 'My learning',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 4),
@@ -662,10 +973,15 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
       const SizedBox(height: 24),
       if (_progressOpen)
         _progressPanel()
-      else if (_assignment != null)
-        _playbook()
-      else
-        _assignedWork(),
+      else ...[
+        if (_pathwayId != null || _assignment != null) _trail(),
+        if (_assignment != null)
+          _playbookWithPathway()
+        else if (_pathwayId != null)
+          _pathwayPage()
+        else
+          _assignedWork(),
+      ],
       const SizedBox(height: 32),
     ],
   );

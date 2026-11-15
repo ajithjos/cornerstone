@@ -45,6 +45,18 @@ Map<String, Object> _learnerDetail(Map<String, Object> learner) => {
   'progress': <Object>[],
   'review_items': <Object>[],
   'practice_mastery': <Object>[],
+  'pathway_catalog': {
+    'scope': 'all',
+    'query': '',
+    'page': 1,
+    'page_size': 12,
+    'total_count': 0,
+    'all_count': 0,
+    'assigned_count': 0,
+    'assigned_playbook_count': 0,
+    'completed_playbook_count': 0,
+    'items': <Object>[],
+  },
   'workspace': {
     'attention_label': 'Ready to begin',
     'practice_lane': <Object>[],

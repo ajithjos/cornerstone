@@ -457,16 +457,48 @@ pub struct LearnerWorkspaceResponse {
     pub review_items: Vec<ReviewItemSummary>,
     pub practice_mastery: Vec<PracticeMasterySummary>,
     pub workspace: LearnerWorkspaceSummary,
-    pub learning_pathways: Vec<LearnerPathwayMap>,
+    pub pathway_catalog: LearnerPathwayCatalog,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LearnerPathwayMap {
+    #[serde(flatten)]
+    pub summary: LearnerPathwaySummary,
+    pub playbooks: Vec<LearnerPathwayPlaybook>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnerPathwaySummary {
     pub pathway_id: String,
     pub title: String,
     pub description: String,
     pub progress_label: String,
-    pub playbooks: Vec<LearnerPathwayPlaybook>,
+    pub status_label: String,
+    pub playbook_count: usize,
+    pub assigned_playbook_count: usize,
+    pub completed_playbook_count: usize,
+    pub completion_percent: usize,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LearnerPathwayQuery {
+    pub scope: Option<String>,
+    pub query: Option<String>,
+    pub page: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnerPathwayCatalog {
+    pub scope: String,
+    pub query: String,
+    pub page: usize,
+    pub page_size: usize,
+    pub total_count: usize,
+    pub all_count: usize,
+    pub assigned_count: usize,
+    pub assigned_playbook_count: usize,
+    pub completed_playbook_count: usize,
+    pub items: Vec<LearnerPathwaySummary>,
 }
 
 #[derive(Debug, Clone, Serialize)]

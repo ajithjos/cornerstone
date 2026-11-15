@@ -2005,9 +2005,14 @@ pub async fn fetch_learner_workspace(
     };
     let library = state.library.read().await;
     let documents = state.library_documents.read().await;
-    let learning_pathways = build_learner_pathway_map(&library, &documents, &assigned_journeys);
+    let assignments = assigned_journeys
+        .iter()
+        .map(|a| a.assignment.clone())
+        .collect::<Vec<_>>();
+    let maps = build_learner_pathway_map(&library, &documents, &assignments);
+    let pathway_catalog = build_learner_pathway_catalog(&maps, &Default::default())?;
     Ok(crate::domain::LearnerWorkspaceResponse {
-        learning_pathways,
+        pathway_catalog,
         status: "ok".to_string(),
         workspace_view: if support_workspace {
             "owner_support".to_string()
@@ -2026,6 +2031,93 @@ pub async fn fetch_learner_workspace(
         review_items: detail.review_items,
         practice_mastery: detail.practice_mastery,
         workspace,
+    })
+}
+
+/// Pathway browsing returns metadata only. Assignment authorization stays with
+/// activity launch; seeing an upcoming playbook never grants access to its work.
+pub async fn fetch_learner_pathways(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    learner_id: &str,
+    query: &crate::domain::LearnerPathwayQuery,
+) -> anyhow::Result<crate::domain::LearnerPathwayCatalog> {
+    ensure_viewer_can_access_learner(&context.active_user, learner_id)?;
+    ensure_learner_in_team(state, context, learner_id).await?;
+    let assignments = fetch_assignments_for_learner(&state.pool, learner_id).await?;
+    let library = state.library.read().await;
+    let documents = state.library_documents.read().await;
+    let maps = build_learner_pathway_map(&library, &documents, &assignments);
+    build_learner_pathway_catalog(&maps, query)
+}
+
+pub async fn fetch_learner_pathway(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    learner_id: &str,
+    pathway_id: &str,
+) -> anyhow::Result<crate::domain::LearnerPathwayMap> {
+    ensure_viewer_can_access_learner(&context.active_user, learner_id)?;
+    ensure_learner_in_team(state, context, learner_id).await?;
+    let assignments = fetch_assignments_for_learner(&state.pool, learner_id).await?;
+    let library = state.library.read().await;
+    let documents = state.library_documents.read().await;
+    build_learner_pathway_map(&library, &documents, &assignments)
+        .into_iter()
+        .find(|p| p.summary.pathway_id == pathway_id)
+        .ok_or_else(|| anyhow!("pathway not found"))
+}
+
+fn build_learner_pathway_catalog(
+    maps: &[crate::domain::LearnerPathwayMap],
+    query: &crate::domain::LearnerPathwayQuery,
+) -> anyhow::Result<crate::domain::LearnerPathwayCatalog> {
+    let assigned_count = maps.iter().filter(|p| p.summary.assigned_playbook_count > 0).count();
+    let scope = query
+        .scope
+        .as_deref()
+        .unwrap_or(if assigned_count > 0 { "assigned" } else { "all" });
+    if !matches!(scope, "all" | "assigned") {
+        bail!("unknown pathway scope");
+    }
+    let search = query.query.as_deref().unwrap_or("").trim();
+    if search.chars().count() > 200 {
+        bail!("pathway search is too long");
+    }
+    let needle = search.to_lowercase();
+    let matching = maps
+        .iter()
+        .filter(|p| {
+            (scope == "all" || p.summary.assigned_playbook_count > 0)
+                && (needle.is_empty()
+                    || format!("{} {}", p.summary.title, p.summary.description)
+                        .to_lowercase()
+                        .contains(&needle)
+                    || p.playbooks.iter().any(|b| b.title.to_lowercase().contains(&needle)))
+        })
+        .collect::<Vec<_>>();
+    let page_size = 12;
+    let page = query
+        .page
+        .unwrap_or(1)
+        .max(1)
+        .min(matching.len().div_ceil(page_size).max(1));
+    Ok(crate::domain::LearnerPathwayCatalog {
+        scope: scope.into(),
+        query: search.into(),
+        page,
+        page_size,
+        total_count: matching.len(),
+        all_count: maps.len(),
+        assigned_count,
+        assigned_playbook_count: maps.iter().map(|p| p.summary.assigned_playbook_count).sum(),
+        completed_playbook_count: maps.iter().map(|p| p.summary.completed_playbook_count).sum(),
+        items: matching
+            .into_iter()
+            .skip((page - 1) * page_size)
+            .take(page_size)
+            .map(|p| p.summary.clone())
+            .collect(),
     })
 }
 
@@ -3675,7 +3767,7 @@ fn build_material_catalog(
 fn build_learner_pathway_map(
     library: &LibraryBundle,
     documents: &[LibraryDocument],
-    assignments: &[crate::domain::LearnerAssignedJourneySummary],
+    assignments: &[AssignmentSummary],
 ) -> Vec<crate::domain::LearnerPathwayMap> {
     library
         .pathways
@@ -3686,10 +3778,7 @@ fn build_learner_pathway_map(
                 .iter()
                 .filter_map(|id| {
                     let playlist = library.playlist(id)?;
-                    let assignment = assignments
-                        .iter()
-                        .find(|a| &a.assignment.playlist_id == id)
-                        .map(|a| &a.assignment);
+                    let assignment = assignments.iter().find(|a| &a.playlist_id == id);
                     Some(crate::domain::LearnerPathwayPlaybook {
                         playlist_id: id.clone(),
                         title: playlist.title.clone(),
@@ -3715,11 +3804,30 @@ fn build_learner_pathway_map(
                 })
                 .collect::<Vec<_>>();
             let complete = playbooks.iter().filter(|p| p.status == "completed").count();
+            let assigned = playbooks.iter().filter(|p| p.can_open).count();
             crate::domain::LearnerPathwayMap {
-                pathway_id: pathway.pathway_id.clone(),
-                title: pathway.title.clone(),
-                description: pathway.description.clone(),
-                progress_label: format!("{complete} of {} playbooks complete", playbooks.len()),
+                summary: crate::domain::LearnerPathwaySummary {
+                    pathway_id: pathway.pathway_id.clone(),
+                    title: pathway.title.clone(),
+                    description: pathway.description.clone(),
+                    progress_label: format!("{complete} of {} playbooks complete", playbooks.len()),
+                    status_label: if assigned == 0 {
+                        "Explore"
+                    } else if complete == playbooks.len() {
+                        "Completed"
+                    } else {
+                        "Your learning"
+                    }
+                    .into(),
+                    playbook_count: playbooks.len(),
+                    assigned_playbook_count: assigned,
+                    completed_playbook_count: complete,
+                    completion_percent: if playbooks.is_empty() {
+                        0
+                    } else {
+                        complete * 100 / playbooks.len()
+                    },
+                },
                 playbooks,
             }
         })
@@ -6700,7 +6808,7 @@ mod tests {
             &pathway.title,
             sample_session(),
         );
-        let maps = super::build_learner_pathway_map(&content.bundle, &content.documents, &[assignment]);
+        let maps = super::build_learner_pathway_map(&content.bundle, &content.documents, &[assignment.assignment]);
         assert_eq!(maps.len(), content.bundle.pathways.len());
         let map = &maps[0];
         assert_eq!(map.playbooks.len(), pathway.playlist_ids.len());
@@ -6711,6 +6819,87 @@ mod tests {
         assert!(map.playbooks[1].can_open);
         assert_eq!(map.playbooks[1].assignment_id.as_deref(), Some("selected"));
         assert_eq!(map.playbooks[1].progress_label, "0 of 1 checkpoints complete");
+    }
+
+    #[test]
+    fn learner_catalog_bounds_one_hundred_pathways_and_searches_playbook_titles() {
+        use crate::domain::{LearnerPathwayMap, LearnerPathwayPlaybook, LearnerPathwayQuery, LearnerPathwaySummary};
+        let maps = (0..100)
+            .map(|i| LearnerPathwayMap {
+                summary: LearnerPathwaySummary {
+                    pathway_id: format!("p-{i}"),
+                    title: format!("Pathway {i:03}"),
+                    description: "Foundations".into(),
+                    progress_label: "0 of 1 playbooks complete".into(),
+                    status_label: "Explore".into(),
+                    playbook_count: 1,
+                    assigned_playbook_count: usize::from(i == 0),
+                    completed_playbook_count: 0,
+                    completion_percent: 0,
+                },
+                playbooks: vec![LearnerPathwayPlaybook {
+                    playlist_id: format!("b-{i}"),
+                    title: format!("Skill {i:03}"),
+                    description: String::new(),
+                    assignment_id: (i == 0).then(|| "a".into()),
+                    can_open: i == 0,
+                    status: if i == 0 { "active" } else { "unassigned" }.into(),
+                    progress_label: String::new(),
+                }],
+            })
+            .collect::<Vec<_>>();
+        let assigned = super::build_learner_pathway_catalog(&maps, &Default::default()).unwrap();
+        assert_eq!(assigned.scope, "assigned");
+        assert_eq!(assigned.total_count, 1);
+        assert_eq!(assigned.all_count, 100);
+        let query = LearnerPathwayQuery {
+            scope: Some("all".into()),
+            ..Default::default()
+        };
+        let first = super::build_learner_pathway_catalog(&maps, &query).unwrap();
+        assert_eq!(first.items.len(), 12);
+        let second = super::build_learner_pathway_catalog(
+            &maps,
+            &LearnerPathwayQuery {
+                page: Some(2),
+                ..query.clone()
+            },
+        )
+        .unwrap();
+        assert_eq!(second.items[0].pathway_id, "p-12");
+        let last = super::build_learner_pathway_catalog(
+            &maps,
+            &LearnerPathwayQuery {
+                page: Some(usize::MAX),
+                ..query.clone()
+            },
+        )
+        .unwrap();
+        assert_eq!((last.page, last.items.len()), (9, 4));
+        let search = super::build_learner_pathway_catalog(
+            &maps,
+            &LearnerPathwayQuery {
+                query: Some("  SKILL 093 ".into()),
+                ..query.clone()
+            },
+        )
+        .unwrap();
+        assert_eq!(search.total_count, 1);
+        assert_eq!(search.items[0].pathway_id, "p-93");
+        let encoded = serde_json::to_value(&search).unwrap();
+        assert!(encoded["items"][0].get("playbooks").is_none());
+        assert!(
+            super::build_learner_pathway_catalog(
+                &maps,
+                &LearnerPathwayQuery {
+                    scope: Some("bad".into()),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+        );
+        let empty = super::build_learner_pathway_catalog(&[], &Default::default()).unwrap();
+        assert_eq!((empty.scope.as_str(), empty.page, empty.total_count), ("all", 1, 0));
     }
 
     #[test]

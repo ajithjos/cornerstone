@@ -147,6 +147,8 @@ The Flutter web host embeds the descriptor's API-origin entry URL in an iframe w
 actions to the activity represented by its callbacks, retains authentication,
 and sends the result back to that iframe.
 
+Use `type="button"` and a click handler for completion, and send the responses through the bridge. Do not rely on native form submission or the form `submit` event: the script-only sandbox blocks it before that event reaches the package. Enter and Space must activate the same completion button. Qualify completion inside the actual sandboxed host, not only in a standalone page.
+
 Every message uses `protocol: "cornerstone.activity"` and `version: 1`.
 
 1. The child sends `{protocol, version, type: "ready"}` to its parent. It retries

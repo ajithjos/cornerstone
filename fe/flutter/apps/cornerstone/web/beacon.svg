@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 124 124" role="img" aria-label="Cornerstone Beacon">
+  <style>path { fill: #806016; } @media (prefers-color-scheme: dark) { path { fill: #F0C653; } }</style>
+  <path fill-rule="evenodd" d="M60 10 Q63 5 66 10 L73 38 Q75 47 85 49 L111 55 Q117 58 111 61 L85 67 Q75 69 73 79 L66 113 Q63 120 60 113 L53 79 Q51 69 41 67 L15 61 Q9 58 15 55 L41 49 Q51 47 53 38 Z M63 35 L71 58 63 82 55 58 Z"/>
+</svg>

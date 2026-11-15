@@ -36,7 +36,7 @@
 
   const document = root.document;
   const elements = Object.fromEntries([
-    'activity', 'title', 'mode', 'instructions', 'notice', 'error', 'questions-form', 'questions',
+    'activity', 'title', 'mode', 'instructions', 'notice', 'error', 'questions',
     'actions', 'submit', 'result-title', 'result-detail',
   ].map((id) => [id, document.getElementById(id)]));
   const state = { mode: null, busy: false, finished: false, startedAt: null, entries: new Map() };
@@ -161,7 +161,9 @@
   }
 
   const bridge = root.CornerstoneActivityBridge.connect(root, initialize);
-  elements['questions-form'].addEventListener('submit', complete);
+  // The host allows scripts but deliberately disables native form navigation.
+  // A button activation (pointer, Enter or Space) submits through the bridge.
+  elements.submit.addEventListener('click', complete);
   root.addEventListener('pagehide', () => bridge.dispose(), { once: true });
   if (root.parent === root) {
     elements.notice.textContent = 'Open this activity from Cornerstone to load your questions.';

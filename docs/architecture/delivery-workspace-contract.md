@@ -44,7 +44,11 @@ Assignment progress is checkpoint-owned: `checkpoint_count`, `completed_checkpoi
 
 ## Learner pathway map
 
-`LearnerWorkspaceResponse.learning_pathways` contains the ordered pathway and playbook map, including unassigned steps. Each playbook carries `assignment_id`, `can_open`, `status`, and `progress_label`. Unassigned steps contain public title/description metadata only, with `can_open: false`; they expose no Teach material or activity launch authority. Flutter renders this backend map rather than reconstructing it from assignments.
+`LearnerWorkspaceResponse.pathway_catalog` supplies the first page of the learner’s pathway overview. It defaults to assigned pathways when any exist, otherwise all pathways. `GET /api/v1/learners/{learner_id}/pathways?scope=assigned|all&query=...&page=...` performs search (including playbook titles), scoping and fixed 12-item pagination in Rust. Counts and progress labels are explicit response fields. The catalogue contains summaries only; it does not send every pathway’s sequence or material bodies.
+
+`GET /api/v1/learners/{learner_id}/pathways/{pathway_id}` returns one ordered pathway and its playbook map, including unassigned steps. Each playbook carries `assignment_id`, `can_open`, `status`, and `progress_label`. Unassigned steps contain public title/description metadata only, with `can_open: false`; they expose no Teach material or activity launch authority. Both endpoints enforce learner and team scope.
+
+The learner journey is My learning → pathway → playbook → Learn / Practice / Checkpoint. The home catalogue remembers its page and search while a pathway is explored. The open playbook keeps a compact pathway sequence alongside it on wide screens, and a pathway breadcrumb on small screens. Returning from an activity restores the selected section and practice level. Flutter renders backend eligibility and ordering; it never infers access from catalogue visibility.
 
 ## Owner activity preview
 

@@ -37,10 +37,76 @@ SessionMaterial material(String id, {bool live = false, bool adult = false}) =>
           : null,
     );
 
+Map<String, dynamic> pathwayJson({
+  String id = 'written',
+  String title = 'Written arithmetic',
+}) => {
+  'pathway_id': id,
+  'title': title,
+  'description': 'Written methods',
+  'progress_label': '0 of 2 playbooks complete',
+  'status_label': 'Your learning',
+  'playbook_count': 2,
+  'assigned_playbook_count': 1,
+  'completed_playbook_count': 0,
+  'completion_percent': 0,
+  'playbooks': [
+    {
+      'playlist_id': 'column-playlist',
+      'title': 'Column addition sequence',
+      'description': 'Learn a method that works for any number of digits.',
+      'assignment_id': 'assignment',
+      'can_open': true,
+      'status': 'active',
+      'progress_label': '0 of 1 checkpoints complete',
+    },
+    {
+      'playlist_id': 'multiply',
+      'title': 'Multiplication next',
+      'description': 'Build on your addition skills.',
+      'assignment_id': null,
+      'can_open': false,
+      'status': 'unassigned',
+      'progress_label': 'Not assigned yet',
+    },
+  ],
+};
+LearnerPathwayCatalog testCatalog({
+  String scope = 'assigned',
+  String query = '',
+  int page = 1,
+  int total = 1,
+}) => LearnerPathwayCatalog.fromJson({
+  'scope': scope,
+  'query': query,
+  'page': page,
+  'page_size': 12,
+  'total_count': total,
+  'all_count': total,
+  'assigned_count': 1,
+  'assigned_playbook_count': 1,
+  'completed_playbook_count': 0,
+  'items': [
+    for (var i = (page - 1) * 12; i < page * 12 && i < total; i++)
+      pathwayJson(
+        id: i == 0 ? 'written' : 'path-$i',
+        title: i == 0 ? 'Written arithmetic' : 'Pathway $i',
+      ),
+  ],
+});
+Future<LearnerPathwayMap> loadTestPathway(String id) async =>
+    LearnerPathwayMap.fromJson(pathwayJson(id: id));
+Future<LearnerPathwayCatalog> loadTestCatalog(
+  String scope,
+  String query,
+  int page,
+) async => testCatalog(scope: scope, query: query, page: page);
+
 LearnerWorkspacePayload fixture({
   bool support = false,
   bool startActivity = false,
   bool nextEnabled = true,
+  int catalogTotal = 1,
 }) {
   final lesson = material('lesson');
   final practice = material('practice', live: true);
@@ -205,34 +271,10 @@ LearnerWorkspacePayload fixture({
       currentLevel: 'Foundation',
       notes: '',
     ),
-    learningPathways: [
-      LearnerPathwayMap.fromJson({
-        'pathway_id': 'written',
-        'title': 'Written arithmetic',
-        'description': 'Written methods',
-        'progress_label': '0 of 2 playbooks complete',
-        'playbooks': [
-          {
-            'playlist_id': 'column-playlist',
-            'title': journey.title,
-            'description': '',
-            'assignment_id': 'assignment',
-            'can_open': true,
-            'status': 'active',
-            'progress_label': '0 of 1 checkpoints complete',
-          },
-          {
-            'playlist_id': 'multiply',
-            'title': 'Multiplication next',
-            'description': '',
-            'assignment_id': null,
-            'can_open': false,
-            'status': 'unassigned',
-            'progress_label': 'Not assigned yet',
-          },
-        ],
-      }),
-    ],
+    pathwayCatalog: testCatalog(
+      total: catalogTotal,
+      scope: catalogTotal > 1 ? 'all' : 'assigned',
+    ),
     assignedJourneys: [assigned],
     assignedPathways: [
       LearnerAssignedPathway(
@@ -287,6 +329,8 @@ Future<void> pumpWork(
         body: LearnerWorkspaceView(
           viewer: null,
           workspace: data,
+          onLoadPathways: loadTestCatalog,
+          onLoadPathway: loadTestPathway,
           viewerCanReadLibrary: false,
           onOpenLibraryRoute: (_) {},
           onStartActivity: (_, material) async {
@@ -307,8 +351,11 @@ void main() {
       await pumpWork(tester, fixture());
       expect(find.text('John'), findsOneWidget);
       expect(find.text('Your pathways'), findsOneWidget);
-      expect(find.text('Multiplication next'), findsOneWidget);
+      expect(find.text('Multiplication next'), findsNothing);
       expect(find.text('LESSON BODY: ten ones make one ten.'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('pathway-written')));
+      await tester.pumpAndSettle();
+      expect(find.text('Multiplication next'), findsOneWidget);
       await tester.tap(
         find.byKey(const ValueKey('pathway-playbook-column-playlist')),
       );
@@ -333,6 +380,9 @@ void main() {
         fixture(),
         onStart: (m) => launched.add(m.sessionMaterialId),
       );
+      await tester.tap(find.byKey(const ValueKey('pathway-written')));
+      await tester.pumpAndSettle();
+      expect(find.text('Multiplication next'), findsOneWidget);
       await tester.tap(
         find.byKey(const ValueKey('pathway-playbook-column-playlist')),
       );
@@ -353,6 +403,9 @@ void main() {
     'Owner Teach remains available while moving between practice and explanation',
     (tester) async {
       await pumpWork(tester, fixture(support: true));
+      await tester.tap(find.byKey(const ValueKey('pathway-written')));
+      await tester.pumpAndSettle();
+      expect(find.text('Multiplication next'), findsOneWidget);
       await tester.tap(
         find.byKey(const ValueKey('pathway-playbook-column-playlist')),
       );
@@ -385,7 +438,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('section-checkpoint')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('start-check')), findsOneWidget);
-      await tester.tap(find.text('Your pathways'));
+      await tester.tap(find.byKey(const ValueKey('learning-home')));
       await tester.pumpAndSettle();
       expect(find.text('Your pathways'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -397,6 +450,7 @@ void main() {
       final bucket = PageStorageBucket();
       final data = fixture();
       var visible = true;
+      var catalogRefreshes = 0;
       late StateSetter redraw;
       await tester.pumpWidget(
         MaterialApp(
@@ -410,6 +464,15 @@ void main() {
                       ? LearnerWorkspaceView(
                           viewer: null,
                           workspace: data,
+                          onLoadPathways: (scope, query, page) async {
+                            catalogRefreshes++;
+                            return testCatalog(
+                              scope: scope,
+                              query: query,
+                              page: page,
+                            );
+                          },
+                          onLoadPathway: loadTestPathway,
                           viewerCanReadLibrary: false,
                           onOpenLibraryRoute: (_) {},
                           onStartActivity: (_, _) async {},
@@ -431,6 +494,7 @@ void main() {
       await tester.pumpAndSettle();
       redraw(() => visible = true);
       await tester.pumpAndSettle();
+      expect(catalogRefreshes, 1);
       expect(
         tester
             .widget<ChoiceChip>(find.byKey(const ValueKey('section-practice')))
@@ -442,6 +506,63 @@ void main() {
         find.byKey(const ValueKey('pathway-playbook-column-playlist')),
         findsNothing,
       );
+    },
+  );
+  testWidgets(
+    'A hundred pathways stay paged and retain home position after exploring',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final requests = <int>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LearnerWorkspaceView(
+              viewer: null,
+              workspace: fixture(catalogTotal: 100),
+              viewerCanReadLibrary: false,
+              onOpenLibraryRoute: (_) {},
+              onStartActivity: (_, _) async {},
+              onStartReview: (_) async {},
+              onLoadPathways: (scope, query, page) async {
+                requests.add(page);
+                return testCatalog(
+                  scope: scope,
+                  query: query,
+                  page: page,
+                  total: 100,
+                );
+              },
+              onLoadPathway: loadTestPathway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('pathway-path-11')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pathway-path-12')), findsNothing);
+      await tester.scrollUntilVisible(
+        find.byTooltip('Next pathways'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Next pathways'));
+      await tester.pumpAndSettle();
+      expect(requests, [2]);
+      expect(find.text('Page 2 of 9 · 100 pathways'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('pathway-path-12')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('pathway-path-12')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('learning-home')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('learning-home')));
+      await tester.pumpAndSettle();
+      expect(find.text('Page 2 of 9 · 100 pathways'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 }

@@ -145,6 +145,30 @@ class CornerstoneApiClient {
     return LearnerWorkspacePayload.fromJson(_decode(response));
   }
 
+  Future<LearnerPathwayCatalog> fetchLearnerPathways(
+    String learnerId,
+    String scope,
+    String query,
+    int page,
+  ) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learners/$learnerId/pathways').replace(
+        queryParameters: {'scope': scope, 'query': query, 'page': '$page'},
+      ),
+    );
+    return LearnerPathwayCatalog.fromJson(_decode(response));
+  }
+
+  Future<LearnerPathwayMap> fetchLearnerPathway(
+    String learnerId,
+    String pathwayId,
+  ) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learners/$learnerId/pathways/$pathwayId'),
+    );
+    return LearnerPathwayMap.fromJson(_decode(response));
+  }
+
   Future<void> createAssignment({
     required String learnerId,
     required String playlistId,

@@ -3,8 +3,8 @@ part of '../../../main.dart';
 enum _ShellDestination {
   owner('Learners', 'Students, sessions, and progress.', CornerstoneIcons.team),
   learner(
-    'My work',
-    'Current pathway and session work.',
+    'My learning',
+    'Your pathways and playbooks.',
     CornerstoneIcons.learning,
   ),
   library(
@@ -1789,6 +1789,16 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       onOpenLibraryRoute: _openLibraryDocumentFromWork,
       onStartActivity: _startActivityForMaterial,
       onStartReview: _startReviewItem,
+      onLoadPathways: (scope, query, page) => _apiClient.fetchLearnerPathways(
+        _learnerWorkspace!.learner.learnerId,
+        scope,
+        query,
+        page,
+      ),
+      onLoadPathway: (id) => _apiClient.fetchLearnerPathway(
+        _learnerWorkspace!.learner.learnerId,
+        id,
+      ),
       onCreateWorksheetForLevel: _openWorksheetLevel,
       onRecordPaperResult: _viewerCanManage ? _recordPaperSession : null,
       onSetReadinessOverride: _viewerCanManage

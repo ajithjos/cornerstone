@@ -3,7 +3,7 @@ part of '../main.dart';
 // Brand palette
 
 class _BrandPalette {
-  // Core brand colours (drawn from the stone-block logo)
+  // Warm gold for Beacon, with contrast adapted to each theme
   static const Color gold = Color(0xFFBD8610);
   static const Color goldBright = Color(0xFFF0C653);
   static const Color goldSoft = Color(0xFFF8E7AF);

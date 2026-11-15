@@ -1227,7 +1227,7 @@ class LearnerWorkspacePayload {
     required this.reviewItems,
     required this.practiceMastery,
     required this.workspace,
-    this.learningPathways = const [],
+    required this.pathwayCatalog,
     this.activeAssignment,
     this.journey,
   });
@@ -1248,9 +1248,9 @@ class LearnerWorkspacePayload {
             )
             .toList();
     return LearnerWorkspacePayload(
-      learningPathways: ((json['learning_pathways'] as List<dynamic>?) ?? [])
-          .map((p) => LearnerPathwayMap.fromJson(p as Map<String, dynamic>))
-          .toList(),
+      pathwayCatalog: LearnerPathwayCatalog.fromJson(
+        json['pathway_catalog'] as Map<String, dynamic>,
+      ),
       status: json['status'] as String,
       workspaceView: json['workspace_view'] as String? ?? 'learner',
       viewerRole: json['viewer_role'] as String? ?? 'learner',
@@ -1292,7 +1292,7 @@ class LearnerWorkspacePayload {
     );
   }
 
-  final List<LearnerPathwayMap> learningPathways;
+  final LearnerPathwayCatalog pathwayCatalog;
   final String status;
   final String workspaceView;
   final String viewerRole;
@@ -2826,18 +2826,58 @@ class ActivitySummary {
   final List<ActivityCorrection> corrections;
 }
 
-class LearnerPathwayMap {
-  LearnerPathwayMap.fromJson(Map<String, dynamic> json)
+class LearnerPathwayCatalog {
+  LearnerPathwayCatalog.fromJson(Map<String, dynamic> json)
+    : scope = json['scope'] as String,
+      query = json['query'] as String,
+      page = json['page'] as int,
+      pageSize = json['page_size'] as int,
+      totalCount = json['total_count'] as int,
+      allCount = json['all_count'] as int,
+      assignedCount = json['assigned_count'] as int,
+      assignedPlaybookCount = json['assigned_playbook_count'] as int,
+      completedPlaybookCount = json['completed_playbook_count'] as int,
+      items = (json['items'] as List<dynamic>)
+          .map((p) => LearnerPathwaySummary.fromJson(p as Map<String, dynamic>))
+          .toList();
+  final String scope, query;
+  final int page,
+      pageSize,
+      totalCount,
+      allCount,
+      assignedCount,
+      assignedPlaybookCount,
+      completedPlaybookCount;
+  final List<LearnerPathwaySummary> items;
+}
+
+class LearnerPathwaySummary {
+  LearnerPathwaySummary.fromJson(Map<String, dynamic> json)
     : pathwayId = json['pathway_id'] as String,
       title = json['title'] as String,
       description = json['description'] as String,
       progressLabel = json['progress_label'] as String,
+      statusLabel = json['status_label'] as String,
+      playbookCount = json['playbook_count'] as int,
+      assignedPlaybookCount = json['assigned_playbook_count'] as int,
+      completedPlaybookCount = json['completed_playbook_count'] as int,
+      completionPercent = json['completion_percent'] as int;
+  final String pathwayId, title, description, progressLabel, statusLabel;
+  final int playbookCount,
+      assignedPlaybookCount,
+      completedPlaybookCount,
+      completionPercent;
+}
+
+class LearnerPathwayMap {
+  LearnerPathwayMap.fromJson(Map<String, dynamic> json)
+    : summary = LearnerPathwaySummary.fromJson(json),
       playbooks = (json['playbooks'] as List<dynamic>)
           .map(
             (p) => LearnerPathwayPlaybook.fromJson(p as Map<String, dynamic>),
           )
           .toList();
-  final String pathwayId, title, description, progressLabel;
+  final LearnerPathwaySummary summary;
   final List<LearnerPathwayPlaybook> playbooks;
 }
 

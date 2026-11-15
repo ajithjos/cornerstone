@@ -67,3 +67,45 @@ test('numeric package shares the audited bridge but has no network, early check,
   assert.doesNotMatch(script, /\bfetch\s*\(|XMLHttpRequest|\.innerHTML\b|\beval\s*\(|bridge\.request\(['"]check/);
   assert.match(script, /bridge\.request\('complete'/);
 });
+
+test('completion button sends answers through the bridge without native form submission', async () => {
+  const vm = require('node:vm');
+  const html = fs.readFileSync(path.join(packageRoot, 'index.html'), 'utf8');
+  assert.match(html, /<button\s+id="submit"\s+type="button"/);
+  assert.doesNotMatch(html, /<form\b/);
+  const elements = new Map();
+  function element() {
+    return { value: '', listeners: new Map(), classList: { add() {}, toggle() {} },
+      addEventListener(type, handler) { this.listeners.set(type, handler); },
+      setAttribute() {}, append() {}, replaceChildren() {}, focus() {} };
+  }
+  const document = {
+    getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
+    createElement: element,
+  };
+  let initialize;
+  const requests = [];
+  const window = { document, parent: {}, performance: { now: () => 1000 }, addEventListener() {},
+    CornerstoneActivityBridge: { connect(_, ready) {
+      initialize = ready;
+      return { request: async (action, body) => {
+        requests.push({ action, body });
+        return { run_outcome_label: 'Target met', activity_summary: { correct_count: 1, item_count: 1 } };
+      } };
+    } },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(packageRoot, 'activity.js'), 'utf8'), { window });
+  // Capture the input created by the real package, rather than reconstructing its responses.
+  let input;
+  document.createElement = tag => { const node = element(); if (tag === 'input') input = node; return node; };
+  initialize(payload());
+  input.value = '15';
+  const button = elements.get('submit');
+  assert.equal(typeof button.listeners.get('click'), 'function');
+  await button.listeners.get('click')({ preventDefault() {} });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests)), [{ action: 'complete', body: {
+    responses: [{ item_id: 'item-1', value: '15' }], duration_seconds: 0,
+  } }]);
+  assert.equal(button.disabled, true);
+  assert.equal(elements.get('result-title').textContent, 'Target met');
+});

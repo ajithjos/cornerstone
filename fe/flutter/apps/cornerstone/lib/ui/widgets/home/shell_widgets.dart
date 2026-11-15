@@ -158,7 +158,7 @@ class _BrandLockup extends StatelessWidget {
   );
 }
 
-/// Four cut stones leave a quiet cross in the negative space.
+/// Beacon: a tapered cross with a clear central opening at small sizes.
 class _BrandSymbol extends StatelessWidget {
   const _BrandSymbol({required this.size});
   final double size;
@@ -168,55 +168,47 @@ class _BrandSymbol extends StatelessWidget {
     image: true,
     child: CustomPaint(
       size: Size.square(size),
-      painter: _CornerstonePainter(Theme.of(context).colorScheme.primary),
+      painter: _BeaconPainter(Theme.of(context).colorScheme.primary),
     ),
   );
 }
 
-class _CornerstonePainter extends CustomPainter {
-  const _CornerstonePainter(this.color);
+class _BeaconPainter extends CustomPainter {
+  const _BeaconPainter(this.color);
   final Color color;
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 40, size.height / 40);
-    final stones = [
-      [
-        const Offset(5, 8),
-        const Offset(17, 4),
-        const Offset(17, 17),
-        const Offset(5, 17),
-      ],
-      [
-        const Offset(22, 4),
-        const Offset(35, 8),
-        const Offset(35, 17),
-        const Offset(22, 17),
-      ],
-      [
-        const Offset(5, 22),
-        const Offset(17, 22),
-        const Offset(17, 36),
-        const Offset(5, 31),
-      ],
-      [
-        const Offset(22, 22),
-        const Offset(35, 22),
-        const Offset(35, 31),
-        const Offset(22, 36),
-      ],
-    ];
-    for (var i = 0; i < stones.length; i++) {
-      final path = Path()..addPolygon(stones[i], true);
-      canvas.drawPath(
-        path,
-        Paint()..color = color.withValues(alpha: [1.0, .78, .78, 1.0][i]),
-      );
-    }
+    // Geometry matches web/beacon.svg; the opening inherits its background.
+    canvas.scale(size.width / 124, size.height / 124);
+    final beacon = Path()
+      ..fillType = PathFillType.evenOdd
+      ..moveTo(60, 10)
+      ..quadraticBezierTo(63, 5, 66, 10)
+      ..lineTo(73, 38)
+      ..quadraticBezierTo(75, 47, 85, 49)
+      ..lineTo(111, 55)
+      ..quadraticBezierTo(117, 58, 111, 61)
+      ..lineTo(85, 67)
+      ..quadraticBezierTo(75, 69, 73, 79)
+      ..lineTo(66, 113)
+      ..quadraticBezierTo(63, 120, 60, 113)
+      ..lineTo(53, 79)
+      ..quadraticBezierTo(51, 69, 41, 67)
+      ..lineTo(15, 61)
+      ..quadraticBezierTo(9, 58, 15, 55)
+      ..lineTo(41, 49)
+      ..quadraticBezierTo(51, 47, 53, 38)
+      ..close()
+      ..moveTo(63, 35)
+      ..lineTo(71, 58)
+      ..lineTo(63, 82)
+      ..lineTo(55, 58)
+      ..close();
+    canvas.drawPath(beacon, Paint()..color = color);
   }
 
   @override
-  bool shouldRepaint(_CornerstonePainter oldDelegate) =>
-      color != oldDelegate.color;
+  bool shouldRepaint(_BeaconPainter oldDelegate) => color != oldDelegate.color;
 }
 
 class _BrandWordmark extends StatelessWidget {

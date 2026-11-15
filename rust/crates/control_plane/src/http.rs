@@ -198,6 +198,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/learners", get(get_learners))
         .route("/api/v1/learners/{learner_id}", get(get_learner_detail))
         .route("/api/v1/learners/{learner_id}/workspace", get(get_learner_workspace))
+        .route("/api/v1/learners/{learner_id}/pathways", get(get_learner_pathways))
+        .route(
+            "/api/v1/learners/{learner_id}/pathways/{pathway_id}",
+            get(get_learner_pathway),
+        )
         .route(
             "/api/v1/learners/{learner_id}/readiness-overrides",
             post(post_readiness_override),
@@ -534,6 +539,29 @@ async fn get_learner_workspace(
 ) -> Result<Json<crate::domain::LearnerWorkspaceResponse>, ApiError> {
     let context = session_context_from_jar(&jar, &state).await?;
     Ok(Json(fetch_learner_workspace(&state, &context, &learner_id).await?))
+}
+
+async fn get_learner_pathways(
+    Path(learner_id): Path<String>,
+    Query(query): Query<crate::domain::LearnerPathwayQuery>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<crate::domain::LearnerPathwayCatalog>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        crate::service::fetch_learner_pathways(&state, &context, &learner_id, &query).await?,
+    ))
+}
+
+async fn get_learner_pathway(
+    Path((learner_id, pathway_id)): Path<(String, String)>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<crate::domain::LearnerPathwayMap>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        crate::service::fetch_learner_pathway(&state, &context, &learner_id, &pathway_id).await?,
+    ))
 }
 
 async fn post_assignment(

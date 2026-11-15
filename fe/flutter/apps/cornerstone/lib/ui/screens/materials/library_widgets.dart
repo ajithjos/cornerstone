@@ -116,29 +116,33 @@ class _PlaybookSectionTabs extends StatelessWidget {
   final String selectedId;
   final ValueChanged<String> onSelected;
   @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    children: [
-      for (final section in sections)
-        ChoiceChip(
-          key: ValueKey('section-${section.sectionId}'),
-          selected: section.sectionId == selectedId,
-          showCheckmark: false,
-          avatar: Icon(switch (section.sectionId) {
-            'teach' => Icons.school_outlined,
-            'learn' => Icons.menu_book_outlined,
-            'practice' => Icons.edit_outlined,
-            'checkpoint' => Icons.flag_outlined,
-            _ => Icons.article_outlined,
-          }, size: 18),
-          label: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
-            child: Text(section.title),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final section in sections)
+          ChoiceChip(
+            key: ValueKey('section-${section.sectionId}'),
+            selected: section.sectionId == selectedId,
+            showCheckmark: false,
+            avatar: constraints.maxWidth < 520
+                ? null
+                : Icon(switch (section.sectionId) {
+                    'teach' => Icons.school_outlined,
+                    'learn' => Icons.menu_book_outlined,
+                    'practice' => Icons.edit_outlined,
+                    'checkpoint' => Icons.flag_outlined,
+                    _ => Icons.article_outlined,
+                  }, size: 18),
+            label: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+              child: Text(section.title),
+            ),
+            onSelected: (_) => onSelected(section.sectionId),
           ),
-          onSelected: (_) => onSelected(section.sectionId),
-        ),
-    ],
+      ],
+    ),
   );
 }
 

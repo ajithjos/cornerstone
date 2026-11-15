@@ -11,6 +11,8 @@ class LearnerWorkspaceView extends StatelessWidget {
     required this.onOpenLibraryRoute,
     required this.onStartActivity,
     required this.onStartReview,
+    required this.onLoadPathways,
+    required this.onLoadPathway,
     this.onSetReadinessOverride,
     this.onClearReadinessOverride,
     this.onCreateWorksheetForLevel,
@@ -34,6 +36,13 @@ class LearnerWorkspaceView extends StatelessWidget {
   final Future<void> Function(SessionMaterial material)?
   onClearReadinessOverride;
 
+  final Future<LearnerPathwayCatalog> Function(
+    String scope,
+    String query,
+    int page,
+  )
+  onLoadPathways;
+  final Future<LearnerPathwayMap> Function(String pathwayId) onLoadPathway;
   @override
   Widget build(BuildContext context) {
     final data = workspace;
@@ -57,6 +66,8 @@ class LearnerWorkspaceView extends StatelessWidget {
       onOpenLibraryRoute: onOpenLibraryRoute,
       onStartActivity: onStartActivity,
       onStartReview: onStartReview,
+      onLoadPathways: onLoadPathways,
+      onLoadPathway: onLoadPathway,
       onSetReadinessOverride: onSetReadinessOverride,
       onClearReadinessOverride: onClearReadinessOverride,
       onCreateWorksheetForLevel: onCreateWorksheetForLevel,
