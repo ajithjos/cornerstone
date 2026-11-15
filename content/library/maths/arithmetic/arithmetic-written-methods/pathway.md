@@ -20,6 +20,7 @@ playlist_ids:
   - written_division
 entry_points:
   age_7: place_value_and_number_sense
+  age_9: written_addition_and_subtraction
   age_10: written_addition_and_subtraction
 ---
 
@@ -118,11 +119,17 @@ Start at [Place Value And Number Sense](./playlists/place-value-and-number-sense
 
 Do not rush into formal written methods if hundreds, tens, and ones are still vague.
 
-### Ten-Year-Old
+### Nine- Or Ten-Year-Old
 
-Start with a quick baseline from [Written Addition And Subtraction](./playlists/written-addition-and-subtraction.md).
+Start with a short baseline from [Written Addition And Subtraction](./playlists/written-addition-and-subtraction.md): `34 + 5`, `55 + 68`, `83 - 27`, and `503 - 267`. Begin at the first insecure level, even if school is covering larger numbers.
 
 If written addition and subtraction are already solid, move into [Written Multiplication](./playlists/written-multiplication.md). If place value language is weak, route back to [Place Value And Number Sense](./playlists/place-value-and-number-sense.md) immediately.
+
+## Small steps within each stage
+
+The practice pages are banks of levels. Select one level for a short session, then add two earlier questions for cumulative review. First master two digits and one digit without exchange; then add exchange, more columns, and more places in the multiplier or divisor. A longer number repeats the same method. Do not assign an entire multi-level sheet in one sitting.
+
+Keep addition and subtraction levels separate when necessary. Start short multiplication from familiar table facts, then introduce its tens row. Begin division with a one-digit divisor before teaching the written divide–multiply–subtract–bring-down cycle for a two-digit divisor. Age is an entry suggestion, not a deadline for completing this route.
 
 ## Exit Conditions
 

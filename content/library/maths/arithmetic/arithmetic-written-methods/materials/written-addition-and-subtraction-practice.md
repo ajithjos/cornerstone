@@ -12,35 +12,60 @@ estimated_minutes: 16
 
 # Column Addition And Subtraction Practice
 
-Line up the columns carefully before solving.
+Use squared paper. Write one digit in each square and leave a row above the numbers for carries or revised amounts. Show your working.
 
-## Part A: Addition
+Choose **one level per session**, not the whole page. Solve its four questions, then two questions from an earlier level. Correct mistakes before taking another set.
 
-1. `34 + 25 =`
-2. `47 + 36 =`
-3. `268 + 154 =`
-4. `3,758 + 486 =`
-5. `28,607 + 9,548 =`
-6. `305,409 + 87,263 =`
+## Level 1: Two digits and one digit, no exchange
 
-## Part B: Subtraction
+1. `34 + 5 =`
+2. `62 + 7 =`
+3. `48 - 6 =`
+4. `79 - 4 =`
 
-7. `62 - 21 =`
-8. `83 - 27 =`
-9. `451 - 126 =`
-10. `4,203 - 587 =`
-11. `30,000 - 18,764 =`
-12. `705,012 - 49,638 =`
+## Level 2: Two digits and two digits, no exchange
 
-## Part C: Explain the exchange
+5. `34 + 25 =`
+6. `52 + 36 =`
+7. `76 - 24 =`
+8. `98 - 53 =`
 
-13. In `47 + 36`, why do you exchange after adding the ones?
-14. In `83 - 27`, what happened to one ten?
-15. In `4,203 - 587`, why do you need to exchange across a zero?
+## Level 3: Two digits with exchange
 
-## Part D: Error check
+9. `47 + 6 =`
+10. `55 + 68 =`
+11. `72 - 8 =`
+12. `83 - 27 =`
 
-16. A learner says `47 + 36 = 713` because `7 + 6 = 13` and `4 + 3 = 7`. What did he misunderstand?
-17. A learner lines up `3,758 + 486` with the `4` under the `3`. Why is that wrong?
+Explain the carry in question 10 and the exchange in question 12.
 
-Coach check: if answers are mostly correct but columns drift, switch to squared paper for one more session.
+## Level 4: Three digits and shorter numbers
+
+13. `248 + 7 =`
+14. `268 + 54 =`
+15. `451 - 26 =`
+16. `324 - 57 =`
+
+## Level 5: Three digits, repeated exchange, and zeros
+
+17. `268 + 154 =`
+18. `475 + 368 =`
+19. `503 - 267 =`
+20. `700 - 258 =`
+
+Write the revised hundreds, tens, and ones for question 20.
+
+## Level 6: Extend the same method
+
+21. `3,758 + 486 =`
+22. `28,607 + 9,548 =`
+23. `4,203 - 587 =`
+24. `30,000 - 18,764 =`
+
+Check each subtraction by addition. Use this level only when the earlier exchanges are secure.
+
+## Spot and repair an error
+
+25. John writes `47 + 36 = 713`: he writes `13` for the ones and `7` for the tens. Explain the exchange he missed, then set out the sum correctly.
+26. Mary writes `83 - 27 = 64` by subtracting the smaller digit from the larger digit in each column. Show the correct exchange.
+27. In `3,758 + 486`, should the `4` be under the `3` or the `7`? Explain using place names.

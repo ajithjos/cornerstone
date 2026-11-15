@@ -8,6 +8,10 @@ export 'learning_material_print_payload.dart';
 bool get learningMaterialPrintingSupported =>
     impl.learningMaterialPrintingSupported;
 
+/// Opens the print window immediately, then loads trusted backend print HTML.
+Future<void> printGeneratedWorksheet(Future<String> html) =>
+    impl.printGeneratedWorksheet(html);
+
 Future<void> printLearningMaterial(LearningMaterialPrintPayload payload) async {
   await impl.printLearningMaterial(payload);
 }

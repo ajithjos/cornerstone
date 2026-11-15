@@ -28,5 +28,6 @@ deploy/vm/local/control/
 deploy/vm/local/secrets/
 dist/
 coverage/
+output/pdf/
 *.iml
 *.log

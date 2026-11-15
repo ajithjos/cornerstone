@@ -2,6 +2,11 @@ import 'learning_material_print_payload.dart';
 
 bool get learningMaterialPrintingSupported => false;
 
+Future<void> printGeneratedWorksheet(Future<String> html) async {
+  await html;
+  throw UnsupportedError('Native browser printing is only available on web.');
+}
+
 Future<void> printLearningMaterial(LearningMaterialPrintPayload payload) async {
   throw UnsupportedError('Native browser printing is only available on web.');
 }

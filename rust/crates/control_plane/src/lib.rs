@@ -2,6 +2,7 @@ mod config;
 mod domain;
 mod http;
 mod service;
+mod worksheet_print;
 
 use std::sync::Arc;
 
@@ -26,6 +27,21 @@ enum Command {
     Migrate,
     BootstrapApply,
     LibraryValidate,
+    /// List written-arithmetic levels for worksheet generation.
+    WorksheetLevels,
+    /// Generate an A4 written-arithmetic worksheet without a running server or database.
+    WorksheetPrint {
+        #[arg(long)]
+        level: String,
+        #[arg(long)]
+        seed: Option<u64>,
+        #[arg(long, default_value_t = 6)]
+        count: usize,
+        #[arg(long)]
+        answers: bool,
+        #[arg(long)]
+        output: std::path::PathBuf,
+    },
 }
 
 pub async fn run_cli() -> anyhow::Result<()> {
@@ -39,6 +55,13 @@ pub async fn run_cli() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Server => run_server(AppConfig::from_env()?).await,
+        Command::WorksheetLevels => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&learning_activity_runtime::written_arithmetic::levels())?
+            );
+            Ok(())
+        }
         Command::Migrate => {
             let database_url = config::database_url_from_env()?;
             service::migrate_database(&database_url).await
@@ -64,6 +87,24 @@ pub async fn run_cli() -> anyhow::Result<()> {
                 bundle.playlists.len(),
                 bundle.materials.len()
             );
+            Ok(())
+        }
+        Command::WorksheetPrint {
+            level,
+            seed,
+            count,
+            answers,
+            output,
+        } => {
+            let request = learning_activity_runtime::written_arithmetic::WorksheetRequest {
+                level_id: level,
+                seed,
+                question_count: count,
+                mode: learning_activity_runtime::written_arithmetic::PracticeMode::Assisted,
+            };
+            let html = worksheet_print::render(request, answers)?;
+            std::fs::write(&output, html).with_context(|| format!("failed to write {}", output.display()))?;
+            println!("Open {} in a browser and print or save as PDF.", output.display());
             Ok(())
         }
     }

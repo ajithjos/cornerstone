@@ -100,6 +100,11 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
             ? const Center(child: Text('Team planning data is unavailable.'))
             : _buildOwnerView(context, dashboard, libraryWorkspace),
       _ShellDestination.learner => _buildLearnerView(context),
+      _ShellDestination.writtenArithmetic => WrittenArithmeticScreen(
+        key: ValueKey(_activeViewer?.userId),
+        apiClient: _apiClient,
+        canPrintAnswers: _viewerCanManage,
+      ),
       _ShellDestination.library =>
         libraryWorkspace == null
             ? const Center(

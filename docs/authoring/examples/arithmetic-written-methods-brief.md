@@ -79,14 +79,16 @@ The fact-fluency pathway makes basic facts secure. This pathway uses that fluenc
 - learner-facing `lesson_note` for explanation, worked examples, and self-talk
 - `worksheet` for written practice and explanation prompts
 - `quick_check` for stop points
-- one shared `teaching_note` for adult delivery rules across the pathway
+- one shared `teaching_note` for adult delivery rules, readiness guidance, correction cues, and answer keys across the pathway
+- practice pages divided into small readiness levels: one current level plus two earlier questions per sitting
+- annotated paper layouts that make carries, revised subtraction amounts, shifted partial products, quotient zeros, and remainders explicit
 - expected session length: 12 to 18 minutes
 - cadence: 4 sessions per week is enough if the work stays focused
 
 ## Entry Guidance
 
 - Age `7`: start at place value and number sense
-- Age `10`: baseline written addition and subtraction first; if that is steady, move into written multiplication; if place value is weak, route back immediately
+- Ages `9` and `10`: baseline written addition and subtraction first; if that is steady, move into written multiplication; if place value is weak, route back immediately
 
 ## Constraints
 

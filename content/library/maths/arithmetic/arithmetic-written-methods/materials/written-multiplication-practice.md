@@ -12,32 +12,49 @@ estimated_minutes: 18
 
 # Written Multiplication Practice
 
-Show the written method clearly.
+Show carries and partial products. Write one digit in each square. Use **one level per session**, then two earlier addition, subtraction, or multiplication questions for review.
 
-## Part A: Short multiplication
+## Level 1: Two digits by one digit, no carry
 
-1. `24 x 3 =`
-2. `347 x 6 =`
-3. `1,208 x 4 =`
-4. `6,075 x 8 =`
+1. `23 x 3 =`
+2. `32 x 2 =`
+3. `21 x 4 =`
 
-## Part B: Long multiplication
+## Level 2: Two digits by one digit, with carries
 
-5. `48 x 23 =`
-6. `72 x 34 =`
-7. `347 x 26 =`
-8. `243 x 152 =`
+4. `24 x 3 =`
+5. `47 x 6 =`
+6. `68 x 4 =`
 
-## Part C: Explain the partial products
+## Level 3: Three or more digits by one digit
 
-9. In `48 x 23`, why do you multiply by `20`, not just `2`?
-10. Write the partial products for `72 x 34`.
-11. Explain why a zero or column offset is needed for the tens partial product.
+7. `123 x 3 =`
+8. `347 x 6 =`
+9. `1,208 x 4 =`
 
-## Part D: Estimate and check
+## Level 4: Two digits by two digits
 
-12. Which answer is more sensible for `347 x 26`: `9,022` or `1,122`?
-13. Estimate `1,208 x 4`.
-14. A learner writes `48 x 23 = 1,424`. What place-value mistake may have happened?
+10. `32 x 12 =`
+11. `48 x 23 =`
+12. `72 x 34 =`
 
-Coach check: if the learner can multiply by one digit but loses the tens partial product, reteach long multiplication with place-value columns before assigning more examples.
+Label the ones row and the tens row before adding.
+
+## Level 5: Three digits by two digits
+
+13. `126 x 23 =`
+14. `307 x 42 =`
+15. `347 x 26 =`
+
+## Extension: More places, same method
+
+16. `243 x 152 =`
+17. `306 x 104 =`
+
+Explain the place of each row, including the zero tens in question 17.
+
+## Spot and repair an error
+
+18. John calculates `48 x 23` as `144 + 96 = 240`. What does the `2` in `23` mean? Replace the incorrect row and finish.
+19. In `24 x 3`, Mary multiplies `(2 + 1) x 3` in the tens column after carrying `1`. Explain why she should calculate `2 x 3 + 1` instead.
+20. Estimate `307 x 42`. Is an answer near `1,300`, `13,000`, or `130,000` sensible?

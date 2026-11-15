@@ -1,4 +1,5 @@
 mod arithmetic_fact_fluency_v1;
+pub mod written_arithmetic;
 
 use std::collections::BTreeSet;
 

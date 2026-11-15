@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import '../models/written_arithmetic.dart';
 
 class CornerstoneApiClient {
   CornerstoneApiClient({http.Client? client, String? baseUrl})
@@ -251,5 +252,59 @@ class CornerstoneApiClient {
       throw Exception(decoded['message'] ?? 'Request failed');
     }
     return decoded;
+  }
+
+  Future<List<WrittenLevel>> fetchWrittenLevels() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/written-arithmetic/levels'),
+    );
+    return (_decode(response)['levels'] as List)
+        .map((item) => WrittenLevel.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<WrittenWorksheet> generateWrittenWorksheet(
+    WrittenWorksheetRequest request,
+  ) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/written-arithmetic/generate'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode(request.toJson()),
+    );
+    return WrittenWorksheet.fromJson(_decode(response));
+  }
+
+  Future<WrittenCheckResult> checkWrittenWorksheet({
+    required WrittenWorksheetRequest worksheet,
+    required Map<String, String> responses,
+    required bool finish,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/written-arithmetic/check'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'worksheet': worksheet.toJson(),
+        'responses': responses.entries
+            .map((entry) => {'cell_id': entry.key, 'value': entry.value})
+            .toList(),
+        'finish': finish,
+      }),
+    );
+    return WrittenCheckResult.fromJson(_decode(response));
+  }
+
+  Future<String> writtenWorksheetHtml({
+    required WrittenWorksheetRequest worksheet,
+    required bool includeAnswers,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/written-arithmetic/print'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'worksheet': worksheet.toJson(),
+        'include_answers': includeAnswers,
+      }),
+    );
+    return _decode(response)['html'] as String;
   }
 }

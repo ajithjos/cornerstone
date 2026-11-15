@@ -12,88 +12,99 @@ estimated_minutes: 15
 
 # Column Addition And Subtraction Lesson Note
 
-Column methods work because the columns match place value.
+These are **column methods**. The small number written above the next column in addition is a **carry**. It records an exchange: ten ones make one ten. In subtraction, exchange one ten for ten ones when there are not enough ones to subtract.
 
-Line up:
+Write one digit in each square. Line up ones under ones, tens under tens, and hundreds under hundreds. A shorter number starts at the right. Work from the ones column towards the left.
 
-- ones under ones
-- tens under tens
-- hundreds under hundreds
-- thousands under thousands
+Learn one step below at a time; this page is a reference, not one day's lesson.
 
-Start in the ones column and move left.
+## 1. Line up the places
 
-## Column addition with exchange
-
-Example: `3,758 + 486`
+In `34 + 5`, the `5` is five ones, so it belongs under the `4`.
 
 ```text
-  3,758
-+   486
+  T O
+  3 4
++   5
+-----
+  3 9
 ```
 
-1. Ones: `8 + 6 = 14`. Write `4` ones and exchange `1` ten.
-2. Tens: `5 + 8 + 1 = 14` tens. Write `4` tens and exchange `1` hundred.
-3. Hundreds: `7 + 4 + 1 = 12` hundreds. Write `2` hundreds and exchange `1` thousand.
-4. Thousands: `3 + 1 = 4` thousands.
+There is no exchange because `4 + 5 = 9` ones.
+
+## 2. Add with a carry: 55 + 68
 
 ```text
-  3,758
-+   486
-  4,244
+  H T O
+    1       <- carry one ten
+    5 5
++   6 8
+-------
+  1 2 3
 ```
 
-The small exchanged `1` is not magic. It means `10` of one place became `1` of the next larger place.
+1. Ones: `5 + 8 = 13` ones. Exchange ten ones for one ten. Write `3` in the ones answer box and a small `1` above the tens column.
+2. Tens: `5 + 6 + 1 = 12` tens. Include the carried ten. Write `2` in the tens answer box and `1` in the hundreds answer box.
+3. The answer is `123`. Check: `123 - 68 = 55`.
 
-## Column subtraction with exchange
+A carry belongs to the **next place**, not beside the ones answer. Do not write `1113` or `1213`.
 
-Example: `4,203 - 587`
+## 3. Repeat the same addition step for larger numbers
 
 ```text
-  4,203
--   587
+      1 1 1      <- carries into thousands, hundreds, tens
+      3 7 5 8
++       4 8 6
+-------------
+      4 2 4 4
 ```
 
-1. Ones: `3` ones cannot take away `7` ones.
-2. The tens place has `0`, so exchange from the hundreds place.
-3. `2` hundreds becomes `1` hundred and `10` tens.
-4. Exchange `1` of those tens into `10` ones. Now the tens place has `9` tens and the ones place has `13` ones.
-5. Ones: `13 - 7 = 6`.
-6. Tens: `9 - 8 = 1`.
-7. Hundreds: `1 - 5` cannot be done, so exchange `1` thousand.
-8. Thousands: `4` thousands becomes `3` thousands, and the hundreds place becomes `11` hundreds.
-9. Hundreds: `11 - 5 = 6`.
-10. Thousands: `3 - 0 = 3`.
+Ones: `8 + 6 = 14`. Tens: `5 + 8 + 1 = 14`. Hundreds: `7 + 4 + 1 = 12`. Thousands: `3 + 1 = 4`.
+
+The number of columns changes; the rule does not.
+
+## 4. Subtract with an exchange: 83 - 27
+
+There are only three ones, so exchange one of the eight tens for ten ones.
 
 ```text
-  4,203
--   587
-  3,616
+              T   O
+original      8   3
+exchanged     7  13
+subtract      2   7
+             -------
+answer        5   6
 ```
 
-Subtraction exchange means one of a larger place is traded for ten of the next smaller place.
+1. `83 = 8 tens + 3 ones = 7 tens + 13 ones`. The value is unchanged.
+2. Ones: `13 - 7 = 6`.
+3. Tens: `7 - 2 = 5`. Use the revised seven tens, not the original eight.
+4. The answer is `56`. Check: `56 + 27 = 83`.
 
-## The method scales
+On paper, cross out the changed digits lightly and write the revised amounts above them. Do not subtract the smaller digit from the larger digit in each column: `83 - 27` is not `64`.
 
-The same steps work for larger whole numbers.
+## 5. Exchange across a zero: 503 - 267
+
+Zero tens cannot give us a ten yet. First exchange one hundred for ten tens, then exchange one of those tens for ten ones.
 
 ```text
-  82,709
-+  7,846
-  90,555
+                  H   T   O
+original          5   0   3
+after first trade 4  10   3
+after next trade  4   9  13
+subtract          2   6   7
+                 -----------
+answer            2   3   6
 ```
 
-The number of columns changes. The rule does not.
+Now subtract: `13 - 7 = 6`, `9 - 6 = 3`, and `4 - 2 = 2`. So `503 - 267 = 236`.
 
-## Good learner self-talk
+Check: `236 + 267 = 503`. Across several zeros, repeat the same trades from the first nonzero place on the left. For example, `1,002` can become `0 thousands + 9 hundreds + 9 tens + 12 ones`.
 
-- `Which column am I in?`
-- `Are the place values lined up?`
-- `What did I exchange, and what did it become?`
-- `Does my answer look sensible for the size of the numbers?`
+## Practise, explain, check
 
-## Quick spoken practice
-
-1. Why must `3,758 + 486` line up by place value?
-2. In `4,203 - 587`, why do you exchange across the zero?
-3. What does the exchanged `1` represent in addition?
+1. Set out `42 + 6`, then `42 + 16`. Which column contains the `6`?
+2. Solve `47 + 36`. Say what each carry is worth.
+3. Solve `72 - 38`. Say which ten you exchanged.
+4. Solve `402 - 175`. Write every changed amount above its column.
+5. Check subtraction by adding the answer to the number subtracted.

@@ -12,89 +12,87 @@ estimated_minutes: 16
 
 # Written Multiplication Lesson Note
 
-Written multiplication uses place value and known table facts.
+Written multiplication uses table facts and place value. `24 x 3` means three groups of twenty-four. Start with a one-digit multiplier; learn two-digit multiplication after that method is steady.
 
-## Short multiplication
+Learn one example at a time. Write one digit in each square and leave space for carries.
 
-Use short multiplication when the multiplier has one digit.
-
-Example: `347 x 6`
+## 1. Short multiplication without a carry
 
 ```text
-  347
-x   6
+   23
+x   3
+-----
+   69
 ```
 
-1. Ones: `7 x 6 = 42`. Write `2`, exchange `4` tens.
-2. Tens: `4 x 6 = 24`, plus `4` exchanged tens gives `28` tens. Write `8`, exchange `2` hundreds.
-3. Hundreds: `3 x 6 = 18`, plus `2` exchanged hundreds gives `20` hundreds.
+Ones: `3 x 3 = 9`. Tens: `2 tens x 3 = 6 tens`. So `23 x 3 = 69`.
+
+## 2. Short multiplication with a carry
+
+Example: `347 x 6`.
 
 ```text
-  347
-x   6
- 2082
+   2 4      <- carries into hundreds and tens
+   3 4 7
+x      6
+--------
+ 2 0 8 2
 ```
 
-So `347 x 6 = 2,082`.
+1. Ones: `7 x 6 = 42`. Write `2` ones; carry `4` tens.
+2. Tens: `4 x 6 = 24` tens. **Then add** the carried `4` tens: `28` tens. Write `8` tens; carry `2` hundreds.
+3. Hundreds: `3 x 6 = 18` hundreds. Add the carried `2`: `20` hundreds. Write the remaining `20` to finish.
 
-## Long multiplication
+The answer is `2,082`. Multiply the original digit first, then add the carry. Do not multiply the carry again.
 
-Use long multiplication when the multiplier has two or more digits.
+The same steps work for two digits, three digits, or more digits multiplied by one digit.
 
-Example: `347 x 26`
+## 3. Long multiplication: 48 x 23
 
-First multiply by the ones digit, `6`.
+The `3` means three ones; the `2` means two tens, or `20`. Make one row for each part.
 
 ```text
-347 x 6 = 2,082
+     48
+x    23
+-------
+    144     <- 48 x 3
++   960     <- 48 x 20
+-------
+   1104
 ```
 
-Then multiply by the tens digit, `20`.
+1. Multiply `48 x 3` using short multiplication: `144`.
+2. Start the tens row with a zero in the ones column. Multiply `48 x 2 = 96`, and write `96` to the left of that zero: `960`.
+3. Add the two rows using column addition: `144 + 960 = 1,104`.
+
+The zero records the place value: the second row is twenty groups of 48, not two groups. Finish and clear the carries for one row before beginning the next row.
+
+## 4. Three digits multiplied by two digits
 
 ```text
-347 x 20 = 6,940
+     347
+x     26
+--------
+    2082    <- 347 x 6
++   6940    <- 347 x 20
+--------
+    9022
 ```
 
-Now add the partial products.
+Nothing new happens to the rule. There are simply more columns in each short multiplication.
 
-```text
-   2,082
-+  6,940
-   9,022
-```
+For a larger multiplier, use one row for every place. In `243 x 152`, the rows are `486`, `12,150`, and `24,300`; the total is `36,936`. A hundreds row starts with two zero placeholders. If a multiplier digit is zero, its partial product is zero; keep the other rows in their correct places.
 
-So `347 x 26 = 9,022`.
+## Check and repair
 
-The second partial product starts in the tens column because `2` in `26` means `2` tens, not `2` ones.
+Estimate: `48 x 23` is near `50 x 20 = 1,000`, so `1,104` is a sensible size. An estimate helps catch a large mistake; it does not prove the exact answer.
 
-## The method scales
+- Wrong carry? Recalculate that column, multiplying first and adding the carry afterwards.
+- Answer much too small? Check whether the tens row means `x 20`, not `x 2`.
+- Correct rows but wrong total? Recheck the column addition.
 
-For a larger multiplier, make one partial product for each place in the multiplier.
+## Try with help, then independently
 
-Example: `243 x 152`
-
-```text
-243 x   2 =    486
-243 x  50 = 12,150
-243 x 100 = 24,300
-total      = 36,936
-```
-
-## Check the size
-
-Estimate before accepting the answer.
-
-For `347 x 26`, use `350 x 25 = 8,750`. The exact answer `9,022` is sensible.
-
-## Good learner self-talk
-
-- `Which digit of the multiplier am I using?`
-- `What place is that digit in?`
-- `Did I start the partial product in the correct column?`
-- `Is my product a sensible size?`
-
-## Quick spoken practice
-
-1. Why does the `2` in `26` mean `20`?
-2. What are the two partial products for `48 x 23`?
-3. Estimate `312 x 19`.
+1. Set out `24 x 3`. Explain the carry.
+2. Set out `32 x 12`. Name both partial products.
+3. Set out `126 x 23`. Check the position of the tens row before adding.

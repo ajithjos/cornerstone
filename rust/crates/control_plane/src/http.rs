@@ -14,6 +14,9 @@ use url::Url;
 use uuid::Uuid;
 
 use catalog::LibraryBundle;
+use learning_activity_runtime::written_arithmetic::{
+    self, CheckRequest, CheckResult, Worksheet, WorksheetRequest, WrittenLevel,
+};
 
 use crate::domain::{
     ActivityStartResponse, AssignmentReconcileRequest, AssignmentRequest, CompleteActivityRequest,
@@ -63,6 +66,24 @@ struct ServiceIndexResponse {
 #[derive(Debug, Default, Deserialize)]
 struct LibraryDocumentQuery {
     route_path: String,
+}
+
+#[derive(Debug, Serialize)]
+struct WrittenLevelsResponse {
+    levels: Vec<WrittenLevel>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WrittenPrintRequest {
+    worksheet: WorksheetRequest,
+    #[serde(default)]
+    include_answers: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct WrittenPrintResponse {
+    html: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -147,6 +168,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/library/reload", post(post_library_reload))
         .route("/api/v1/library/documents", get(get_library_documents))
         .route("/api/v1/library/document", get(get_library_document))
+        .route("/api/v1/written-arithmetic/levels", get(get_written_levels))
+        .route("/api/v1/written-arithmetic/generate", post(post_written_generate))
+        .route("/api/v1/written-arithmetic/check", post(post_written_check))
+        .route("/api/v1/written-arithmetic/print", post(post_written_print))
         .route("/api/v1/bootstrap/apply", post(post_bootstrap_apply))
         .route("/api/v1/dashboard", get(get_dashboard))
         .route("/api/v1/learners", get(get_learners))
@@ -202,6 +227,50 @@ async fn health() -> Json<OperationStatusResponse> {
         status: "ok".to_string(),
         message: "cornerstone control plane is healthy".to_string(),
     })
+}
+
+async fn get_written_levels(
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<WrittenLevelsResponse>, ApiError> {
+    session_context_from_jar(&jar, &state).await?;
+    Ok(Json(WrittenLevelsResponse {
+        levels: written_arithmetic::levels(),
+    }))
+}
+
+async fn post_written_generate(
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<WorksheetRequest>,
+) -> Result<Json<Worksheet>, ApiError> {
+    session_context_from_jar(&jar, &state).await?;
+    Ok(Json(written_arithmetic::generate(request)?))
+}
+
+async fn post_written_check(
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<CheckRequest>,
+) -> Result<Json<CheckResult>, ApiError> {
+    session_context_from_jar(&jar, &state).await?;
+    Ok(Json(written_arithmetic::check(request)?))
+}
+
+async fn post_written_print(
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<WrittenPrintRequest>,
+) -> Result<Json<WrittenPrintResponse>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    if request.include_answers && !context.active_user.can_manage_team {
+        return Err(ApiError(anyhow!(
+            "only a parent or team manager can print the answer key"
+        )));
+    }
+    Ok(Json(WrittenPrintResponse {
+        html: crate::worksheet_print::render(request.worksheet, request.include_answers)?,
+    }))
 }
 
 async fn get_auth_options(

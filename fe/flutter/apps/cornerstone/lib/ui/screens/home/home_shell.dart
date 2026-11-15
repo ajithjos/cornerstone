@@ -12,6 +12,11 @@ enum _ShellDestination {
     'Review authored routes, playlists, and materials.',
     CornerstoneIcons.library,
   ),
+  writtenArithmetic(
+    'Written arithmetic',
+    'Column practice and printable worksheets.',
+    CornerstoneIcons.writtenArithmetic,
+  ),
   account(
     'Profile',
     'Profile, theme, and personal settings.',
@@ -98,12 +103,14 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       return <_ShellDestination>[
         _ShellDestination.owner,
         _ShellDestination.learner,
+        _ShellDestination.writtenArithmetic,
         if (viewer.canReadLibrary) _ShellDestination.library,
         _ShellDestination.account,
       ];
     }
     return const <_ShellDestination>[
       _ShellDestination.learner,
+      _ShellDestination.writtenArithmetic,
       _ShellDestination.account,
     ];
   }
@@ -1038,6 +1045,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       _ShellDestination.owner => 1460,
       _ShellDestination.learner => 1360,
       _ShellDestination.library => 1780,
+      _ShellDestination.writtenArithmetic => 1080,
       _ShellDestination.account => 1080,
     };
   }

@@ -7,6 +7,31 @@ import 'learning_material_print_payload.dart';
 
 bool get learningMaterialPrintingSupported => true;
 
+Future<void> printGeneratedWorksheet(Future<String> html) async {
+  // Keep this before the first await so the browser retains the user gesture.
+  final printWindow = web.window.open(
+    '',
+    '_blank',
+    'popup,width=900,height=1200',
+  );
+  try {
+    final documentHtml = await html;
+    if (printWindow == null) {
+      throw StateError(
+        'The browser blocked the print window. Allow pop-ups and try again.',
+      );
+    }
+    printWindow.document.write(documentHtml.toJS);
+    printWindow.document.close();
+    printWindow.focus();
+    await Future<void>.delayed(Duration.zero);
+    printWindow.print();
+  } catch (_) {
+    printWindow?.close();
+    rethrow;
+  }
+}
+
 Future<void> printLearningMaterial(LearningMaterialPrintPayload payload) async {
   await printLearningMaterialSet(
     LearningMaterialPrintSetPayload(

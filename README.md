@@ -12,6 +12,10 @@ This repository now contains an MVP stack with:
 Identity bootstrap team definitions live under `deploy/config/runtime_defaults/identity_bootstrap.yaml`.
 Curriculum content stays under `content/`.
 
+Written arithmetic now includes printable generated practice and an interactive
+column grid with assisted and assessment modes. See [written arithmetic practice](docs/authoring/written-arithmetic-practice.md)
+for the teaching sequence and the no-server worksheet command.
+
 ## Quickstart
 
 ```bash

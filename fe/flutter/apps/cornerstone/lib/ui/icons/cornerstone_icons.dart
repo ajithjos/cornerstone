@@ -13,6 +13,7 @@ abstract final class CornerstoneIcons {
   // Shell destinations
   static const IconData team = Icons.dashboard_rounded;
   static const IconData learning = Icons.school_rounded;
+  static const IconData writtenArithmetic = Icons.calculate_outlined;
   static const IconData library = Icons.auto_stories_rounded;
   static const IconData profile = Icons.person_rounded;
 
