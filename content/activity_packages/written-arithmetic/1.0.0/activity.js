@@ -262,6 +262,7 @@
       ? 'Work independently. Submit when you have finished; explanations appear afterwards.'
       : 'Check one exercise whenever you need help. Correct a highlighted step, then continue.';
     elements.complete.textContent = state.mode === 'assessment' ? 'Submit assessment' : 'Finish practice';
+    elements.exercises.classList.toggle('wide', payload.worksheet.problems.some((problem) => problem.columns > 5 || problem.rows.length > 5));
     payload.worksheet.problems.forEach(renderProblem);
     elements.actions.hidden = false;
     setError('');

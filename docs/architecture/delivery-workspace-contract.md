@@ -41,3 +41,13 @@ The UI renders those rules. It does not infer passing, readiness or assessment s
 The owner can preview a playbook, read Teach, print and assign. Opening a learner's assigned playbook adds that learner's results to the same four-section view. Recording paper work targets the selected checkpoint's session; it does not record whichever older session happens to be first.
 
 Assignment progress is checkpoint-owned: `checkpoint_count`, `completed_checkpoint_count`, `completion_percent`, and `status`. A failed generated or paper checkpoint produces evidence while remaining unfinished. Repeating practice is always separate from passing a checkpoint.
+
+## Learner pathway map
+
+`LearnerWorkspaceResponse.learning_pathways` contains the ordered pathway and playbook map, including unassigned steps. Each playbook carries `assignment_id`, `can_open`, `status`, and `progress_label`. Unassigned steps contain public title/description metadata only, with `can_open: false`; they expose no Teach material or activity launch authority. Flutter renders this backend map rather than reconstructing it from assignments.
+
+## Owner activity preview
+
+Owners can try every executable Practice and Checkpoint material directly from the library, using the same generator, package, checking and scoring as learners. `POST /api/v1/library/materials/{material_id}/preview` returns a fresh seed, a plan revision and the public presentation. The corresponding `/preview/check` and `/preview/complete` endpoints accept that seed/revision and responses. These stateless operations never create assignments, activity instances, evidence or learner progress. A changed plan revision requires reopening the preview. Checkpoint previews give feedback only after submission. Active learner profiles cannot call preview endpoints.
+
+Practice and Checkpoint use one compact level selector and one action area on both owner and learner surfaces. Written practice defaults to nine generated questions; authored checkpoint targets remain independent. New runs use new random seeds. An unfinished assigned attempt resumes its existing plan, preserving consistent scoring.

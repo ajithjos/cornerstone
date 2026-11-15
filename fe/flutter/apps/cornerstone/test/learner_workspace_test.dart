@@ -205,6 +205,34 @@ LearnerWorkspacePayload fixture({
       currentLevel: 'Foundation',
       notes: '',
     ),
+    learningPathways: [
+      LearnerPathwayMap.fromJson({
+        'pathway_id': 'written',
+        'title': 'Written arithmetic',
+        'description': 'Written methods',
+        'progress_label': '0 of 2 playbooks complete',
+        'playbooks': [
+          {
+            'playlist_id': 'column-playlist',
+            'title': journey.title,
+            'description': '',
+            'assignment_id': 'assignment',
+            'can_open': true,
+            'status': 'active',
+            'progress_label': '0 of 1 checkpoints complete',
+          },
+          {
+            'playlist_id': 'multiply',
+            'title': 'Multiplication next',
+            'description': '',
+            'assignment_id': null,
+            'can_open': false,
+            'status': 'unassigned',
+            'progress_label': 'Not assigned yet',
+          },
+        ],
+      }),
+    ],
     assignedJourneys: [assigned],
     assignedPathways: [
       LearnerAssignedPathway(
@@ -278,10 +306,11 @@ void main() {
     (tester) async {
       await pumpWork(tester, fixture());
       expect(find.text('John'), findsOneWidget);
-      expect(find.text('Your playbooks'), findsOneWidget);
+      expect(find.text('Your pathways'), findsOneWidget);
+      expect(find.text('Multiplication next'), findsOneWidget);
       expect(find.text('LESSON BODY: ten ones make one ten.'), findsNothing);
       await tester.tap(
-        find.byKey(const ValueKey('assigned-playbook-assignment')),
+        find.byKey(const ValueKey('pathway-playbook-column-playlist')),
       );
       await tester.pumpAndSettle();
       expect(find.text('Learn'), findsOneWidget);
@@ -305,7 +334,7 @@ void main() {
         onStart: (m) => launched.add(m.sessionMaterialId),
       );
       await tester.tap(
-        find.byKey(const ValueKey('assigned-playbook-assignment')),
+        find.byKey(const ValueKey('pathway-playbook-column-playlist')),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('section-practice')));
@@ -325,7 +354,7 @@ void main() {
     (tester) async {
       await pumpWork(tester, fixture(support: true));
       await tester.tap(
-        find.byKey(const ValueKey('assigned-playbook-assignment')),
+        find.byKey(const ValueKey('pathway-playbook-column-playlist')),
       );
       await tester.pumpAndSettle();
       expect(find.text('Teach'), findsOneWidget);
@@ -356,9 +385,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('section-checkpoint')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('start-check')), findsOneWidget);
-      await tester.tap(find.text('All my playbooks'));
+      await tester.tap(find.text('Your pathways'));
       await tester.pumpAndSettle();
-      expect(find.text('Your playbooks'), findsOneWidget);
+      expect(find.text('Your pathways'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -409,7 +438,10 @@ void main() {
         isTrue,
       );
       expect(find.byKey(const ValueKey('start-practice')), findsOneWidget);
-      expect(find.text('Your playbooks'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('pathway-playbook-column-playlist')),
+        findsNothing,
+      );
     },
   );
 }

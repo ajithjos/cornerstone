@@ -54,7 +54,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   String? _requestedLibraryPreviewRoute;
   _ShellDestination _selectedDestination = _ShellDestination.library;
   int _loadGeneration = 0;
-  bool _shellNavExpanded = true;
+  bool _shellNavExpanded = false;
+  bool _profileMenuOpen = false;
   bool _sessionLoading = true;
   bool _loading = true;
   bool _authBusy = false;
@@ -1319,70 +1320,39 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       useGoogleProfile: true,
     );
 
-    return MenuAnchor(
-      menuChildren: _buildProfileMenuChildren(context),
-      builder: (context, controller, _) {
-        if (compact) {
-          return Tooltip(
-            message: username,
-            child: IconButton(
-              tooltip: 'Profile menu',
-              onPressed: () =>
-                  controller.isOpen ? controller.close() : controller.open(),
-              icon: avatar,
-            ),
-          );
-        }
-        return Container(
-          padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              avatar,
-              if (_shellNavExpanded) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _setDestination(_ShellDestination.account),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            username,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            _shellWorkspaceLabel(),
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
+    return Tooltip(
+      message: username,
+      child: _HoverProfileMenu(
+        onOpenChanged: (open) {
+          if (mounted) setState(() => _profileMenuOpen = open);
+        },
+        items: _buildProfileMenuChildren(context),
+        child: compact
+            ? avatar
+            : Row(
+                children: [
+                  avatar,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          username,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelLarge,
+                        ),
+                        Text(
+                          _shellWorkspaceLabel(),
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
-              IconButton(
-                tooltip: 'Profile menu',
-                onPressed: () =>
-                    controller.isOpen ? controller.close() : controller.open(),
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.more_horiz_rounded),
+                ],
               ),
-            ],
-          ),
-        );
-      },
+      ),
     );
   }
 
@@ -1403,7 +1373,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   }
 
   Widget _buildShellHeader(ThemeData theme) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 24, 12, 22),
+    padding: const EdgeInsets.fromLTRB(10, 12, 6, 12),
     child: Row(
       children: [
         if (_shellNavExpanded)
@@ -1435,23 +1405,34 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       padding: const EdgeInsets.only(bottom: 6),
       child: Tooltip(
         message: _destinationLabel(destination),
-        child: ListTile(
-          selected: selected,
-          dense: true,
-          selectedTileColor: theme.colorScheme.primaryContainer,
-          leading: Icon(destination.icon, size: 21),
-          title: _shellNavExpanded
-              ? Text(
-                  _destinationLabel(destination),
-                  style: theme.textTheme.labelLarge,
-                )
-              : null,
-          onTap: () => _setDestination(destination),
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: _shellNavExpanded ? 14 : 10,
-            vertical: 6,
-          ),
-        ),
+        child: !_shellNavExpanded
+            ? IconButton(
+                tooltip: _destinationLabel(destination),
+                onPressed: () => _setDestination(destination),
+                style: IconButton.styleFrom(
+                  backgroundColor: selected
+                      ? theme.colorScheme.primaryContainer
+                      : Colors.transparent,
+                ),
+                icon: Icon(destination.icon, size: 21),
+              )
+            : ListTile(
+                selected: selected,
+                dense: true,
+                selectedTileColor: theme.colorScheme.primaryContainer,
+                leading: Icon(destination.icon, size: 21),
+                title: _shellNavExpanded
+                    ? Text(
+                        _destinationLabel(destination),
+                        style: theme.textTheme.labelLarge,
+                      )
+                    : null,
+                onTap: () => _setDestination(destination),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: _shellNavExpanded ? 14 : 10,
+                  vertical: 0,
+                ),
+              ),
       ),
     );
   }
@@ -1459,7 +1440,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   Widget _buildDesktopShell(BuildContext context) => Material(
     color: Theme.of(context).colorScheme.surface,
     child: Container(
-      width: _shellNavExpanded ? 220 : 76,
+      width: _shellNavExpanded ? 188 : 68,
       decoration: BoxDecoration(
         border: Border(
           right: BorderSide(
@@ -1472,14 +1453,14 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
           _buildShellHeader(Theme.of(context)),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               children: _availableDestinations
                   .map((d) => _buildDesktopNavItem(context, d))
                   .toList(),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(6),
             child: _buildProfileMenuAnchor(compact: !_shellNavExpanded),
           ),
         ],
@@ -1657,7 +1638,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
           ),
         ),
         actions: [
-          _ThemeMenu(controller: widget.themeController),
           if (_busy || _authBusy)
             const Padding(
               padding: EdgeInsets.all(16),
@@ -1720,10 +1700,11 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
                       Positioned.fill(
                         child: _wrapMainContent(
                           Padding(
-                            padding: const EdgeInsets.all(20),
+                            padding: const EdgeInsets.all(12),
                             child: ActivityPackagePage(
                               key: _activityKey,
                               run: _openPackageRun!,
+                              interactionEnabled: !_profileMenuOpen,
                               apiBaseUrl: _apiClient.baseUrl,
                               onClose: (_) {
                                 setState(() => _openPackageRun = null);
@@ -1840,11 +1821,49 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       ),
       onOpenDocument: _selectLibraryDocument,
       onCreateWorksheetForLevel: _openWorksheetLevel,
-      onPreviewActivity: (material) {
-        final level = material.activityLevelId;
-        if (level != null) _openWorksheetLevel(level);
-      },
+      onPreviewActivity: _previewMaterial,
     );
+  }
+
+  Future<void> _previewMaterial(LibraryWorkspaceMaterial material) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final preview = await _apiClient.previewMaterial(material.materialId);
+      if (!mounted) return;
+      Future<Map<String, dynamic>> submit(
+        List<Map<String, String>> responses,
+        int duration,
+        bool finish,
+      ) => _apiClient.submitPreview(
+        materialId: material.materialId,
+        seed: preview['seed'] as String,
+        revision: preview['revision'] as String,
+        responses: responses,
+        duration: duration,
+        finish: finish,
+      );
+      setState(
+        () => _openPackageRun = ActivityPackageRun(
+          id: 'preview-${preview['seed']}',
+          title: '${material.title} · Owner preview',
+          presentation: ActivityPresentation.fromJson(
+            preview['presentation'] as Map<String, dynamic>,
+          ),
+          onCheck: (responses, duration) => submit(responses, duration, false),
+          onComplete: (responses, duration) =>
+              submit(responses, duration, true),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   void _openWorksheetLevel(String levelId) => Navigator.of(context).push(

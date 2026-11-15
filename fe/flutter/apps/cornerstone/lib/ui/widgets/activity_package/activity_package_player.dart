@@ -16,12 +16,14 @@ class ActivityPackagePlayer extends StatelessWidget {
     required this.onCheck,
     required this.onComplete,
     this.onCompleted,
+    this.interactionEnabled = true,
   });
   final ActivityPresentation presentation;
   final String apiBaseUrl;
   final ActivityPackageAction onCheck;
   final ActivityPackageAction onComplete;
   final VoidCallback? onCompleted;
+  final bool interactionEnabled;
 
   @override
   Widget build(BuildContext context) => impl.ActivityPackagePlayerView(
@@ -30,6 +32,7 @@ class ActivityPackagePlayer extends StatelessWidget {
     onCheck: onCheck,
     onComplete: onComplete,
     onCompleted: onCompleted,
+    interactionEnabled: interactionEnabled,
   );
 }
 
@@ -57,11 +60,13 @@ class ActivityPackagePage extends StatefulWidget {
     required this.apiBaseUrl,
     this.onClose,
     this.closeLabel = 'Back to playbook',
+    this.interactionEnabled = true,
   });
   final ActivityPackageRun run;
   final String apiBaseUrl;
   final ValueChanged<bool>? onClose;
   final String closeLabel;
+  final bool interactionEnabled;
   @override
   ActivityPackagePageState createState() => ActivityPackagePageState();
 }
@@ -134,7 +139,7 @@ class ActivityPackagePageState extends State<ActivityPackagePage> {
   /// Closing an embedded activity invokes onClose; it never pops the app route.
   Future<bool> requestClose() async {
     if (_retrying || _submitting || _closing) return false;
-    _closing = true;
+    setState(() => _closing = true);
     final leave =
         _completed ||
         await showDialog<bool>(
@@ -155,7 +160,7 @@ class ActivityPackagePageState extends State<ActivityPackagePage> {
               ),
             ) ==
             true;
-    _closing = false;
+    if (mounted) setState(() => _closing = false);
     if (!mounted || !leave) return false;
     if (widget.onClose != null) {
       widget.onClose!(_completed);
@@ -211,6 +216,7 @@ class ActivityPackagePageState extends State<ActivityPackagePage> {
                   key: ValueKey(_run.id),
                   presentation: _run.presentation,
                   apiBaseUrl: widget.apiBaseUrl,
+                  interactionEnabled: widget.interactionEnabled && !_closing,
                   onCheck: _run.onCheck,
                   onComplete: _complete,
                   onCompleted: () => setState(() => _completed = true),

@@ -115,9 +115,21 @@ void main() {
       );
       final stay = key.currentState!.requestClose();
       await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ActivityPackagePlayer>(find.byType(ActivityPackagePlayer))
+            .interactionEnabled,
+        isFalse,
+      );
       await tester.tap(find.text('Stay'));
       await tester.pumpAndSettle();
       expect(await stay, isFalse);
+      expect(
+        tester
+            .widget<ActivityPackagePlayer>(find.byType(ActivityPackagePlayer))
+            .interactionEnabled,
+        isTrue,
+      );
       expect(closes, 0);
       final leave = key.currentState!.requestClose();
       await tester.pumpAndSettle();

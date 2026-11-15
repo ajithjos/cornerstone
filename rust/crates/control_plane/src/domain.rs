@@ -457,6 +457,27 @@ pub struct LearnerWorkspaceResponse {
     pub review_items: Vec<ReviewItemSummary>,
     pub practice_mastery: Vec<PracticeMasterySummary>,
     pub workspace: LearnerWorkspaceSummary,
+    pub learning_pathways: Vec<LearnerPathwayMap>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnerPathwayMap {
+    pub pathway_id: String,
+    pub title: String,
+    pub description: String,
+    pub progress_label: String,
+    pub playbooks: Vec<LearnerPathwayPlaybook>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnerPathwayPlaybook {
+    pub playlist_id: String,
+    pub title: String,
+    pub description: String,
+    pub assignment_id: Option<String>,
+    pub can_open: bool,
+    pub status: String,
+    pub progress_label: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1095,4 +1116,14 @@ pub struct FamilyProgressRow {
     pub last_correct: bool,
     pub consecutive_correct_count: i32,
     pub last_seen_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreviewActivityRequest {
+    pub seed: String,
+    pub revision: String,
+    pub responses: Vec<ActivityResponseInput>,
+    #[serde(default)]
+    pub duration_seconds: i32,
 }

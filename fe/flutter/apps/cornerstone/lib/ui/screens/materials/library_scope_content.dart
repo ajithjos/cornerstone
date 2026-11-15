@@ -224,9 +224,49 @@ extension _LearningLibraryContent on _MaterialsWorkspaceViewState {
             ),
           _materialReader(material),
         ] else
-          for (final m in materials) _materialCard(m),
+          _practiceMaterials(materials),
       ],
     ];
+  }
+
+  Widget _practiceMaterials(List<LibraryWorkspaceMaterial> materials) {
+    final levels = materials.where((m) => m.executable).toList();
+    final selected =
+        levels.where((m) => m.materialId == _selectedLevelId).firstOrNull ??
+        levels.firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (levels.isNotEmpty) ...[
+          Text(
+            'Owner preview · Try the same activity without recording learner progress.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (levels.length > 1 && selected != null)
+          _PracticeLevelPicker(
+            levels: [
+              for (final m in levels)
+                (id: m.materialId, title: m.title, status: null),
+            ],
+            selectedId: selected.materialId,
+            onSelected: (id) => _change(() => _selectedLevelId = id),
+            detail: _materialCard(selected),
+          )
+        else if (selected != null)
+          _materialCard(selected),
+        for (final m in materials.where((m) => !m.executable))
+          if (_sectionId == 'practice')
+            ExpansionTile(
+              title: Text(m.title),
+              tilePadding: EdgeInsets.zero,
+              children: [_materialCard(m)],
+            )
+          else
+            _materialCard(m),
+      ],
+    );
   }
 
   Widget _materialButtons(
@@ -236,17 +276,19 @@ extension _LearningLibraryContent on _MaterialsWorkspaceViewState {
     spacing: 8,
     runSpacing: 8,
     children: [
+      if (material.executable && widget.onPreviewActivity != null)
+        FilledButton.tonalIcon(
+          onPressed: () => widget.onPreviewActivity!(material),
+          icon: const Icon(Icons.play_arrow_outlined, size: 18),
+          label: Text(
+            _sectionId == 'checkpoint' ? 'Take checkpoint' : 'Start practice',
+          ),
+        ),
       if (material.routePath != null && _materialId != material.materialId)
         OutlinedButton.icon(
           onPressed: () => _readMaterial(material),
           icon: const Icon(Icons.menu_book_outlined, size: 18),
           label: Text(material.executable ? 'Instructions' : 'Read'),
-        ),
-      if (material.activityLevelId != null && widget.onPreviewActivity != null)
-        FilledButton.tonalIcon(
-          onPressed: () => widget.onPreviewActivity!(material),
-          icon: const Icon(Icons.play_arrow_outlined, size: 18),
-          label: const Text('Try activity'),
         ),
       if (material.activityLevelId != null &&
           widget.onCreateWorksheetForLevel != null)

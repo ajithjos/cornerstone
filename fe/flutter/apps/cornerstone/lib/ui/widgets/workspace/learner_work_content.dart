@@ -34,6 +34,7 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
   String? _assignmentId;
   String? _sectionId;
   String? _readingId;
+  String? _selectedLevelId;
   bool _progressOpen = false;
   bool _restored = false;
   LearnerWorkspacePayload get _data => widget.workspace;
@@ -66,6 +67,7 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
       _assignmentId = saved['assignment'] as String?;
       _sectionId = saved['section'] as String?;
       _readingId = saved['reading'] as String?;
+      _selectedLevelId = saved['level'] as String?;
     }
     _applyInitialAssignment();
   }
@@ -88,6 +90,7 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
         'assignment': _assignmentId,
         'section': _sectionId,
         'reading': _readingId,
+        'level': _selectedLevelId,
       }, identifier: 'playbook-work-${_data.learner.learnerId}');
     }
   }
@@ -135,6 +138,7 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
 
   void _selectSection(String id) => _change(() {
     _sectionId = id;
+    _selectedLevelId = null;
     _readingId = null;
   });
 
@@ -169,7 +173,10 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Continue learning', style: theme.textTheme.labelLarge),
+                Text(
+                  current.journey.pathwayTitle ?? 'Continue learning',
+                  style: theme.textTheme.labelLarge,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   current.journey.title,
@@ -193,10 +200,10 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
           ),
           const SizedBox(height: 28),
         ],
-        Text('Your playbooks', style: theme.textTheme.titleLarge),
+        Text('Your pathways', style: theme.textTheme.titleLarge),
         const SizedBox(height: 6),
         Text(
-          'Everything you need to learn, practise and check your understanding.',
+          'See where you are going. Open an assigned playbook; the quieter steps show what comes next.',
           style: theme.textTheme.bodyMedium,
         ),
         const SizedBox(height: 18),
@@ -208,24 +215,15 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
                   : 'Your teacher will choose your first playbook.',
             ),
           ),
-        for (final assignment in _data.assignedJourneys)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _LibraryStepRow(
-              key: ValueKey(
-                'assigned-playbook-${assignment.assignment.assignmentId}',
-              ),
-              number: null,
-              icon: Icons.auto_stories_outlined,
-              title: assignment.journey.title,
-              description: assignment.journey.pathwayTitle ?? '',
-              detail: assignment.assignment.status == 'completed'
-                  ? 'Completed · Open again to revisit or practise'
-                  : '${assignment.assignment.completedCheckpointCount} of ${assignment.assignment.checkpointCount} checkpoints complete',
-              actionLabel: 'Open playbook',
-              onTap: () => _openAssignment(assignment),
-            ),
-          ),
+        _LearningPathwayMap(
+          pathways: _data.learningPathways,
+          onOpenAssignment: (id) {
+            final assignment = _data.assignedJourneys
+                .where((a) => a.assignment.assignmentId == id)
+                .firstOrNull;
+            if (assignment != null) _openAssignment(assignment);
+          },
+        ),
       ],
     );
   }
@@ -313,6 +311,53 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
             icon: const Icon(Icons.tune, size: 18),
             label: const Text('Practice target'),
           ),
+      ],
+    );
+  }
+
+  Widget _practiceMaterials(List<PlaybookSectionItem> items) {
+    final levels = items
+        .where((item) => _materialFor(item)!.isExecutable)
+        .toList();
+    final selected =
+        levels
+            .where((item) => item.materialId == _selectedLevelId)
+            .firstOrNull ??
+        levels.firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (levels.length > 1 && selected != null)
+          _PracticeLevelPicker(
+            levels: [
+              for (final item in levels)
+                (
+                  id: item.materialId,
+                  title: _materialFor(item)!.title,
+                  status:
+                      _materialFor(item)!.status ==
+                          SessionMaterialStatus.completed
+                      ? (_sectionId == 'checkpoint' ? 'Passed' : 'Practised')
+                      : null,
+                ),
+            ],
+            selectedId: selected.materialId,
+            onSelected: (id) => _change(() => _selectedLevelId = id),
+            detail: _materialCard(selected),
+          )
+        else if (selected != null)
+          _materialCard(selected),
+        for (final item in items.where(
+          (item) => !_materialFor(item)!.isExecutable,
+        ))
+          if (_sectionId == 'practice')
+            ExpansionTile(
+              title: Text(_materialFor(item)!.title),
+              tilePadding: EdgeInsets.zero,
+              children: [_materialCard(item)],
+            )
+          else
+            _materialCard(item),
       ],
     );
   }
@@ -423,7 +468,7 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
               _readingId = null;
             }),
             icon: const Icon(Icons.arrow_back, size: 18),
-            label: const Text('All my playbooks'),
+            label: const Text('Your pathways'),
           ),
         ),
         const SizedBox(height: 12),
@@ -471,7 +516,7 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
               ),
             _reader(reading),
           ] else
-            for (final item in items) _materialCard(item),
+            _practiceMaterials(items),
         ],
       ],
     );

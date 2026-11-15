@@ -330,3 +330,9 @@ cargo test --manifest-path rust/Cargo.toml -p control_plane activity_packages
 See [Written arithmetic practice](./written-arithmetic-practice.md) for authoring
 levels, assignments, guided and compact printing, and the distinction between
 stored attempts and free worksheets.
+
+### Host overlays and compact layouts
+
+The host suspends iframe pointer and keyboard interaction while a modal or profile menu is open, without unmounting the iframe. Closing an overlay must restore the same exercise and input values. Qualify Stay and Leave with real browser pointer clicks, because widget tests cannot reproduce iframe event interception.
+
+Written layouts use three columns for short calculations and wider cards for long working grids. Preserve readable inputs and keyboard navigation; do not shrink complex multiplication or division to fit an arbitrary question count. Owner previews use the same package and appearance contract as assigned learner activities.

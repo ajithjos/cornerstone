@@ -23,12 +23,14 @@ class ActivityPackagePlayerView extends StatefulWidget {
     required this.onCheck,
     required this.onComplete,
     this.onCompleted,
+    this.interactionEnabled = true,
   });
   final ActivityPresentation presentation;
   final String apiBaseUrl;
   final ActivityPackageAction onCheck;
   final ActivityPackageAction onComplete;
   final VoidCallback? onCompleted;
+  final bool interactionEnabled;
   @override
   State<ActivityPackagePlayerView> createState() =>
       _ActivityPackagePlayerViewState();
@@ -142,12 +144,25 @@ class _ActivityPackagePlayerViewState extends State<ActivityPackagePlayerView> {
   }
 
   @override
-  Widget build(BuildContext context) => _error == null
-      ? HtmlElementView(viewType: _viewType)
-      : Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(_error!),
-          ),
-        );
+  Widget build(BuildContext context) {
+    // A platform iframe receives browser pointer events ahead of Flutter's
+    // canvas. Suspend interaction while a host dialog or menu is above it.
+    // Keep the element mounted so Stay preserves every entered digit.
+    final enabled =
+        widget.interactionEnabled &&
+        (ModalRoute.of(context)?.isCurrent ?? true);
+    if (_error == null) {
+      _frame.style.pointerEvents = enabled ? 'auto' : 'none';
+      _frame.tabIndex = enabled ? 0 : -1;
+      if (enabled) {
+        _frame.removeAttribute('inert');
+      } else {
+        _frame.setAttribute('inert', '');
+      }
+      return HtmlElementView(viewType: _viewType);
+    }
+    return Center(
+      child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)),
+    );
+  }
 }

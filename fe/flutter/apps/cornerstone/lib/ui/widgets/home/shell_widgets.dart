@@ -158,55 +158,65 @@ class _BrandLockup extends StatelessWidget {
   );
 }
 
-/// A single gold cross, with a small stone-cut accent at the foot.
+/// Four cut stones leave a quiet cross in the negative space.
 class _BrandSymbol extends StatelessWidget {
   const _BrandSymbol({required this.size});
   final double size;
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Cornerstone cross',
+    label: 'Cornerstone symbol',
     image: true,
     child: CustomPaint(
       size: Size.square(size),
-      painter: _CrossPainter(Theme.of(context).colorScheme.primary),
+      painter: _CornerstonePainter(Theme.of(context).colorScheme.primary),
     ),
   );
 }
 
-class _CrossPainter extends CustomPainter {
-  const _CrossPainter(this.color);
+class _CornerstonePainter extends CustomPainter {
+  const _CornerstonePainter(this.color);
   final Color color;
   @override
   void paint(Canvas canvas, Size size) {
     canvas.scale(size.width / 40, size.height / 40);
-    final paint = Paint()..color = color;
-    final cross = Path()
-      ..moveTo(16, 3)
-      ..lineTo(24, 3)
-      ..lineTo(24, 13)
-      ..lineTo(35, 13)
-      ..lineTo(35, 21)
-      ..lineTo(24, 21)
-      ..lineTo(24, 32)
-      ..lineTo(16, 37)
-      ..lineTo(16, 21)
-      ..lineTo(5, 21)
-      ..lineTo(5, 13)
-      ..lineTo(16, 13)
-      ..close();
-    canvas.drawPath(cross, paint);
-    canvas.drawPath(
-      Path()
-        ..moveTo(19, 38)
-        ..lineTo(24, 35)
-        ..lineTo(24, 38)
-        ..close(),
-      paint,
-    );
+    final stones = [
+      [
+        const Offset(5, 8),
+        const Offset(17, 4),
+        const Offset(17, 17),
+        const Offset(5, 17),
+      ],
+      [
+        const Offset(22, 4),
+        const Offset(35, 8),
+        const Offset(35, 17),
+        const Offset(22, 17),
+      ],
+      [
+        const Offset(5, 22),
+        const Offset(17, 22),
+        const Offset(17, 36),
+        const Offset(5, 31),
+      ],
+      [
+        const Offset(22, 22),
+        const Offset(35, 22),
+        const Offset(35, 31),
+        const Offset(22, 36),
+      ],
+    ];
+    for (var i = 0; i < stones.length; i++) {
+      final path = Path()..addPolygon(stones[i], true);
+      canvas.drawPath(
+        path,
+        Paint()..color = color.withValues(alpha: [1.0, .78, .78, 1.0][i]),
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(_CrossPainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(_CornerstonePainter oldDelegate) =>
+      color != oldDelegate.color;
 }
 
 class _BrandWordmark extends StatelessWidget {
@@ -222,28 +232,6 @@ class _BrandWordmark extends StatelessWidget {
       fontWeight: FontWeight.w800,
       letterSpacing: -0.9,
     ),
-  );
-}
-
-class _ThemeMenu extends StatelessWidget {
-  const _ThemeMenu({required this.controller});
-  final CornerstoneThemeController controller;
-  @override
-  Widget build(BuildContext context) => PopupMenuButton<ThemeMode>(
-    tooltip: 'Appearance',
-    initialValue: controller.themeMode,
-    onSelected: controller.setThemeMode,
-    icon: Icon(
-      Theme.of(context).brightness == Brightness.dark
-          ? Icons.dark_mode_outlined
-          : Icons.light_mode_outlined,
-      size: 20,
-    ),
-    itemBuilder: (_) => const [
-      PopupMenuItem(value: ThemeMode.light, child: Text('Light mode')),
-      PopupMenuItem(value: ThemeMode.dark, child: Text('Dark mode')),
-      PopupMenuItem(value: ThemeMode.system, child: Text('Follow system')),
-    ],
   );
 }
 
@@ -267,15 +255,30 @@ class _AppearancePanel extends StatelessWidget {
             segments: const <ButtonSegment<ThemeMode>>[
               ButtonSegment<ThemeMode>(
                 value: ThemeMode.light,
-                icon: Icon(Icons.light_mode_rounded, size: 15),
+                tooltip: 'Light mode',
+                icon: Icon(
+                  Icons.light_mode_rounded,
+                  size: 15,
+                  semanticLabel: 'Light mode',
+                ),
               ),
               ButtonSegment<ThemeMode>(
                 value: ThemeMode.system,
-                icon: Icon(Icons.brightness_auto_rounded, size: 15),
+                tooltip: 'Follow system theme',
+                icon: Icon(
+                  Icons.brightness_auto_rounded,
+                  size: 15,
+                  semanticLabel: 'Follow system theme',
+                ),
               ),
               ButtonSegment<ThemeMode>(
                 value: ThemeMode.dark,
-                icon: Icon(Icons.dark_mode_rounded, size: 15),
+                tooltip: 'Dark mode',
+                icon: Icon(
+                  Icons.dark_mode_rounded,
+                  size: 15,
+                  semanticLabel: 'Dark mode',
+                ),
               ),
             ],
             selected: <ThemeMode>{controller.themeMode},
@@ -351,4 +354,70 @@ class _AppearancePanel extends StatelessWidget {
       },
     );
   }
+}
+
+/// Hover on desktop, tap or keyboard on touch and accessible clients.
+class _HoverProfileMenu extends StatefulWidget {
+  const _HoverProfileMenu({
+    required this.child,
+    required this.items,
+    required this.onOpenChanged,
+  });
+  final Widget child;
+  final List<Widget> items;
+  final ValueChanged<bool> onOpenChanged;
+  @override
+  State<_HoverProfileMenu> createState() => _HoverProfileMenuState();
+}
+
+class _HoverProfileMenuState extends State<_HoverProfileMenu> {
+  final _controller = MenuController();
+  Timer? _closeTimer;
+  void _keepOpen() => _closeTimer?.cancel();
+  void _open() {
+    _keepOpen();
+    if (!_controller.isOpen) _controller.open();
+  }
+
+  void _scheduleClose() {
+    _closeTimer?.cancel();
+    _closeTimer = Timer(const Duration(milliseconds: 240), () {
+      if (mounted) _controller.close();
+    });
+  }
+
+  @override
+  void dispose() {
+    _closeTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => MenuAnchor(
+    controller: _controller,
+    onOpen: () => widget.onOpenChanged(true),
+    onClose: () => widget.onOpenChanged(false),
+    menuChildren: [
+      for (final item in widget.items)
+        MouseRegion(
+          onEnter: (_) => _keepOpen(),
+          onExit: (_) => _scheduleClose(),
+          child: item,
+        ),
+    ],
+    builder: (context, controller, _) => MouseRegion(
+      onEnter: (_) => _open(),
+      onExit: (_) => _scheduleClose(),
+      child: Semantics(
+        label: 'Profile menu',
+        button: true,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          child: Padding(padding: const EdgeInsets.all(6), child: widget.child),
+        ),
+      ),
+    ),
+  );
 }

@@ -127,7 +127,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Learners').first);
+      await tester.tap(find.byTooltip('Learners').last);
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('view-learner-christopher')),
@@ -154,7 +154,7 @@ void main() {
         ),
         isEmpty,
       );
-      expect(find.text('Owner Test'), findsOneWidget);
+      expect(find.byTooltip('Owner Test'), findsOneWidget);
       expect(find.text('Christopher Test'), findsNWidgets(2));
       expect(find.text('Assign a playbook'), findsOneWidget);
 
@@ -162,7 +162,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Viewing work for'), findsOneWidget);
       expect(find.text('Christopher Test'), findsWidgets);
-      expect(find.text('Owner Test'), findsOneWidget);
+      expect(find.byTooltip('Owner Test'), findsOneWidget);
       expect(requests.where((request) => request.method == 'POST'), isEmpty);
     },
   );

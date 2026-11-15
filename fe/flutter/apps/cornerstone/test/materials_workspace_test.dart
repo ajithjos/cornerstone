@@ -149,6 +149,7 @@ Future<void> mountLibrary(
   ValueChanged<String>? onOpen,
   ValueChanged<LibraryWorkspacePlaylist>? onAssign,
   ValueChanged<String>? onPrint,
+  ValueChanged<LibraryWorkspaceMaterial>? onPreview,
   String? requestedPreviewRoute,
   VoidCallback? onPreviewRequestHandled,
 }) async {
@@ -171,6 +172,7 @@ Future<void> mountLibrary(
             onPreviewRequestHandled: onPreviewRequestHandled,
             onAssignPlaylist: onAssign ?? (_) {},
             onCreateWorksheetForLevel: onPrint,
+            onPreviewActivity: onPreview,
             onOpenDocument: (route) {
               onOpen?.call(route);
               setState(
@@ -229,18 +231,27 @@ void main() {
     'Practice keeps fresh printing contextual and checkpoint states its conditions',
     (tester) async {
       String? printed;
-      await mountLibrary(tester, onPrint: (id) => printed = id);
+      final previews = <String>[];
+      await mountLibrary(
+        tester,
+        onPrint: (id) => printed = id,
+        onPreview: (m) => previews.add(m.materialId),
+      );
       await openPlaybook(tester);
       await tester.tap(find.byKey(const ValueKey('section-practice')));
       await tester.pumpAndSettle();
       expect(find.text('Column addition'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('fresh-print-practice')));
       expect(printed, 'addition_2_carry');
+      await tester.tap(find.text('Start practice'));
+      expect(previews, ['practice']);
       await tester.tap(find.byKey(const ValueKey('section-checkpoint')));
       await tester.pumpAndSettle();
       expect(find.text('6 questions'), findsOneWidget);
       expect(find.text('100% to pass'), findsOneWidget);
       expect(find.text('No time limit'), findsOneWidget);
+      await tester.tap(find.text('Take checkpoint'));
+      expect(previews, ['practice', 'checkpoint']);
     },
   );
 

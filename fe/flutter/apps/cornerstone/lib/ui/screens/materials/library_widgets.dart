@@ -164,3 +164,110 @@ class _CheckpointConditions extends StatelessWidget {
     ),
   );
 }
+
+/// One level selection and one action area, shared by owners and learners.
+class _PracticeLevelPicker extends StatelessWidget {
+  const _PracticeLevelPicker({
+    required this.levels,
+    required this.selectedId,
+    required this.onSelected,
+    required this.detail,
+  });
+  final List<({String id, String title, String? status})> levels;
+  final String selectedId;
+  final ValueChanged<String> onSelected;
+  final Widget detail;
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Choose a level', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 860
+                ? 3
+                : constraints.maxWidth >= 540
+                ? 2
+                : 1;
+            final width = (constraints.maxWidth - (columns - 1) * 8) / columns;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < levels.length; i++)
+                  SizedBox(
+                    width: width,
+                    child: Semantics(
+                      selected: levels[i].id == selectedId,
+                      child: Material(
+                        color: levels[i].id == selectedId
+                            ? theme.colorScheme.primaryContainer
+                            : theme.colorScheme.surface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(
+                            color: levels[i].id == selectedId
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.outlineVariant,
+                          ),
+                        ),
+                        child: InkWell(
+                          key: ValueKey('level-${levels[i].id}'),
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => onSelected(levels[i].id),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Text(
+                                  '${i + 1}'.padLeft(2, '0'),
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        levels[i].title,
+                                        style: theme.textTheme.labelLarge,
+                                      ),
+                                      if (levels[i].status != null)
+                                        Text(
+                                          levels[i].status!,
+                                          style: theme.textTheme.bodySmall,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                if (levels[i].id == selectedId)
+                                  const Padding(
+                                    padding: EdgeInsets.only(left: 6),
+                                    child: Icon(
+                                      Icons.check_circle_outline,
+                                      size: 16,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        detail,
+      ],
+    );
+  }
+}

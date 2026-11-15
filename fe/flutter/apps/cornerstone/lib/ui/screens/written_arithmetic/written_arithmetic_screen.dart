@@ -24,7 +24,7 @@ class _WrittenArithmeticScreenState extends State<WrittenArithmeticScreen> {
   String? _levelId;
   String _mode = 'assisted';
   String _layout = 'guided';
-  int _questionCount = 6;
+  int _questionCount = 9;
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -255,7 +255,7 @@ class _WrittenArithmeticScreenState extends State<WrittenArithmeticScreen> {
                               decoration: const InputDecoration(
                                 labelText: 'Questions',
                               ),
-                              items: [4, 6, 12, 20, 24]
+                              items: [4, 6, 9, 12, 20, 24]
                                   .map(
                                     (count) => DropdownMenuItem(
                                       value: count,

@@ -14,7 +14,7 @@ runtime:
     package_id: written-arithmetic
     version: 1.0.0
   parameters:
-    question_count: 6
+    question_count: 9
   scoring:
     target_accuracy: 0.9
 ---
@@ -30,7 +30,7 @@ Recall multiplication and division facts and understand place value. Practise ex
 ## Practise this level
 
 Read the matching written-methods lesson note and work one example together first.
-This activity generates six fresh calculations at this level. In assisted practice,
+This activity generates nine fresh calculations at this level. In assisted practice,
 check an exercise, read the explanation, and correct it before continuing. In an
 assessment, work independently and submit the complete set for corrections.
 

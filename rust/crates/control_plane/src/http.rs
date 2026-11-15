@@ -176,6 +176,18 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/written-arithmetic/levels", get(get_written_levels))
         .route("/api/v1/written-arithmetic/generate", post(post_written_generate))
         .route("/api/v1/written-arithmetic/check", post(post_written_check))
+        .route(
+            "/api/v1/library/materials/{material_id}/preview",
+            post(post_material_preview),
+        )
+        .route(
+            "/api/v1/library/materials/{material_id}/preview/check",
+            post(post_material_preview_check),
+        )
+        .route(
+            "/api/v1/library/materials/{material_id}/preview/complete",
+            post(post_material_preview_complete),
+        )
         .route("/api/v1/written-arithmetic/print", post(post_written_print))
         .route(
             "/api/v1/activity-packages/{package_id}/{version}/{*asset_path}",
@@ -240,6 +252,41 @@ async fn health() -> Json<OperationStatusResponse> {
         status: "ok".to_string(),
         message: "cornerstone control plane is healthy".to_string(),
     })
+}
+
+async fn post_material_preview(
+    Path(material_id): Path<String>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        crate::service::preview_material_activity(&state, &context, &material_id, None, false).await?,
+    ))
+}
+
+async fn post_material_preview_check(
+    Path(material_id): Path<String>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<crate::domain::PreviewActivityRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        crate::service::preview_material_activity(&state, &context, &material_id, Some(request), false).await?,
+    ))
+}
+
+async fn post_material_preview_complete(
+    Path(material_id): Path<String>,
+    jar: CookieJar,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<crate::domain::PreviewActivityRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let context = session_context_from_jar(&jar, &state).await?;
+    Ok(Json(
+        crate::service::preview_material_activity(&state, &context, &material_id, Some(request), true).await?,
+    ))
 }
 
 async fn get_written_levels(

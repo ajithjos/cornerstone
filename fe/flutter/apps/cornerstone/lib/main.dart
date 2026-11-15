@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models/models.dart';
+import 'models/activity_presentation.dart';
 import 'services/api_service.dart';
 import 'services/learning_material_print.dart';
 import 'ui/screens/written_arithmetic/written_arithmetic_screen.dart';
@@ -23,6 +24,7 @@ part 'ui/widgets/workspace/shared_widgets.dart';
 part 'ui/widgets/workspace/owner_workspace_view.dart';
 part 'ui/widgets/workspace/learner_workspace_view.dart';
 part 'ui/widgets/workspace/learner_work_content.dart';
+part 'ui/widgets/workspace/learning_pathway_map.dart';
 part 'ui/screens/materials/materials_screen.dart';
 part 'ui/screens/materials/library_outline.dart';
 part 'ui/screens/materials/library_scope_content.dart';

@@ -2003,7 +2003,11 @@ pub async fn fetch_learner_workspace(
             .map(learner_safe_assigned_pathway)
             .collect()
     };
+    let library = state.library.read().await;
+    let documents = state.library_documents.read().await;
+    let learning_pathways = build_learner_pathway_map(&library, &documents, &assigned_journeys);
     Ok(crate::domain::LearnerWorkspaceResponse {
+        learning_pathways,
         status: "ok".to_string(),
         workspace_view: if support_workspace {
             "owner_support".to_string()
@@ -2259,6 +2263,89 @@ pub async fn record_session(
         },
     )
     .await
+}
+
+/// Owner previews are deterministic, stateless runs: no learner, assignment,
+/// evidence or completion records are created by any preview operation.
+pub async fn preview_material_activity(
+    state: &Arc<AppState>,
+    context: &SessionContext,
+    material_id: &str,
+    request: Option<crate::domain::PreviewActivityRequest>,
+    finish: bool,
+) -> anyhow::Result<JsonValue> {
+    ensure_viewer_can_manage_team(&context.active_user)?;
+    let library = state.library.read().await;
+    let material = library
+        .material(material_id)
+        .ok_or_else(|| anyhow!("material not found"))?;
+    let seed = request
+        .as_ref()
+        .map(|r| r.seed.parse::<u64>())
+        .transpose()
+        .context("invalid preview seed")?
+        .unwrap_or_else(runtime::activity_seed);
+    let generation_context = if material.kind == QUICK_CHECK_KIND {
+        runtime::GenerationContext::check(seed)
+    } else {
+        runtime::GenerationContext::practice(seed)
+    };
+    let mut generated = runtime::generate_activity(material, &generation_context)?;
+    attach_activity_package(state, material, &mut generated)?;
+    use sha2::{Digest, Sha256};
+    let revision = format!("{:x}", Sha256::digest(serde_json::to_vec(&generated)?));
+    let Some(request) = request else {
+        return Ok(
+            json!({"material_id": material.id, "title": material.title, "seed": seed.to_string(), "revision": revision,
+            "presentation": activity_presentation(&generated)?, "preview": true}),
+        );
+    };
+    if request.revision != revision {
+        bail!("This material changed. Reopen the preview for a fresh set.");
+    }
+    let cells = request
+        .responses
+        .iter()
+        .map(|r| written_arithmetic::CellResponse {
+            cell_id: r.item_id.clone(),
+            value: r.value.clone(),
+        })
+        .collect::<Vec<_>>();
+    if !finish {
+        if generated.generation_context.run_mode == runtime::RunMode::Check {
+            bail!("checkpoint feedback is available after submission");
+        }
+        let plan = generated
+            .written_plan
+            .as_ref()
+            .ok_or_else(|| anyhow!("this activity does not support step feedback"))?;
+        return Ok(serde_json::to_value(written_arithmetic::check_stored(
+            plan, &cells, false,
+        )?)?);
+    }
+    let responses = request
+        .responses
+        .iter()
+        .map(|r| runtime::ActivityResponseInput {
+            item_id: r.item_id.clone(),
+            value: r.value.clone(),
+        })
+        .collect::<Vec<_>>();
+    let scored = runtime::score_activity(material, &generated, &responses)?;
+    let duration = request.duration_seconds.clamp(0, 86400);
+    let target_met = scored.target_met && generated.max_duration_seconds.is_none_or(|max| duration as u32 <= max);
+    let check_result = generated
+        .written_plan
+        .as_ref()
+        .map(|plan| written_arithmetic::check_stored(plan, &cells, true))
+        .transpose()?;
+    Ok(
+        json!({"preview": true, "run_status": "completed", "run_outcome": if target_met { "target_met" } else { "target_not_met" },
+        "run_outcome_label": if target_met { "Preview finished · Target met" } else { "Preview finished · Keep practising" },
+        "retry_available": false, "check_result": check_result,
+        "activity_summary": { "correct_count": scored.correct_count, "item_count": scored.item_count, "duration_seconds": duration,
+            "corrections": activity_corrections(&generated, &scored) }}),
+    )
 }
 
 pub async fn start_session_material_activity(
@@ -2591,26 +2678,7 @@ async fn create_activity_instance(
         );
     }
     let mut generated = runtime::generate_activity(material, &generation_context)?;
-    if let Some(presentation) = material
-        .runtime
-        .as_ref()
-        .and_then(|runtime| runtime.presentation.as_ref())
-    {
-        let descriptor = crate::activity_packages::resolve_package(
-            &state.config.content_root,
-            &presentation.package_id,
-            &presentation.version,
-        )?;
-        generated.package_descriptor = Some(serde_json::to_value(descriptor)?);
-    } else if generated.written_plan.is_some() {
-        bail!("written arithmetic material must declare a versioned presentation package");
-    } else {
-        generated.package_descriptor = Some(serde_json::to_value(crate::activity_packages::resolve_package(
-            &state.config.content_root,
-            "numeric-questions",
-            "1.0.0",
-        )?)?);
-    }
+    attach_activity_package(state, material, &mut generated)?;
     let activity_instance_id = Uuid::new_v4();
     let started_at = Utc::now();
     let evidence_material_id = practice_evidence_material_id(material);
@@ -2639,14 +2707,35 @@ async fn create_activity_instance(
     )
 }
 
-fn activity_start_response(
-    activity_instance_id: Uuid,
-    session_material_id: &str,
-    session: &SessionRow,
+fn attach_activity_package(
+    state: &Arc<AppState>,
     material: &catalog::MaterialDocument,
-    generated: &GeneratedActivity,
-    started_at: DateTime<Utc>,
-) -> anyhow::Result<ActivityStartResponse> {
+    generated: &mut GeneratedActivity,
+) -> anyhow::Result<()> {
+    if let Some(presentation) = material
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.presentation.as_ref())
+    {
+        let descriptor = crate::activity_packages::resolve_package(
+            &state.config.content_root,
+            &presentation.package_id,
+            &presentation.version,
+        )?;
+        generated.package_descriptor = Some(serde_json::to_value(descriptor)?);
+    } else if generated.written_plan.is_some() {
+        bail!("written arithmetic material must declare a versioned presentation package");
+    } else {
+        generated.package_descriptor = Some(serde_json::to_value(crate::activity_packages::resolve_package(
+            &state.config.content_root,
+            "numeric-questions",
+            "1.0.0",
+        )?)?);
+    }
+    Ok(())
+}
+
+fn activity_presentation(generated: &GeneratedActivity) -> anyhow::Result<Option<ActivityPresentation>> {
     let presentation = generated.package_descriptor.as_ref().map(|descriptor| -> anyhow::Result<ActivityPresentation> {
         let payload = if let Some(plan) = &generated.written_plan {
             json!({ "worksheet": plan.worksheet, "mode": plan.worksheet.request.mode, "capabilities": { "check": plan.worksheet.request.mode == PracticeMode::Assisted } })
@@ -2655,6 +2744,18 @@ fn activity_start_response(
         };
         Ok(ActivityPresentation { package: serde_json::from_value(descriptor.clone())?, payload })
     }).transpose()?;
+    Ok(presentation)
+}
+
+fn activity_start_response(
+    activity_instance_id: Uuid,
+    session_material_id: &str,
+    session: &SessionRow,
+    material: &catalog::MaterialDocument,
+    generated: &GeneratedActivity,
+    started_at: DateTime<Utc>,
+) -> anyhow::Result<ActivityStartResponse> {
+    let presentation = activity_presentation(generated)?;
     Ok(ActivityStartResponse {
         activity: ActivityInstance {
             activity_instance_id,
@@ -3569,6 +3670,60 @@ fn build_material_catalog(
             .then_with(|| left.material.title.cmp(&right.material.title))
     });
     materials
+}
+
+fn build_learner_pathway_map(
+    library: &LibraryBundle,
+    documents: &[LibraryDocument],
+    assignments: &[crate::domain::LearnerAssignedJourneySummary],
+) -> Vec<crate::domain::LearnerPathwayMap> {
+    library
+        .pathways
+        .iter()
+        .map(|pathway| {
+            let playbooks = pathway
+                .playlist_ids
+                .iter()
+                .filter_map(|id| {
+                    let playlist = library.playlist(id)?;
+                    let assignment = assignments
+                        .iter()
+                        .find(|a| &a.assignment.playlist_id == id)
+                        .map(|a| &a.assignment);
+                    Some(crate::domain::LearnerPathwayPlaybook {
+                        playlist_id: id.clone(),
+                        title: playlist.title.clone(),
+                        description: document_description_for_kind(documents, "playlist", id).unwrap_or_default(),
+                        assignment_id: assignment.map(|a| a.assignment_id.clone()),
+                        can_open: assignment.is_some(),
+                        status: assignment
+                            .map(|a| a.status.clone())
+                            .unwrap_or_else(|| "unassigned".into()),
+                        progress_label: assignment
+                            .map(|a| {
+                                if a.status == "completed" {
+                                    "Completed · Revisit any time".into()
+                                } else {
+                                    format!(
+                                        "{} of {} checkpoints complete",
+                                        a.completed_checkpoint_count, a.checkpoint_count
+                                    )
+                                }
+                            })
+                            .unwrap_or_else(|| "Not assigned yet".into()),
+                    })
+                })
+                .collect::<Vec<_>>();
+            let complete = playbooks.iter().filter(|p| p.status == "completed").count();
+            crate::domain::LearnerPathwayMap {
+                pathway_id: pathway.pathway_id.clone(),
+                title: pathway.title.clone(),
+                description: pathway.description.clone(),
+                progress_label: format!("{complete} of {} playbooks complete", playbooks.len()),
+                playbooks,
+            }
+        })
+        .collect()
 }
 
 fn build_library_workspace_pathways(
@@ -6530,6 +6685,32 @@ mod tests {
             completed_checkpoint_count: 1,
         };
         assert_eq!(super::assignment_row_to_summary(row).completion_percent, 50);
+    }
+
+    #[test]
+    fn learner_pathway_map_keeps_unassigned_steps_without_granting_access() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../content");
+        let content = catalog::load_library_content(&root).unwrap();
+        let pathway = &content.bundle.pathways[0];
+        let playlist_id = &pathway.playlist_ids[1];
+        let assignment = sample_assigned_journey_for_playlist(
+            "selected",
+            playlist_id,
+            &pathway.pathway_id,
+            &pathway.title,
+            sample_session(),
+        );
+        let maps = super::build_learner_pathway_map(&content.bundle, &content.documents, &[assignment]);
+        assert_eq!(maps.len(), content.bundle.pathways.len());
+        let map = &maps[0];
+        assert_eq!(map.playbooks.len(), pathway.playlist_ids.len());
+        assert!(!map.playbooks[0].can_open);
+        assert_eq!(map.playbooks[0].status, "unassigned");
+        assert!(map.playbooks[0].assignment_id.is_none());
+        assert_eq!(map.playbooks[1].playlist_id, *playlist_id);
+        assert!(map.playbooks[1].can_open);
+        assert_eq!(map.playbooks[1].assignment_id.as_deref(), Some("selected"));
+        assert_eq!(map.playbooks[1].progress_label, "0 of 1 checkpoints complete");
     }
 
     #[test]

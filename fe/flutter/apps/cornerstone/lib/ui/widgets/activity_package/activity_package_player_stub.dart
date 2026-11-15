@@ -10,12 +10,14 @@ class ActivityPackagePlayerView extends StatelessWidget {
     required this.onCheck,
     required this.onComplete,
     this.onCompleted,
+    this.interactionEnabled = true,
   });
   final ActivityPresentation presentation;
   final String apiBaseUrl;
   final ActivityPackageAction onCheck;
   final ActivityPackageAction onComplete;
   final VoidCallback? onCompleted;
+  final bool interactionEnabled;
   @override
   Widget build(BuildContext context) => const Center(
     child: Padding(

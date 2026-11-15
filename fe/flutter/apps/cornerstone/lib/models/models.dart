@@ -1227,6 +1227,7 @@ class LearnerWorkspacePayload {
     required this.reviewItems,
     required this.practiceMastery,
     required this.workspace,
+    this.learningPathways = const [],
     this.activeAssignment,
     this.journey,
   });
@@ -1247,6 +1248,9 @@ class LearnerWorkspacePayload {
             )
             .toList();
     return LearnerWorkspacePayload(
+      learningPathways: ((json['learning_pathways'] as List<dynamic>?) ?? [])
+          .map((p) => LearnerPathwayMap.fromJson(p as Map<String, dynamic>))
+          .toList(),
       status: json['status'] as String,
       workspaceView: json['workspace_view'] as String? ?? 'learner',
       viewerRole: json['viewer_role'] as String? ?? 'learner',
@@ -1288,6 +1292,7 @@ class LearnerWorkspacePayload {
     );
   }
 
+  final List<LearnerPathwayMap> learningPathways;
   final String status;
   final String workspaceView;
   final String viewerRole;
@@ -2819,4 +2824,33 @@ class ActivitySummary {
   final int durationSeconds;
   final List<String> weakFamilies;
   final List<ActivityCorrection> corrections;
+}
+
+class LearnerPathwayMap {
+  LearnerPathwayMap.fromJson(Map<String, dynamic> json)
+    : pathwayId = json['pathway_id'] as String,
+      title = json['title'] as String,
+      description = json['description'] as String,
+      progressLabel = json['progress_label'] as String,
+      playbooks = (json['playbooks'] as List<dynamic>)
+          .map(
+            (p) => LearnerPathwayPlaybook.fromJson(p as Map<String, dynamic>),
+          )
+          .toList();
+  final String pathwayId, title, description, progressLabel;
+  final List<LearnerPathwayPlaybook> playbooks;
+}
+
+class LearnerPathwayPlaybook {
+  LearnerPathwayPlaybook.fromJson(Map<String, dynamic> json)
+    : playlistId = json['playlist_id'] as String,
+      title = json['title'] as String,
+      description = json['description'] as String,
+      assignmentId = json['assignment_id'] as String?,
+      canOpen = json['can_open'] as bool,
+      status = json['status'] as String,
+      progressLabel = json['progress_label'] as String;
+  final String playlistId, title, description, status, progressLabel;
+  final String? assignmentId;
+  final bool canOpen;
 }

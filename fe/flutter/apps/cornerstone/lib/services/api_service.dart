@@ -76,6 +76,36 @@ class CornerstoneApiClient {
     return LibraryPayload.fromJson(_decode(response));
   }
 
+  Future<Map<String, dynamic>> previewMaterial(String materialId) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/library/materials/$materialId/preview'),
+    );
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> submitPreview({
+    required String materialId,
+    required String seed,
+    required String revision,
+    required List<Map<String, String>> responses,
+    required int duration,
+    required bool finish,
+  }) async {
+    final response = await _client.post(
+      Uri.parse(
+        '$baseUrl/api/v1/library/materials/$materialId/preview/${finish ? 'complete' : 'check'}',
+      ),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'seed': seed,
+        'revision': revision,
+        'responses': responses,
+        'duration_seconds': duration,
+      }),
+    );
+    return _decode(response);
+  }
+
   Future<LibraryWorkspacePayload> fetchLibraryWorkspace() async {
     final response = await _client.get(
       Uri.parse('$baseUrl/api/v1/library/workspace'),

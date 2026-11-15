@@ -36,6 +36,7 @@ class _MaterialsWorkspaceViewState extends State<MaterialsWorkspaceView> {
   String? _playlistId;
   String? _sectionId;
   String? _materialId;
+  String? _selectedLevelId;
   String? _documentRoute;
   bool _searching = false;
   bool _restored = false;
@@ -72,6 +73,7 @@ class _MaterialsWorkspaceViewState extends State<MaterialsWorkspaceView> {
       _playlistId = saved['playlist'] as String?;
       _sectionId = saved['section'] as String?;
       _materialId = saved['material'] as String?;
+      _selectedLevelId = saved['level'] as String?;
       _documentRoute = saved['document'] as String?;
     }
     _applyPreviewRequest();
@@ -110,6 +112,7 @@ class _MaterialsWorkspaceViewState extends State<MaterialsWorkspaceView> {
       'playlist': _playlistId,
       'section': _sectionId,
       'material': _materialId,
+      'level': _selectedLevelId,
       'document': _documentRoute,
     }, identifier: 'playbook-library-selection');
   }
@@ -148,6 +151,7 @@ class _MaterialsWorkspaceViewState extends State<MaterialsWorkspaceView> {
   void _selectSection(String? id) {
     _change(() {
       _sectionId = id;
+      _selectedLevelId = null;
       _materialId = null;
       _documentRoute = null;
     });
