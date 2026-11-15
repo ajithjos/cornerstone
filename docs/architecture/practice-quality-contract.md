@@ -12,7 +12,7 @@ The product must not use one status word for several different facts. Session li
 
 - `scheduled`: the session has not started
 - `active`: work in the session has started
-- `completed`: the session was finished and submitted
+- `completed`: the practice was submitted, or the checkpoint target was met. A submitted failed checkpoint remains active.
 
 Completing a session never means that its skills are confirmed.
 
@@ -152,3 +152,7 @@ Do not delete and recreate the whole review queue after every session.
 - The Rust activity runtime owns validated candidate construction, batch blueprints, generation, and scoring.
 - The Rust control-plane owns learner context, immutable instances, evidence, status transitions, and review scheduling.
 - Flutter renders the explicit contracts and never derives mastery or selection policy from raw content.
+
+## Playbook completion
+
+Playbook assignments expose Teach (owner only), Learn, Practice and Checkpoint. Checkpoint completion drives assignment completion and its percentage. Reading and unlimited practice are not required to be manually marked complete. Written-level checkpoints require six correct calculations with all required written cells; they are untimed and establish level completion only. They do not claim representative confirmation of a broader written-method skill. Paper checkpoints declare explicit accuracy/time policies, and owner marking applies those policies before completing the checkpoint.

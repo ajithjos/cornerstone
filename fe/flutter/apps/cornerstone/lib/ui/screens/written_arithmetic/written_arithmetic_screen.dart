@@ -9,9 +9,11 @@ class WrittenArithmeticScreen extends StatefulWidget {
     super.key,
     required this.apiClient,
     required this.canPrintAnswers,
+    this.initialLevelId,
   });
   final CornerstoneApiClient apiClient;
   final bool canPrintAnswers;
+  final String? initialLevelId;
   @override
   State<WrittenArithmeticScreen> createState() =>
       _WrittenArithmeticScreenState();
@@ -27,6 +29,8 @@ class _WrittenArithmeticScreenState extends State<WrittenArithmeticScreen> {
   bool _busy = false;
   String? _error;
   WrittenWorksheet? _worksheet;
+  ActivityPackageRun? _practice;
+  final _practiceKey = GlobalKey<ActivityPackagePageState>();
 
   @override
   void initState() {
@@ -44,7 +48,9 @@ class _WrittenArithmeticScreenState extends State<WrittenArithmeticScreen> {
       if (mounted) {
         setState(() {
           _levels = levels;
-          _levelId = levels.firstOrNull?.id;
+          _levelId = levels.any((level) => level.id == widget.initialLevelId)
+              ? widget.initialLevelId
+              : levels.firstOrNull?.id;
         });
       }
     } catch (error) {
@@ -90,18 +96,13 @@ class _WrittenArithmeticScreenState extends State<WrittenArithmeticScreen> {
       },
       finish: finish,
     );
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ActivityPackagePage(
-          apiBaseUrl: widget.apiClient.baseUrl,
-          run: ActivityPackageRun(
-            id: 'worksheet-${sheet.request.seed}',
-            title: sheet.level.title,
-            presentation: sheet.presentation,
-            onCheck: (responses, _) => submit(responses, false),
-            onComplete: (responses, _) => submit(responses, true),
-          ),
-        ),
+    setState(
+      () => _practice = ActivityPackageRun(
+        id: 'worksheet-${sheet.request.seed}',
+        title: sheet.level.title,
+        presentation: sheet.presentation,
+        onCheck: (responses, _) => submit(responses, false),
+        onComplete: (responses, _) => submit(responses, true),
       ),
     );
   }
@@ -134,8 +135,36 @@ class _WrittenArithmeticScreenState extends State<WrittenArithmeticScreen> {
     final selected = _levels.where((level) => level.id == _levelId).firstOrNull;
     final sheet = _worksheet;
     return Scaffold(
-      appBar: AppBar(title: const Text('Create a worksheet')),
-      body: _loading
+      appBar: AppBar(
+        title: Text(
+          _practice == null ? 'Create a worksheet' : 'Written practice',
+        ),
+        leading: _practice == null
+            ? null
+            : IconButton(
+                tooltip: 'Back to worksheet',
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => _practiceKey.currentState?.requestClose(),
+              ),
+      ),
+      body: _practice != null
+          ? Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1200),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: ActivityPackagePage(
+                    key: _practiceKey,
+                    run: _practice!,
+                    apiBaseUrl: widget.apiClient.baseUrl,
+                    closeLabel: 'Back to worksheet',
+                    onClose: (_) => setState(() => _practice = null),
+                  ),
+                ),
+              ),
+            )
+          : _loading
           ? const Center(child: CircularProgressIndicator())
           : Align(
               alignment: Alignment.topCenter,
@@ -150,7 +179,7 @@ class _WrittenArithmeticScreenState extends State<WrittenArithmeticScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Choose a skill and create as many new sets as you need. To save learner progress, assign a material from Materials instead.',
+                      'Choose a skill and create as many new sets as you need. For recorded progress, use Practice in an assigned playbook.',
                     ),
                     const SizedBox(height: 24),
                     if (_levels.isEmpty)

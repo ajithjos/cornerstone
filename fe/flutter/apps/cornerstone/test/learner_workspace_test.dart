@@ -39,12 +39,12 @@ SessionMaterial material(String id, {bool live = false, bool adult = false}) =>
 
 LearnerWorkspacePayload fixture({
   bool support = false,
-  bool direct = false,
   bool startActivity = false,
   bool nextEnabled = true,
 }) {
   final lesson = material('lesson');
   final practice = material('practice', live: true);
+  final check = material('check', live: true);
   final teaching = material('teaching', adult: true);
   final current = SessionDetail(
     sessionId: 'current',
@@ -61,7 +61,7 @@ LearnerWorkspacePayload fixture({
     adultMaterialCount: support ? 1 : 0,
     notes: '',
     materialsByKind: const [],
-    materials: [lesson, practice, if (support) teaching],
+    materials: [lesson, practice, check, if (support) teaching],
     primaryActivityMaterialId: practice.sessionMaterialId,
     nextStep: SessionNextStep(
       sessionMaterialId: startActivity
@@ -95,7 +95,7 @@ LearnerWorkspacePayload fixture({
     materialsByKind: const [],
     materials: [material('review')],
   );
-  final sessions = [current, if (!direct) later];
+  final sessions = [current, later];
   final continuation = LearnerContinueBlock(
     title: 'Continue lesson',
     description: 'A short focused session.',
@@ -103,14 +103,12 @@ LearnerWorkspacePayload fixture({
     session: current,
   );
   final journey = LearnerJourney(
-    playlistId: direct ? '' : 'column-playlist',
+    playlistId: 'column-playlist',
     playlistTitle: 'Legacy title should not appear',
     playlistDescription: '',
-    title: direct ? 'Individual addition practice' : 'Column addition sequence',
+    title: 'Column addition sequence',
     description: '',
-    sourceKind: direct ? 'material' : 'playlist',
-    sourceLabel: direct ? 'Individual material' : 'Playlist',
-    sourceMaterialId: direct ? 'practice' : null,
+    sourceLabel: 'Playbook',
     recommendedAge: 7,
     recommendedLevel: 'Foundation',
     durationDays: 2,
@@ -126,7 +124,7 @@ LearnerWorkspacePayload fixture({
   final assigned = LearnerAssignedJourney(
     assignment: AssignmentSummary(
       assignmentId: 'assignment',
-      playlistId: direct ? '' : 'column-playlist',
+      playlistId: 'column-playlist',
       title: journey.title,
       startDate: '2026-11-15',
       endDate: '2026-11-16',
@@ -137,6 +135,61 @@ LearnerWorkspacePayload fixture({
     ),
     journey: journey,
     sessions: sessions,
+    sections: [
+      if (support)
+        PlaybookSection(
+          sectionId: 'teach',
+          title: 'Teach',
+          description: 'Teaching approach and corrections.',
+          items: const [
+            PlaybookSectionItem(
+              materialId: 'teaching',
+              sessionIndex: 1,
+              sessionId: 'current',
+              sessionMaterialId: 'teaching',
+            ),
+          ],
+        ),
+      PlaybookSection(
+        sectionId: 'learn',
+        title: 'Learn',
+        description: 'Study the explanation and worked examples.',
+        items: const [
+          PlaybookSectionItem(
+            materialId: 'lesson',
+            sessionIndex: 1,
+            sessionId: 'current',
+            sessionMaterialId: 'lesson',
+          ),
+        ],
+      ),
+      PlaybookSection(
+        sectionId: 'practice',
+        title: 'Practice',
+        description: 'Generate fresh questions as often as you need.',
+        items: const [
+          PlaybookSectionItem(
+            materialId: 'practice',
+            sessionIndex: 1,
+            sessionId: 'current',
+            sessionMaterialId: 'practice',
+          ),
+        ],
+      ),
+      PlaybookSection(
+        sectionId: 'checkpoint',
+        title: 'Checkpoint',
+        description: 'Work independently to check your understanding.',
+        items: const [
+          PlaybookSectionItem(
+            materialId: 'check',
+            sessionIndex: 1,
+            sessionId: 'current',
+            sessionMaterialId: 'check',
+          ),
+        ],
+      ),
+    ],
     currentSessionId: 'current',
     continueBlock: continuation,
   );
@@ -158,10 +211,9 @@ LearnerWorkspacePayload fixture({
         pathwayId: 'written',
         pathwayTitle: 'Written arithmetic',
         pathwayDescription: '',
-        playlistCount: direct ? 0 : 1,
+        playlistCount: 1,
         assignmentCount: 1,
-        materialAssignmentCount: direct ? 1 : 0,
-        summaryLabel: direct ? '1 individual material' : '1 playlist',
+        summaryLabel: '1 playbook',
         totalSessionCount: sessions.length,
         completedSessionCount: 0,
         pendingSessionCount: sessions.length,
@@ -169,7 +221,7 @@ LearnerWorkspacePayload fixture({
       ),
     ],
     // A different aggregate order must not override the backend's current session.
-    sessions: [if (!direct) later, current],
+    sessions: [later, current],
     progress: const [],
     reviewItems: const [],
     practiceMastery: const [],
@@ -222,97 +274,142 @@ Future<void> pumpWork(
 
 void main() {
   testWidgets(
-    'Continue follows the backend lesson step instead of the first session or executable',
+    'Assigned playbook opens Learn with its printable explanation, no internal session tree',
+    (tester) async {
+      await pumpWork(tester, fixture());
+      expect(find.text('John'), findsOneWidget);
+      expect(find.text('Your playbooks'), findsOneWidget);
+      expect(find.text('LESSON BODY: ten ones make one ten.'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('assigned-playbook-assignment')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Learn'), findsOneWidget);
+      expect(find.text('Practice'), findsOneWidget);
+      expect(find.text('Checkpoint'), findsOneWidget);
+      expect(find.text('Teach'), findsNothing);
+      expect(find.text('LESSON BODY: ten ones make one ten.'), findsOneWidget);
+      expect(find.text('ADULT ONLY GUIDE'), findsNothing);
+      expect(find.text('Next-day review'), findsNothing);
+      expect(find.text('Legacy title should not appear'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Practice uses the backend section refs even when aggregate session order differs',
     (tester) async {
       final launched = <String>[];
       await pumpWork(
         tester,
         fixture(),
-        onStart: (item) => launched.add(item.sessionMaterialId),
+        onStart: (m) => launched.add(m.sessionMaterialId),
       );
-      expect(find.text('John'), findsOneWidget);
-      expect(find.text('Continue learning'), findsOneWidget);
-      expect(
-        find.text('Read the lesson before beginning practice.'),
-        findsOneWidget,
+      await tester.tap(
+        find.byKey(const ValueKey('assigned-playbook-assignment')),
       );
-      expect(find.text('LESSON BODY: ten ones make one ten.'), findsNothing);
-      expect(find.text('ADULT ONLY GUIDE'), findsNothing);
-      expect(find.text('Legacy title should not appear'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('continue-learning')));
       await tester.pumpAndSettle();
-      expect(launched, isEmpty);
-      expect(
-        find.textContaining('LESSON BODY: ten ones make one ten.'),
-        findsOneWidget,
-      );
-      expect(find.text('Back to session'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'Continue launches only the explicit backend activity and honors its enabled state',
-    (tester) async {
-      final launched = <String>[];
-      await pumpWork(
-        tester,
-        fixture(startActivity: true),
-        onStart: (item) => launched.add(item.sessionMaterialId),
-      );
-      await tester.tap(find.byKey(const ValueKey('continue-learning')));
+      await tester.tap(find.byKey(const ValueKey('section-practice')));
+      await tester.pumpAndSettle();
+      expect(find.text('LESSON BODY: ten ones make one ten.'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('start-practice')));
       expect(launched, ['practice']);
-      await pumpWork(
-        tester,
-        fixture(startActivity: true, nextEnabled: false),
-        onStart: (item) => launched.add(item.sessionMaterialId),
-      );
-      final button = tester.widget<FilledButton>(
-        find.byKey(const ValueKey('continue-learning')),
-      );
-      expect(button.onPressed, isNull);
-      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const ValueKey('section-checkpoint')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('start-check')));
+      expect(launched, ['practice', 'check']);
     },
   );
 
   testWidgets(
-    'learning outline preserves pathway assignment session connections on a narrow screen',
+    'Owner Teach remains available while moving between practice and explanation',
+    (tester) async {
+      await pumpWork(tester, fixture(support: true));
+      await tester.tap(
+        find.byKey(const ValueKey('assigned-playbook-assignment')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Teach'), findsOneWidget);
+      expect(find.text('ADULT ONLY GUIDE'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('section-practice')));
+      await tester.pumpAndSettle();
+      expect(find.text('ADULT ONLY GUIDE'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('section-teach')));
+      await tester.pumpAndSettle();
+      expect(find.text('ADULT ONLY GUIDE'), findsOneWidget);
+      expect(find.text('Viewing learner work · owner profile'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Narrow learner flow keeps the three sections readable and returns to assigned work',
     (tester) async {
       await pumpWork(tester, fixture(), width: 390);
-      expect(find.text('2. Next-day review'), findsNothing);
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Browse learning'));
+      await tester.tap(find.byKey(const ValueKey('continue-learning')));
       await tester.pumpAndSettle();
-      final pathway = find.widgetWithText(ExpansionTile, 'Written arithmetic');
-      await tester.ensureVisible(pathway);
-      await tester.tap(pathway);
+      expect(find.text('LESSON BODY: ten ones make one ten.'), findsOneWidget);
+      for (final section in ['learn', 'practice', 'checkpoint']) {
+        expect(
+          find.byKey(ValueKey('section-$section')).hitTestable(),
+          findsOneWidget,
+        );
+      }
+      await tester.tap(find.byKey(const ValueKey('section-checkpoint')));
       await tester.pumpAndSettle();
-      final session = find.text('2. Next-day review');
-      await tester.ensureVisible(session);
-      await tester.tap(session);
+      expect(find.byKey(const ValueKey('start-check')), findsOneWidget);
+      await tester.tap(find.text('All my playbooks'));
       await tester.pumpAndSettle();
-      expect(find.text('Next-day review'), findsOneWidget);
-      expect(find.text('Session 2'), findsOneWidget);
-      expect(find.text('In this session'), findsOneWidget);
-      expect(find.text('Close learning outline'), findsNothing);
+      expect(find.text('Your playbooks'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
-
   testWidgets(
-    'direct material assignment keeps its source label and parent learner context',
+    'Returning from an activity restores the selected playbook and Practice section',
     (tester) async {
-      await pumpWork(tester, fixture(support: true, direct: true));
-      expect(find.text('John’s work'), findsOneWidget);
-      expect(
-        find.text('1 individual material\n0/1 sessions finished'),
-        findsOneWidget,
+      final bucket = PageStorageBucket();
+      final data = fixture();
+      var visible = true;
+      late StateSetter redraw;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PageStorage(
+              bucket: bucket,
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  redraw = setState;
+                  return visible
+                      ? LearnerWorkspaceView(
+                          viewer: null,
+                          workspace: data,
+                          viewerCanReadLibrary: false,
+                          onOpenLibraryRoute: (_) {},
+                          onStartActivity: (_, _) async {},
+                          onStartReview: (_) async {},
+                        )
+                      : const SizedBox.shrink();
+                },
+              ),
+            ),
+          ),
+        ),
       );
-      expect(find.textContaining('Individual material'), findsWidgets);
-      expect(find.text('Parent guidance'), findsOneWidget);
-      expect(find.text('Other sessions in this playlist'), findsNothing);
-      expect(find.text('ADULT ONLY GUIDE'), findsNothing);
-      expect(find.text('Assign'), findsNothing);
-      expect(tester.takeException(), isNull);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('continue-learning')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('section-practice')));
+      await tester.pumpAndSettle();
+      redraw(() => visible = false);
+      await tester.pumpAndSettle();
+      redraw(() => visible = true);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ChoiceChip>(find.byKey(const ValueKey('section-practice')))
+            .selected,
+        isTrue,
+      );
+      expect(find.byKey(const ValueKey('start-practice')), findsOneWidget);
+      expect(find.text('Your playbooks'), findsNothing);
     },
   );
 }

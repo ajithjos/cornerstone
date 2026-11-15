@@ -2,50 +2,38 @@
 id: written_multiplication
 title: Written Multiplication
 stage_ids:
-  - written_multiplication
+- written_multiplication
 skill_ids:
-  - interpret_multiplication_as_arrays_and_scaling
-  - multiply_whole_numbers_with_written_methods
-  - estimate_and_check_products
+- interpret_multiplication_as_arrays_and_scaling
+- multiply_whole_numbers_with_written_methods
+- estimate_and_check_products
 recommended_age_min: 8
 recommended_age_max: 10
-sessions:
-  - id: instruction
-    title: Teach short multiplication and place-value partial products
-    material_ids:
-      - written_multiplication_lesson_note
-      - written_methods_teaching_note
-    skill_ids:
-      - interpret_multiplication_as_arrays_and_scaling
-      - multiply_whole_numbers_with_written_methods
-      - estimate_and_check_products
-  - id: paper_practice
-    title: Practise short and long multiplication
-    material_ids:
-      - written_multiplication_practice
-    skill_ids:
-      - multiply_whole_numbers_with_written_methods
-      - estimate_and_check_products
-  - id: targeted_review
-    title: Repeat partial products and alignment checks
-    material_ids:
-      - written_multiplication_practice
-    skill_ids:
-      - interpret_multiplication_as_arrays_and_scaling
-      - multiply_whole_numbers_with_written_methods
-  - id: quick_check
-    title: Assessment on written multiplication
-    material_ids:
-      - written_multiplication_check
-    skill_ids:
-      - interpret_multiplication_as_arrays_and_scaling
-      - multiply_whole_numbers_with_written_methods
-      - estimate_and_check_products
+sections:
+  teach:
+  - arithmetic_written_methods_teaching_context
+  - written_methods_teaching_note
+  learn:
+  - written_multiplication_lesson_note
+  practice:
+  - written_multiplication_practice
+  - written_multiplication_2_by_1
+  - written_multiplication_3_by_1
+  - written_multiplication_2_by_2
+  - written_multiplication_3_by_2
+  - written_multiplication_4_by_2
+  checkpoint:
+  - written_multiplication_check
+  - written_multiplication_2_by_1_checkpoint
+  - written_multiplication_3_by_1_checkpoint
+  - written_multiplication_2_by_2_checkpoint
+  - written_multiplication_3_by_2_checkpoint
+  - written_multiplication_4_by_2_checkpoint
 ---
 
 # Written Multiplication
 
-This playlist turns multiplication facts into reliable written multiplication.
+This playbook turns multiplication facts into reliable written multiplication.
 
 ## Completion Rule
 

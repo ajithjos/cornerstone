@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cornerstone/models/activity_presentation.dart';
 import 'package:cornerstone/ui/widgets/activity_package/activity_package_player.dart';
 import 'package:flutter/material.dart';
@@ -71,6 +73,107 @@ void main() {
       expect(find.text('Missed items'), findsOneWidget);
       expect(find.byKey(const ValueKey('retry-instance')), findsOneWidget);
       expect(find.text('Practise missed items'), findsNothing);
+    },
+  );
+  testWidgets(
+    'embedded activity guards navigation and closes its frame without popping the app',
+    (tester) async {
+      final key = GlobalKey<ActivityPackagePageState>();
+      var closes = 0;
+      final run = ActivityPackageRun(
+        id: 'embedded',
+        title: 'Column addition',
+        presentation: const ActivityPresentation(
+          packageId: 'written-arithmetic',
+          version: '1.0.0',
+          protocolVersion: 1,
+          entryUrl:
+              '/api/v1/activity-packages/written-arithmetic/1.0.0/index.html?integrity=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          payload: {},
+        ),
+        onCheck: (_, _) async => {},
+        onComplete: (_, _) async => {},
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                const Text('App navigation'),
+                Expanded(
+                  child: ActivityPackagePage(
+                    key: key,
+                    run: run,
+                    apiBaseUrl: 'https://school.test',
+                    onClose: (_) => closes++,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final stay = key.currentState!.requestClose();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stay'));
+      await tester.pumpAndSettle();
+      expect(await stay, isFalse);
+      expect(closes, 0);
+      final leave = key.currentState!.requestClose();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Leave'));
+      await tester.pumpAndSettle();
+      expect(await leave, isTrue);
+      expect(closes, 1);
+      expect(find.text('App navigation'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'cannot leave while completion is saving and completed work closes without a warning',
+    (tester) async {
+      final key = GlobalKey<ActivityPackagePageState>();
+      final saved = Completer<Map<String, dynamic>>();
+      bool? completion;
+      final run = ActivityPackageRun(
+        id: 'saving',
+        title: 'Written practice',
+        presentation: const ActivityPresentation(
+          packageId: 'written-arithmetic',
+          version: '1.0.0',
+          protocolVersion: 1,
+          entryUrl:
+              '/api/v1/activity-packages/written-arithmetic/1.0.0/index.html?integrity=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          payload: {},
+        ),
+        onCheck: (_, _) async => {},
+        onComplete: (_, _) => saved.future,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ActivityPackagePage(
+              key: key,
+              run: run,
+              apiBaseUrl: 'https://school.test',
+              onClose: (value) => completion = value,
+            ),
+          ),
+        ),
+      );
+      final player = tester.widget<ActivityPackagePlayer>(
+        find.byType(ActivityPackagePlayer),
+      );
+      final submission = player.onComplete([], 1);
+      await tester.pump();
+      expect(await key.currentState!.requestClose(), isFalse);
+      expect(completion, isNull);
+      saved.complete({});
+      await submission;
+      player.onCompleted!();
+      await tester.pumpAndSettle();
+      expect(await key.currentState!.requestClose(), isTrue);
+      expect(completion, isTrue);
+      expect(find.text('Leave this activity?'), findsNothing);
     },
   );
 }

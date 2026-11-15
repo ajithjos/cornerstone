@@ -9,7 +9,7 @@ One shared Docker Compose runtime serves provider-selected Linux VMs. AWS is the
 - `prod.aws.json` selects AWS provisioning, company IAM Identity Center access and direct HTTPS.
 - `prod.gcp.json` selects the retained GCP installation, its named identity, IAP and external HTTPS load balancer.
 - `prod.ssh.example.json` demonstrates a prepared Linux VM on another cloud or on-premises host. Azure targets may select a native Azure identity with SSH transport. Automatic provisioning currently belongs only to the AWS adapter.
-- `prod.vm.env` owns shared non-secret application settings. The active data revision is `03`; migration never advances or resets it.
+- `prod.vm.env` owns shared non-secret application settings. The active data revision is `04`; migration never advances or resets it.
 - `deploy/config/build/images.lock.env` owns image inputs. Migration preserves the exact live application image and frontend build rather than compiling a different application version during the move.
 
 Workforce authentication and isolated native CLI environments use the shared DevKit `cloudctl`. Put native cloud CLIs on `PATH`. `make cloud-setup` prepares the selected identity; `make cloud-doctor` verifies that identity and its selected host. A browser login alone does not qualify native cloud access.

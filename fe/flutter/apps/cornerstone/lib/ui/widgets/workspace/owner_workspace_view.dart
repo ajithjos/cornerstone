@@ -1,221 +1,63 @@
 part of '../../../main.dart';
 
+/// Selecting a learner changes the inspected record, never the signed-in user.
 class _OwnerWorkspaceView extends StatelessWidget {
   const _OwnerWorkspaceView({
-    required this.viewer,
     required this.learners,
-    required this.owners,
     required this.selectedLearnerId,
     required this.detail,
-    required this.libraryWorkspace,
-    required this.currentActionSession,
-    required this.scoreController,
-    required this.maxScoreController,
-    required this.durationController,
-    required this.notesController,
     required this.onSelectLearner,
-    required this.onOpenLibraryRoute,
-    required this.onOpenLibraryWorkspace,
-    required this.onRecordSession,
-    required this.onStartActivity,
+    required this.onOpenLearning,
+    required this.onOpenAssignment,
+    required this.onOpenLibrary,
     required this.onStartReview,
-    this.onSetReadinessOverride,
-    this.onClearReadinessOverride,
   });
-
-  final ViewerUser? viewer;
   final List<LearnerDashboard> learners;
-  final List<ViewerUser> owners;
   final String? selectedLearnerId;
   final LearnerDetailPayload? detail;
-  final LibraryWorkspacePayload libraryWorkspace;
-  final SessionDetail? currentActionSession;
-  final TextEditingController scoreController;
-  final TextEditingController maxScoreController;
-  final TextEditingController durationController;
-  final TextEditingController notesController;
   final ValueChanged<String> onSelectLearner;
-  final ValueChanged<String> onOpenLibraryRoute;
-  final VoidCallback onOpenLibraryWorkspace;
-  final VoidCallback onRecordSession;
-  final Future<void> Function(SessionDetail session, SessionMaterial material)
-  onStartActivity;
-  final Future<void> Function(ReviewItem reviewItem) onStartReview;
-  final Future<void> Function(SessionMaterial material)? onSetReadinessOverride;
-  final Future<void> Function(SessionMaterial material)?
-  onClearReadinessOverride;
+  final VoidCallback onOpenLearning;
+  final ValueChanged<String> onOpenAssignment;
+  final VoidCallback onOpenLibrary;
+  final Future<void> Function(ReviewItem) onStartReview;
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _learnerOverview(BuildContext context) {
+    final data = detail;
     final theme = Theme.of(context);
-    final totalReviewItems = learners.fold<int>(
-      0,
-      (count, learner) => count + learner.reviewDueCount,
-    );
-    final activeSessionCount = learners
-        .where((learner) => learner.todaySession != null)
-        .length;
-    final selectedDetail = detail;
-    final assignedJourneys =
-        selectedDetail?.assignedJourneys ?? const <LearnerAssignedJourney>[];
-    final assignedPathways =
-        selectedDetail?.assignedPathways ?? const <LearnerAssignedPathway>[];
-    final singleAssignedJourney = assignedJourneys.length == 1
-        ? assignedJourneys.first
-        : null;
-    final journey = singleAssignedJourney?.journey ?? selectedDetail?.journey;
-    final workspace = selectedDetail?.workspace;
-    final continueBlock = workspace?.continueBlock;
-    final recentWins = workspace?.recentWins ?? const <LearnerRecentWin>[];
-    final assignedPathwayCount = assignedPathways.length;
-    SessionDetail? activeSession;
-    activeSession = continueBlock?.session;
-    if (activeSession == null && selectedDetail != null) {
-      for (final session in selectedDetail.sessions) {
-        if (session.status != SessionStatus.completed) {
-          activeSession = session;
-          break;
-        }
-      }
+    if (data == null) {
+      return const _SurfaceCard(
+        child: Text('Choose a learner to see the assigned work and progress.'),
+      );
     }
-    activeSession ??= currentActionSession;
-    final learnerFacingGroups =
-        activeSession?.materialsByKind
-            .where((group) => group.audience == 'learner')
-            .toList(growable: false) ??
-        const <SessionMaterialKindGroup>[];
-    final adultFacingGroups =
-        activeSession?.materialsByKind
-            .where((group) => group.audience == 'adult')
-            .toList(growable: false) ??
-        const <SessionMaterialKindGroup>[];
-    final currentStanding =
-        activeSession?.sequenceNumber ??
-        (journey != null && journey.totalSessionCount > 0
-            ? journey.completedSessionCount + 1
-            : null);
-    final journeyProgress = journey == null || journey.totalSessionCount == 0
-        ? null
-        : (journey.completedSessionCount / journey.totalSessionCount).clamp(
-            0.0,
-            1.0,
-          );
-    final activeMaterials =
-        activeSession?.materials
-            .where((material) => material.isExecutable)
-            .toList(growable: false) ??
-        const <SessionMaterial>[];
-    final selectedProgressCounts = <SkillStatus, int>{};
-    if (selectedDetail != null) {
-      for (final state in selectedDetail.progress) {
-        selectedProgressCounts.update(
-          state.status,
-          (count) => count + 1,
-          ifAbsent: () => 1,
-        );
-      }
-    }
-    final selectedConfirmedCount =
-        selectedProgressCounts[SkillStatus.confirmed] ?? 0;
-    final selectedReadyForCheckCount =
-        selectedProgressCounts[SkillStatus.readyForCheck] ?? 0;
-    final selectedNeedsPracticeCount =
-        selectedProgressCounts[SkillStatus.needsPractice] ?? 0;
-    final selectedNotStartedCount =
-        selectedProgressCounts[SkillStatus.notStarted] ?? 0;
-    final selectedReviewCount = selectedDetail?.reviewItems.length ?? 0;
-
-    Widget buildSelectionPanel() {
-      if (selectedDetail == null) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.person_search_rounded,
-                  size: 54,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.4,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Choose a learner from the roster.',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-
-      final hasLearnerItems = learnerFacingGroups.isNotEmpty;
-      final hasTeacherNotes = adultFacingGroups.isNotEmpty;
-      final tabPanelHeight = !hasLearnerItems && !hasTeacherNotes
-          ? 150.0
-          : hasLearnerItems && hasTeacherNotes
-          ? 400.0
-          : 250.0;
-
-      return Column(
+    final snapshot = data.workspace.progressSnapshot;
+    return _SurfaceCard(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: theme.colorScheme.primaryContainer,
+                foregroundColor: theme.colorScheme.onPrimaryContainer,
+                child: Text(
+                  data.learner.displayName.substring(0, 1),
+                  style: theme.textTheme.titleLarge,
+                ),
+              ),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      selectedDetail.learner.displayName,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      data.learner.displayName,
+                      style: theme.textTheme.headlineSmall,
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _PillBadge(
-                          text: selectedDetail.learner.currentLevel,
-                          color: theme.colorScheme.secondaryContainer,
-                          textColor: theme.colorScheme.onSecondaryContainer,
-                        ),
-                        _PillBadge(
-                          text: 'Age ${selectedDetail.learner.currentAge}',
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.12,
-                          ),
-                          textColor: theme.colorScheme.primary,
-                        ),
-                        if ((workspace?.attentionLabel ?? '').isNotEmpty)
-                          _PillBadge(
-                            text: workspace!.attentionLabel,
-                            color: theme.colorScheme.surfaceContainerHighest,
-                            textColor: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        if (assignedJourneys.isNotEmpty)
-                          _PillBadge(
-                            text: '${assignedJourneys.length} playlists',
-                            color: theme.colorScheme.tertiaryContainer,
-                            textColor: theme.colorScheme.onTertiaryContainer,
-                          ),
-                        if (assignedPathwayCount > 0)
-                          _PillBadge(
-                            text: '$assignedPathwayCount pathways',
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.12,
-                            ),
-                            textColor: theme.colorScheme.primary,
-                          ),
-                      ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'Age ${data.learner.currentAge} · ${data.learner.currentLevel}',
+                      style: theme.textTheme.bodySmall,
                     ),
                   ],
                 ),
@@ -223,849 +65,145 @@ class _OwnerWorkspaceView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          _Band(
-            title: 'Assigned pathways',
-            child: assignedJourneys.isEmpty && journey == null
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'No pathways are assigned to this learner yet.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        assignedPathwayCount > 1
-                            ? 'All assigned playlists are grouped under their pathway so you can see exactly where each route sits.'
-                            : 'This pathway shows the playlists currently assigned to the learner.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ...assignedPathways.expand((assignedPathway) {
-                        return [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surface.withValues(
-                                  alpha: 0.62,
-                                ),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: theme.colorScheme.outlineVariant,
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    assignedPathway.pathwayTitle,
-                                    style: theme.textTheme.titleLarge,
-                                  ),
-                                  if (assignedPathway
-                                      .pathwayDescription
-                                      .isNotEmpty) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      assignedPathway.pathwayDescription,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 10),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      _PillBadge(
-                                        text: assignedPathway.summaryLabel,
-                                        color: theme.colorScheme.primary
-                                            .withValues(alpha: 0.12),
-                                        textColor: theme.colorScheme.primary,
-                                      ),
-                                      _PillBadge(
-                                        text:
-                                            '${assignedPathway.totalSessionCount} sessions',
-                                        color: theme
-                                            .colorScheme
-                                            .secondaryContainer,
-                                        textColor: theme
-                                            .colorScheme
-                                            .onSecondaryContainer,
-                                      ),
-                                      _PillBadge(
-                                        text:
-                                            '${assignedPathway.pendingSessionCount} remaining',
-                                        color:
-                                            theme.colorScheme.tertiaryContainer,
-                                        textColor: theme
-                                            .colorScheme
-                                            .onTertiaryContainer,
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  ...assignedPathway.assignments.map((
-                                    assignedJourney,
-                                  ) {
-                                    final assignedJourneyInfo =
-                                        assignedJourney.journey;
-                                    final currentJourneySession =
-                                        assignedJourney
-                                            .continueBlock
-                                            ?.session ??
-                                        assignedJourney.sessions
-                                            .where(
-                                              (session) =>
-                                                  session.status !=
-                                                  SessionStatus.completed,
-                                            )
-                                            .cast<SessionDetail?>()
-                                            .firstWhere(
-                                              (_) => true,
-                                              orElse: () =>
-                                                  assignedJourney
-                                                      .sessions
-                                                      .isEmpty
-                                                  ? null
-                                                  : assignedJourney
-                                                        .sessions
-                                                        .first,
-                                            );
-                                    final currentJourneyStanding =
-                                        currentJourneySession?.sequenceNumber ??
-                                        (assignedJourneyInfo.totalSessionCount >
-                                                0
-                                            ? (assignedJourneyInfo
-                                                          .completedSessionCount +
-                                                      1)
-                                                  .clamp(
-                                                    1,
-                                                    assignedJourneyInfo
-                                                        .totalSessionCount,
-                                                  )
-                                            : null);
-                                    final assignedJourneyProgress =
-                                        assignedJourneyInfo.totalSessionCount ==
-                                            0
-                                        ? null
-                                        : (assignedJourneyInfo
-                                                      .completedSessionCount /
-                                                  assignedJourneyInfo
-                                                      .totalSessionCount)
-                                              .clamp(0.0, 1.0);
-                                    return Container(
-                                      margin: const EdgeInsets.only(top: 12),
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        color: theme
-                                            .colorScheme
-                                            .surfaceContainerHighest
-                                            .withValues(alpha: 0.36),
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            assignedJourneyInfo.title,
-                                            style: theme.textTheme.titleMedium,
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            assignedJourneyInfo.description,
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: theme
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
-                                          ),
-                                          const SizedBox(height: 10),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: [
-                                              _PillBadge(
-                                                text:
-                                                    'status:${assignedJourney.assignment.status}',
-                                                color: theme
-                                                    .colorScheme
-                                                    .secondaryContainer,
-                                                textColor: theme
-                                                    .colorScheme
-                                                    .onSecondaryContainer,
-                                              ),
-                                              if (currentJourneyStanding !=
-                                                  null)
-                                                _PillBadge(
-                                                  text:
-                                                      'Current session: $currentJourneyStanding/${assignedJourneyInfo.totalSessionCount}',
-                                                  color: theme
-                                                      .colorScheme
-                                                      .primary
-                                                      .withValues(alpha: 0.12),
-                                                  textColor:
-                                                      theme.colorScheme.primary,
-                                                ),
-                                              _PillBadge(
-                                                text:
-                                                    'Finished: ${assignedJourneyInfo.completedSessionCount}',
-                                                color: theme
-                                                    .colorScheme
-                                                    .surfaceContainerHighest,
-                                                textColor: theme
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
-                                              ),
-                                              _PillBadge(
-                                                text:
-                                                    'Remaining: ${assignedJourneyInfo.pendingSessionCount}',
-                                                color: theme
-                                                    .colorScheme
-                                                    .tertiaryContainer,
-                                                textColor: theme
-                                                    .colorScheme
-                                                    .onTertiaryContainer,
-                                              ),
-                                            ],
-                                          ),
-                                          if (assignedJourneyProgress !=
-                                              null) ...[
-                                            const SizedBox(height: 12),
-                                            ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                              child: LinearProgressIndicator(
-                                                minHeight: 10,
-                                                value: assignedJourneyProgress,
-                                                backgroundColor: theme
-                                                    .colorScheme
-                                                    .surfaceContainerHighest,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ];
-                      }),
-                      if (assignedJourneys.isEmpty && journey != null) ...[
-                        if (journey.pathwayTitle != null)
-                          Text(
-                            journey.pathwayTitle!,
-                            style: theme.textTheme.titleLarge,
-                          ),
-                        if ((journey.pathwayDescription ?? '').isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            journey.pathwayDescription!,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 10),
-                        Text(journey.title, style: theme.textTheme.titleMedium),
-                        const SizedBox(height: 4),
-                        Text(
-                          journey.description,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            if (currentStanding != null)
-                              _PillBadge(
-                                text:
-                                    'Current session: $currentStanding/${journey.totalSessionCount}',
-                                color: theme.colorScheme.secondaryContainer,
-                                textColor:
-                                    theme.colorScheme.onSecondaryContainer,
-                              ),
-                            _PillBadge(
-                              text:
-                                  'Finished: ${journey.completedSessionCount}',
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.12,
-                              ),
-                              textColor: theme.colorScheme.primary,
-                            ),
-                            _PillBadge(
-                              text: 'Remaining: ${journey.pendingSessionCount}',
-                              color: theme.colorScheme.tertiaryContainer,
-                              textColor: theme.colorScheme.onTertiaryContainer,
-                            ),
-                          ],
-                        ),
-                        if (journeyProgress != null) ...[
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(999),
-                            child: LinearProgressIndicator(
-                              minHeight: 10,
-                              value: journeyProgress,
-                              backgroundColor:
-                                  theme.colorScheme.surfaceContainerHighest,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ],
-                  ),
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                onPressed: onOpenLearning,
+                icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                label: const Text('Open learning'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onOpenLibrary,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Assign a playbook'),
+              ),
+            ],
           ),
-          const SizedBox(height: 20),
-          _Band(
-            title: 'Current session',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ...[
+            const Divider(height: 40),
+            Wrap(
+              spacing: 28,
+              runSpacing: 20,
               children: [
-                if (continueBlock != null) ...[
-                  Text(continueBlock.title, style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    continueBlock.description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                if (activeSession != null) ...[
-                  Text(activeSession.title, style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _PillBadge(
-                        text: 'Session ${activeSession.sequenceNumber ?? '-'}',
-                        color: theme.colorScheme.secondaryContainer,
-                        textColor: theme.colorScheme.onSecondaryContainer,
-                      ),
-                      if (activeSession.estimatedMinutes > 0)
-                        _PillBadge(
-                          text: '${activeSession.estimatedMinutes} min',
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.12,
-                          ),
-                          textColor: theme.colorScheme.primary,
-                        ),
-                      if (activeSession.requiresAdultSupport)
-                        _PillBadge(
-                          text: 'Adult-guided',
-                          color: theme.colorScheme.tertiaryContainer,
-                          textColor: theme.colorScheme.onTertiaryContainer,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  DefaultTabController(
-                    length: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TabBar(
-                          isScrollable: true,
-                          tabAlignment: TabAlignment.start,
-                          tabs: [
-                            Tab(
-                              text:
-                                  'Learner items (${learnerFacingGroups.length})',
-                            ),
-                            Tab(
-                              text:
-                                  'Teacher notes (${adultFacingGroups.length})',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: tabPanelHeight,
-                          child: TabBarView(
-                            children: [
-                              hasLearnerItems
-                                  ? SingleChildScrollView(
-                                      child: _SessionWorkspaceAudiencePanel(
-                                        title: 'Learner items',
-                                        description:
-                                            'Everything the learner needs for this session.',
-                                        emptyState:
-                                            'No learner-facing materials are attached to this session yet.',
-                                        icon: CornerstoneIcons.learnerAudience,
-                                        groups: learnerFacingGroups,
-                                        session: activeSession,
-                                        viewerCanReadLibrary:
-                                            viewer?.canReadLibrary ?? false,
-                                        showDocumentBodies: true,
-                                        supportMode: true,
-                                        allowPrinting: true,
-                                        onOpenLibraryRoute: onOpenLibraryRoute,
-                                        onStartActivity: onStartActivity,
-                                        onSetReadinessOverride:
-                                            onSetReadinessOverride,
-                                        onClearReadinessOverride:
-                                            onClearReadinessOverride,
-                                      ),
-                                    )
-                                  : Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 6,
-                                      ),
-                                      child: Text(
-                                        'No learner item content in this session.',
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ),
-                              hasTeacherNotes
-                                  ? SingleChildScrollView(
-                                      child: _SessionWorkspaceAudiencePanel(
-                                        title: 'Teacher notes',
-                                        description:
-                                            'Teaching guidance for running this session.',
-                                        emptyState:
-                                            'No adult guidance notes are attached to this session.',
-                                        icon: CornerstoneIcons.teachingNote,
-                                        groups: adultFacingGroups,
-                                        session: activeSession,
-                                        viewerCanReadLibrary:
-                                            viewer?.canReadLibrary ?? false,
-                                        showDocumentBodies: true,
-                                        supportMode: true,
-                                        allowPrinting: true,
-                                        onOpenLibraryRoute: onOpenLibraryRoute,
-                                        onStartActivity: onStartActivity,
-                                        onSetReadinessOverride:
-                                            onSetReadinessOverride,
-                                        onClearReadinessOverride:
-                                            onClearReadinessOverride,
-                                      ),
-                                    )
-                                  : Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 6,
-                                      ),
-                                      child: Text(
-                                        'No adult guidance or note content in this session.',
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (activeMaterials.isNotEmpty)
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: activeMaterials
-                          .map(
-                            (material) => FilledButton.icon(
-                              onPressed: () =>
-                                  onStartActivity(activeSession!, material),
-                              icon: const Icon(
-                                CornerstoneIcons.drill,
-                                size: 18,
-                              ),
-                              label: Text('Start ${material.title}'),
-                            ),
-                          )
-                          .toList(growable: false),
-                    )
-                  else ...[
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        _CompactField(
-                          label: 'Score',
-                          controller: scoreController,
-                        ),
-                        _CompactField(
-                          label: 'Max score',
-                          controller: maxScoreController,
-                        ),
-                        _CompactField(
-                          label: 'Minutes',
-                          controller: durationController,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: notesController,
-                      minLines: 2,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Session notes',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: onRecordSession,
-                      icon: const Icon(Icons.check_circle_rounded, size: 18),
-                      label: const Text('Record session'),
-                    ),
-                  ],
-                ] else
-                  Text(
-                    'No active session for this learner right now.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+                _stat(
+                  context,
+                  '${snapshot.confirmedCount}',
+                  'Skills confirmed',
+                ),
+                _stat(
+                  context,
+                  '${snapshot.readyForCheckCount}',
+                  'Ready for checkpoint',
+                ),
+                _stat(
+                  context,
+                  '${data.reviewItems.where((item) => item.reviewStatus == ReviewStatus.due).length}',
+                  'Reviews due',
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 20),
-          if (selectedDetail.reviewItems.isNotEmpty) ...[
-            _Band(
-              title: 'Review due',
-              child: Column(
-                children: selectedDetail.reviewItems
-                    .map(
-                      (item) => ReviewItemActionTile(
-                        item: item,
-                        onStartReview: onStartReview,
-                      ),
-                    )
-                    .toList(growable: false),
-              ),
-            ),
-            const SizedBox(height: 20),
           ],
-          if (selectedDetail.practiceMastery.isNotEmpty) ...[
-            _Band(
-              title: 'Practice evidence',
-              child: PracticeMasteryPanel(
-                practiceMastery: selectedDetail.practiceMastery,
-                compact: true,
+          const Divider(height: 40),
+          Text('Assigned playbooks', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (data.assignedJourneys.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'No work assigned yet. Choose a playbook to get started.',
               ),
             ),
-            const SizedBox(height: 20),
+          for (final assignment in data.assignedJourneys)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(assignment.journey.title),
+              subtitle: Text(
+                assignment.journey.pathwayTitle ?? 'Learning playbook',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+              onTap: () => onOpenAssignment(assignment.assignment.assignmentId),
+            ),
+          if (data.reviewItems.isNotEmpty) ...[
+            const Divider(height: 32),
+            Text('Review', style: theme.textTheme.titleMedium),
+            for (final item in data.reviewItems)
+              ReviewItemActionTile(item: item, onStartReview: onStartReview),
           ],
-          if (recentWins.isNotEmpty)
-            _Band(
-              title: 'Recent evidence',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: recentWins
-                    .map(
-                      (win) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    win.sessionTitle,
-                                    style: theme.textTheme.titleSmall,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    win.notes.isEmpty
-                                        ? 'Recorded session evidence.'
-                                        : win.notes,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            _PillBadge(
-                              text: win.scoreLabel,
-                              color: theme.colorScheme.secondaryContainer,
-                              textColor: theme.colorScheme.onSecondaryContainer,
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                    .toList(growable: false),
+          if (data.workspace.recentWins.isNotEmpty == true) ...[
+            const Divider(height: 32),
+            Text('Recent results', style: theme.textTheme.titleMedium),
+            for (final win in data.workspace.recentWins.take(5))
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(win.sessionTitle),
+                subtitle: Text(win.scoreLabel),
               ),
-            ),
+          ],
         ],
-      );
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth > 1120;
-        final rosterPanel = _SurfaceCard(
-          child: DefaultTabController(
-            length: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Learner', style: theme.textTheme.headlineSmall),
-                const SizedBox(height: 14),
-                _GoldAccentDivider(),
-                const SizedBox(height: 14),
-                TabBar(
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  tabs: [
-                    Tab(text: 'Learners (${learners.length})'),
-                    Tab(text: 'Owners (${owners.length})'),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 560,
-                  child: TabBarView(
-                    children: [
-                      learners.isEmpty
-                          ? Text(
-                              'No learners are visible in this workspace yet.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            )
-                          : SingleChildScrollView(
-                              child: Column(
-                                children: learners
-                                    .map(
-                                      (learner) => Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 12,
-                                        ),
-                                        child: _LearnerCard(
-                                          learner: learner,
-                                          selected:
-                                              learner.learnerId ==
-                                              selectedLearnerId,
-                                          onTap: () => onSelectLearner(
-                                            learner.learnerId,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                    .toList(growable: false),
-                              ),
-                            ),
-                      owners.isEmpty
-                          ? Text(
-                              'No owners are visible in this workspace yet.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            )
-                          : SingleChildScrollView(
-                              child: Column(
-                                children: owners
-                                    .map(
-                                      (owner) => Container(
-                                        width: double.infinity,
-                                        margin: const EdgeInsets.only(
-                                          bottom: 10,
-                                        ),
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: theme.colorScheme.surface
-                                              .withValues(alpha: 0.58),
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                          border: Border.all(
-                                            color: theme
-                                                .colorScheme
-                                                .outlineVariant,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              owner.displayName,
-                                              style:
-                                                  theme.textTheme.titleMedium,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '@${owner.username}',
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                    color: theme
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
-                                                  ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Wrap(
-                                              spacing: 8,
-                                              runSpacing: 8,
-                                              children: [
-                                                _PillBadge(
-                                                  text: owner.role,
-                                                  color: theme
-                                                      .colorScheme
-                                                      .secondaryContainer,
-                                                  textColor: theme
-                                                      .colorScheme
-                                                      .onSecondaryContainer,
-                                                ),
-                                                if (owner.canReadLibrary)
-                                                  _PillBadge(
-                                                    text: 'Library',
-                                                    color: theme
-                                                        .colorScheme
-                                                        .primary
-                                                        .withValues(
-                                                          alpha: 0.12,
-                                                        ),
-                                                    textColor: theme
-                                                        .colorScheme
-                                                        .primary,
-                                                  ),
-                                                if (owner.canViewAllLearners)
-                                                  _PillBadge(
-                                                    text: 'All learners',
-                                                    color: theme
-                                                        .colorScheme
-                                                        .tertiaryContainer,
-                                                    textColor: theme
-                                                        .colorScheme
-                                                        .onTertiaryContainer,
-                                                  ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    )
-                                    .toList(growable: false),
-                              ),
-                            ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-          children: [
-            _SurfaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _PillBadge(
-                        text: 'team',
-                        color: theme.colorScheme.secondaryContainer,
-                        textColor: theme.colorScheme.onSecondaryContainer,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Learners',
-                          style: theme.textTheme.titleLarge,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: onOpenLibraryWorkspace,
-                        child: const Text('Browse materials'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  _ContractChipRow(
-                    children: [
-                      _PillBadge(
-                        text: '${learners.length} learners',
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: 0.12,
-                        ),
-                        textColor: theme.colorScheme.primary,
-                      ),
-                      _PillBadge(
-                        text: '$activeSessionCount active today',
-                        color: theme.colorScheme.secondaryContainer,
-                        textColor: theme.colorScheme.onSecondaryContainer,
-                      ),
-                      _PillBadge(
-                        text: '$totalReviewItems review due',
-                        color: theme.colorScheme.tertiaryContainer,
-                        textColor: theme.colorScheme.onTertiaryContainer,
-                      ),
-                      if (selectedDetail != null)
-                        _PillBadge(
-                          text:
-                              '${selectedDetail.learner.displayName}: $selectedConfirmedCount confirmed / $selectedReadyForCheckCount ready for check / $selectedNeedsPracticeCount need practice / $selectedNotStartedCount not started / $selectedReviewCount review due',
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          textColor: theme.colorScheme.onSurfaceVariant,
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            if (wide)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(flex: 4, child: rosterPanel),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    flex: 6,
-                    child: _SurfaceCard(child: buildSelectionPanel()),
-                  ),
-                ],
-              )
-            else ...[
-              rosterPanel,
-              const SizedBox(height: 20),
-              _SurfaceCard(child: buildSelectionPanel()),
-            ],
-          ],
-        );
-      },
+      ),
     );
   }
+
+  Widget _stat(BuildContext context, String value, String label) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(value, style: Theme.of(context).textTheme.headlineSmall),
+      const SizedBox(height: 4),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final wide = constraints.maxWidth >= 880;
+      final roster = _SurfaceCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your learners',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 16),
+            for (final learner in learners)
+              _LearnerCard(
+                learner: learner,
+                selected: learner.learnerId == selectedLearnerId,
+                onTap: () => onSelectLearner(learner.learnerId),
+              ),
+            if (learners.isEmpty) const Text('No learners in this space yet.'),
+          ],
+        ),
+      );
+      return ListView(
+        padding: EdgeInsets.all(wide ? 28 : 16),
+        children: [
+          Text('Learners', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 8),
+          Text(
+            'See where each child stands and help with the next step.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 28),
+          if (wide)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: 280, child: roster),
+                const SizedBox(width: 24),
+                Expanded(child: _learnerOverview(context)),
+              ],
+            )
+          else ...[
+            roster,
+            const SizedBox(height: 16),
+            _learnerOverview(context),
+          ],
+        ],
+      );
+    },
+  );
 }

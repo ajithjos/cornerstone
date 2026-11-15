@@ -9,7 +9,7 @@ If you want the exact code contract for adding or registering runtime programs, 
 Yes, the normal product flow is simple:
 
 1. A parent, teacher, or owner assigns a playlist or an individual material to a learner.
-2. A playlist assignment creates its ordered sessions; a direct material assignment creates one session.
+2. A playbook assignment creates execution references for its Learn, Practice and Checkpoint materials.
 3. If one of those session materials has a `runtime` block, the app shows it as a live item.
 4. When the learner starts it, the backend generates the activity items, the client renders them, and the backend scores the completed submission.
 5. The result becomes session evidence; the backend applies the runtime's progress rules. A selected written level does not confirm the broader written-method skill.
@@ -142,7 +142,7 @@ This is the part that is easy to miss.
 
 You do not assign a runtime directly.
 
-You assign a playlist or a material. A playlist contains ordered sessions and material IDs. A direct material assignment creates one session containing that material. Both routes use the same activity-instance lifecycle.
+You assign a playbook. Its explicit sections reference reusable materials. Each learner material uses the same activity-instance lifecycle.
 
 That means the real product rule is:
 
@@ -233,7 +233,7 @@ Steps:
 1. Add a new material file with a `runtime` block.
 2. Reuse an existing `engine_id` and `template_id`.
 3. Adjust `parameters`, `scoring`, and `estimated_minutes`.
-4. Offer the material for direct assignment, or add its ID to a playlist session when it belongs in that teaching sequence.
+4. Reference the material from its playbook Practice or Checkpoint section.
 5. Validate content.
 
 In this case you usually do not need backend or frontend changes.

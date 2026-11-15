@@ -103,3 +103,64 @@ class _LibraryStepRow extends StatelessWidget {
     ),
   );
 }
+
+/// Shared by the library preview and assigned work. Order and availability are
+/// the server's contract; this widget only supplies the visual treatment.
+class _PlaybookSectionTabs extends StatelessWidget {
+  const _PlaybookSectionTabs({
+    required this.sections,
+    required this.selectedId,
+    required this.onSelected,
+  });
+  final List<PlaybookSection> sections;
+  final String selectedId;
+  final ValueChanged<String> onSelected;
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      for (final section in sections)
+        ChoiceChip(
+          key: ValueKey('section-${section.sectionId}'),
+          selected: section.sectionId == selectedId,
+          showCheckmark: false,
+          avatar: Icon(switch (section.sectionId) {
+            'teach' => Icons.school_outlined,
+            'learn' => Icons.menu_book_outlined,
+            'practice' => Icons.edit_outlined,
+            'checkpoint' => Icons.flag_outlined,
+            _ => Icons.article_outlined,
+          }, size: 18),
+          label: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+            child: Text(section.title),
+          ),
+          onSelected: (_) => onSelected(section.sectionId),
+        ),
+    ],
+  );
+}
+
+class _CheckpointConditions extends StatelessWidget {
+  const _CheckpointConditions({required this.policy});
+  final CheckpointPolicy policy;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Wrap(
+      spacing: 16,
+      runSpacing: 6,
+      children: [
+        Text('${policy.questionCount} questions'),
+        Text('${(policy.targetAccuracy * 100).round()}% to pass'),
+        Text(
+          policy.maxDurationSeconds == null
+              ? 'No time limit'
+              : 'Within ${policy.maxDurationSeconds} seconds',
+        ),
+        const Text('Independent work'),
+      ],
+    ),
+  );
+}

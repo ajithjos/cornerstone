@@ -25,7 +25,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                     const SizedBox(height: 4),
                     Text(
                       _googleSigninEnabled
-                          ? 'Continue with Google to open the team workspace.'
+                          ? 'A little learning, every day. Sign in to your learning space.'
                           : 'Google sign-in is not configured for this environment yet.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -61,7 +61,7 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
                     ],
                     const SizedBox(height: 16),
                     Text(
-                      'Only owners already provisioned in the identity bootstrap can sign in. Learners switch profiles after an owner signs in.',
+                      'Parents and teachers sign in first. Choose a learner profile when it is time to practise.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -114,500 +114,129 @@ extension _CornerstoneHomePageViews on _CornerstoneHomePageState {
     );
   }
 
-  List<SessionMaterial> _profileProgressMaterials(
-    LearnerWorkspacePayload? workspace,
-  ) {
-    if (workspace == null) return const <SessionMaterial>[];
-    final seenMaterialIds = <String>{};
-    final materials = <SessionMaterial>[];
-    for (final journey in workspace.assignedJourneys) {
-      for (final session in journey.sessions) {
-        for (final material in session.materials) {
-          if (material.readiness == null ||
-              !seenMaterialIds.add(material.materialId)) {
-            continue;
-          }
-          materials.add(material);
-        }
-      }
-    }
-    for (final session in workspace.sessions) {
-      for (final material in session.materials) {
-        if (material.readiness == null ||
-            !seenMaterialIds.add(material.materialId)) {
-          continue;
-        }
-        materials.add(material);
-      }
-    }
-    materials.sort((left, right) {
-      final leftReady = left.readiness?.readyForCheck ?? false;
-      final rightReady = right.readiness?.readyForCheck ?? false;
-      if (leftReady != rightReady) return leftReady ? 1 : -1;
-      return left.title.compareTo(right.title);
-    });
-    return materials;
-  }
-
   Widget _buildAccountView(BuildContext context, DashboardPayload dashboard) {
     final theme = Theme.of(context);
-    final username = _shellUsername();
-    final viewer = _currentViewer;
-    final activeViewer = _activeViewer;
-    final availableTeams = _availableTeams;
-    final switchableUsers =
-        _viewerSession?.availableUsers ?? const <ViewerUser>[];
+    final viewer = _currentViewer!;
+    final active = _activeViewer!;
+    final members = _viewerSession?.availableUsers ?? <ViewerUser>[];
     final currentTeam = dashboard.team ?? _viewerSession?.team;
-    final profileWorkspace = _learnerWorkspace;
-    final progressMaterials = _profileProgressMaterials(profileWorkspace);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      padding: const EdgeInsets.all(24),
       children: [
-        _PageHeroCard(
-          eyebrow: 'Account',
-          title: username,
-          description: viewer == null
-              ? (dashboard.team?.description ??
-                    'Manage your profile and theme in one place.')
-              : activeViewer != null && activeViewer.userId != viewer.userId
-              ? 'Signed in as ${viewer.displayName} and currently viewing ${activeViewer.displayName} in this team space.'
-              : 'Signed in as ${viewer.displayName}. Manage your team space, theme, and profile in one place.',
-          trailing: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface.withValues(alpha: 0.34),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: theme.colorScheme.primary.withValues(alpha: 0.16),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildViewerAvatar(
-                  viewer,
-                  size: 60,
-                  brandedInitials: viewer?.profilePictureUrl == null,
-                  initialsStyle: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: _BrandPalette.navy,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  _viewerRoleLabel(viewer),
-                  style: theme.textTheme.titleSmall,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  viewer == null ? 'Signed out' : '@${viewer.username}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                if (viewer?.googleSignedIn ?? false) ...[
-                  const SizedBox(height: 8),
-                  _PillBadge(
-                    text: 'Google sign-in',
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    textColor: theme.colorScheme.primary,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        if (viewer != null) ...[
-          _SurfaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Session', style: theme.textTheme.headlineSmall),
-                const SizedBox(height: 8),
-                Text(
-                  viewer.canManageTeam
-                      ? activeViewer != null &&
-                                activeViewer.userId != viewer.userId
-                            ? 'Signed in owner stays ${viewer.displayName}. The on-screen learner profile is ${activeViewer.displayName}.'
-                            : 'This owner session can switch teams, learners, assignments, and progress views.'
-                      : 'This account stays focused on the learner view, progress, and remaining work.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: _buildViewerAvatar(
-                    viewer,
-                    size: 40,
-                    useGoogleProfile: true,
-                  ),
-                  title: Text(
-                    viewer.googleSignedIn
-                        ? 'Signed in owner: ${viewer.profileLabel}'
-                        : 'Signed in owner: ${viewer.displayName}',
-                  ),
-                  subtitle: Text(
-                    viewer.googleSignedIn &&
-                            (viewer.googleEmail?.trim().isNotEmpty ?? false)
-                        ? viewer.googleEmail!.trim()
-                        : '@${viewer.username}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  trailing: _PillBadge(
-                    text: _viewerRoleLabel(viewer),
-                    color: viewer.canManageTeam
-                        ? theme.colorScheme.secondaryContainer
-                        : theme.colorScheme.primary.withValues(alpha: 0.12),
-                    textColor: viewer.canManageTeam
-                        ? theme.colorScheme.onSecondaryContainer
-                        : theme.colorScheme.primary,
-                  ),
-                ),
-                if (activeViewer != null &&
-                    activeViewer.userId != viewer.userId) ...[
-                  const SizedBox(height: 10),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: _buildViewerAvatar(
-                      activeViewer,
-                      size: 40,
-                      useGoogleProfile: false,
-                    ),
-                    title: Text('Active profile: ${activeViewer.displayName}'),
-                    subtitle: Text(
-                      '@${activeViewer.username}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    trailing: _PillBadge(
-                      text: activeViewer.role,
-                      color: theme.colorScheme.tertiaryContainer,
-                      textColor: theme.colorScheme.onTertiaryContainer,
-                    ),
-                  ),
-                ],
-                if (viewer.currentLevel != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    'Current level: ${viewer.currentLevel}',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ],
-                if (_hasMeaningfulViewerNotes(viewer)) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    viewer.notes,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-                if (availableTeams.length > 1) ...[
-                  const SizedBox(height: 18),
-                  Text('Switch team space', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Move this owner session into another bootstrap team where the signed-in owner is allowed.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: availableTeams
-                        .map(
-                          (team) => OutlinedButton.icon(
-                            onPressed:
-                                _authBusy ||
-                                    _busy ||
-                                    team.teamId == currentTeam?.teamId
-                                ? null
-                                : () => _switchActiveTeam(team.teamId),
-                            icon: const Icon(Icons.groups_rounded, size: 18),
-                            label: Text(team.displayName),
-                          ),
-                        )
-                        .toList(growable: false),
-                  ),
-                ],
-                if (switchableUsers.length > 1) ...[
-                  const SizedBox(height: 18),
-                  Text(
-                    'Switch active profile',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Keep one owner sign-in, then switch the active team member for this browser session.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: switchableUsers
-                        .map(
-                          (user) => OutlinedButton.icon(
-                            onPressed:
-                                _authBusy || user.userId == activeViewer?.userId
-                                ? null
-                                : () => _switchActiveUser(
-                                    user.userId,
-                                    preferredLearnerId: user.learnerId,
-                                    destination: user.canManageTeam
-                                        ? _ShellDestination.owner
-                                        : _ShellDestination.learner,
-                                  ),
-                            icon: Icon(
-                              user.learnerId != null
-                                  ? CornerstoneIcons.learning
-                                  : CornerstoneIcons.profile,
-                              size: 18,
-                            ),
-                            label: Text(user.displayName),
-                          ),
-                        )
-                        .toList(growable: false),
-                  ),
-                ],
-                const SizedBox(height: 18),
-                FilledButton.icon(
-                  onPressed: _authBusy ? null : _logoutViewer,
-                  icon: const Icon(Icons.logout_rounded, size: 18),
-                  label: const Text('Log out'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-        if (profileWorkspace != null) ...[
-          _SurfaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Progress', style: theme.textTheme.headlineSmall),
-                const SizedBox(height: 8),
-                Text(
-                  '${profileWorkspace.learner.displayName} can see which skills need practice, are ready for a check, or are confirmed.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _PillBadge(
-                      text:
-                          '${profileWorkspace.workspace.progressSnapshot.confirmedCount} confirmed',
-                      color: theme.colorScheme.secondaryContainer,
-                      textColor: theme.colorScheme.onSecondaryContainer,
-                    ),
-                    _PillBadge(
-                      text:
-                          '${profileWorkspace.workspace.progressSnapshot.needsPracticeCount} need practice',
-                      color: theme.colorScheme.tertiaryContainer,
-                      textColor: theme.colorScheme.onTertiaryContainer,
-                    ),
-                    _PillBadge(
-                      text:
-                          '${profileWorkspace.workspace.progressSnapshot.readyForCheckCount} ready for check',
-                      color: theme.colorScheme.tertiaryContainer,
-                      textColor: theme.colorScheme.onTertiaryContainer,
-                    ),
-                    _PillBadge(
-                      text:
-                          '${profileWorkspace.workspace.progressSnapshot.pendingSessionCount} sessions left',
-                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                      textColor: theme.colorScheme.primary,
-                    ),
-                    _PillBadge(
-                      text:
-                          '${profileWorkspace.workspace.progressSnapshot.reviewDueCount} review due',
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      textColor: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ],
-                ),
-                if (profileWorkspace.workspace.recentWins.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  Text('Recent wins', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  ...profileWorkspace.workspace.recentWins
-                      .take(3)
-                      .map(
-                        (win) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            Icons.check_circle_rounded,
-                            color: theme.colorScheme.primary,
-                          ),
-                          title: Text(win.sessionTitle),
-                          subtitle: Text(
-                            win.notes.isEmpty ? win.recordedAt : win.notes,
-                          ),
-                          trailing: _PillBadge(
-                            text: win.scoreLabel,
-                            color: theme.colorScheme.secondaryContainer,
-                            textColor: theme.colorScheme.onSecondaryContainer,
-                          ),
-                        ),
-                      ),
-                ],
-                if (progressMaterials.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  Text('Practice targets', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  ...progressMaterials.map((material) {
-                    final readiness = material.readiness!;
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest
-                            .withValues(alpha: 0.42),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: theme.colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  material.title,
-                                  style: theme.textTheme.titleSmall,
-                                ),
-                              ),
-                              _PillBadge(
-                                text: readiness.statusLabel,
-                                color: _readinessBackgroundColor(
-                                  theme,
-                                  readiness,
-                                ),
-                                textColor: _readinessForegroundColor(
-                                  theme,
-                                  readiness,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            [
-                              readiness.detailLabel,
-                              if (readiness.targetCorrectCount != null)
-                                'target ${readiness.targetCorrectCount}',
-                              '${readiness.minimumDistinctItems} distinct facts',
-                              '${readiness.minimumFamilyCount} fact families',
-                              if (readiness.maxDurationSeconds != null)
-                                '${readiness.maxDurationSeconds}s target',
-                              if (readiness.overrideApplied) 'custom',
-                            ].join(' / '),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
+        Text('Profile', style: theme.textTheme.headlineMedium),
+        const SizedBox(height: 24),
         _SurfaceCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Team space', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 8),
-              Text(
-                'Current team and on-screen profile for this signed-in owner session.',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              Row(
+                children: [
+                  _buildViewerAvatar(
+                    active,
+                    size: 56,
+                    useGoogleProfile: active.userId == viewer.userId,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          active.displayName,
+                          style: theme.textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_viewerRoleLabel(active)} · ${currentTeam?.displayName ?? 'Learning space'}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 18),
-              if (currentTeam != null)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    Icons.groups_rounded,
-                    color: theme.colorScheme.primary,
-                  ),
-                  title: Text(currentTeam.displayName),
-                  subtitle: Text(
-                    currentTeam.description,
-                    style: theme.textTheme.bodySmall,
-                  ),
-                )
-              else
-                Text(
-                  'No team information available.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              if (viewer != null) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _PillBadge(
-                      text: 'Role: ${viewer.role}',
-                      color: theme.colorScheme.secondaryContainer,
-                      textColor: theme.colorScheme.onSecondaryContainer,
-                    ),
-                    _PillBadge(
-                      text: viewer.canManageTeam
-                          ? 'Owner session'
-                          : 'Learner view only',
-                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                      textColor: theme.colorScheme.primary,
-                    ),
-                    _PillBadge(
-                      text:
-                          (activeViewer?.canReadLibrary ??
-                              viewer.canReadLibrary)
-                          ? 'Can read library'
-                          : 'No library access',
-                      color: theme.colorScheme.tertiaryContainer,
-                      textColor: theme.colorScheme.onTertiaryContainer,
-                    ),
-                    _PillBadge(
-                      text:
-                          (activeViewer?.canViewAllLearners ??
-                              viewer.canViewAllLearners)
-                          ? 'Can view all learners'
-                          : 'Can view assigned learner only',
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      textColor: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    if (activeViewer != null)
-                      _PillBadge(
-                        text: 'Active: ${activeViewer.displayName}',
-                        color: theme.colorScheme.tertiaryContainer,
-                        textColor: theme.colorScheme.onTertiaryContainer,
-                      ),
-                  ],
-                ),
+              const SizedBox(height: 16),
+              Text(
+                'Signed in with ${viewer.googleEmail ?? viewer.displayName}',
+                style: theme.textTheme.bodySmall,
+              ),
+              if (_hasMeaningfulViewerNotes(active)) ...[
+                const SizedBox(height: 8),
+                Text(active.notes),
               ],
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _authBusy ? null : _logoutViewer,
+                icon: const Icon(Icons.logout_rounded, size: 18),
+                label: const Text('Sign out'),
+              ),
             ],
           ),
         ),
+        const SizedBox(height: 20),
+        if (members.length > 1) ...[
+          _SurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Switch profile', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 6),
+                const Text(
+                  'Choose a learner when it is time to practise. Choose your owner profile to teach or manage work.',
+                ),
+                const SizedBox(height: 16),
+                for (final member in members)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: _buildViewerAvatar(member, size: 36),
+                    title: Text(member.displayName),
+                    subtitle: Text(_viewerRoleLabel(member)),
+                    trailing: member.userId == active.userId
+                        ? const Text('Active')
+                        : TextButton(
+                            onPressed: _authBusy || _busy
+                                ? null
+                                : () => _switchActiveUser(
+                                    member.userId,
+                                    preferredLearnerId: member.learnerId,
+                                    destination: member.canManageTeam
+                                        ? _ShellDestination.owner
+                                        : _ShellDestination.learner,
+                                  ),
+                            child: const Text('Switch'),
+                          ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+        _AppearancePanel(controller: widget.themeController),
+        if (_availableTeams.length > 1) ...[
+          const SizedBox(height: 20),
+          _SurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Learning spaces', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 12),
+                for (final team in _availableTeams)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(team.displayName),
+                    trailing: team.teamId == currentTeam?.teamId
+                        ? const Text('Current')
+                        : TextButton(
+                            onPressed: _authBusy || _busy
+                                ? null
+                                : () => _switchActiveTeam(team.teamId),
+                            child: const Text('Open'),
+                          ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

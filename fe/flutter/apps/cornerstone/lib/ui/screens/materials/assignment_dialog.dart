@@ -1,9 +1,8 @@
 part of '../../../main.dart';
 
 class AssignmentSelection {
-  const AssignmentSelection(this.learnerId, this.activityMode);
+  const AssignmentSelection(this.learnerId);
   final String learnerId;
-  final String? activityMode;
 }
 
 class AssignMaterialDialog extends StatefulWidget {
@@ -11,21 +10,18 @@ class AssignMaterialDialog extends StatefulWidget {
     super.key,
     required this.title,
     required this.targets,
-    this.offerActivityMode = false,
   });
   final String title;
   final List<PlaylistAssignmentTarget> targets;
-  final bool offerActivityMode;
   @override
   State<AssignMaterialDialog> createState() => _AssignMaterialDialogState();
 }
 
 class _AssignMaterialDialogState extends State<AssignMaterialDialog> {
   String? _learnerId;
-  String _mode = 'assisted';
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Assign to a student'),
+    title: const Text('Assign playbook'),
     content: SizedBox(
       width: 440,
       child: Column(
@@ -56,31 +52,6 @@ class _AssignMaterialDialogState extends State<AssignMaterialDialog> {
                   .toList(),
               onChanged: (value) => setState(() => _learnerId = value),
             ),
-          if (widget.offerActivityMode) ...[
-            const SizedBox(height: 20),
-            DropdownButtonFormField<String>(
-              initialValue: _mode,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Mode'),
-              items: const [
-                DropdownMenuItem(
-                  value: 'assisted',
-                  child: Text('Assisted practice'),
-                ),
-                DropdownMenuItem(
-                  value: 'assessment',
-                  child: Text('Assessment'),
-                ),
-              ],
-              onChanged: (value) => setState(() => _mode = value!),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _mode == 'assisted'
-                  ? 'The student can check working and receive explanations.'
-                  : 'The student works independently and sees corrections after submitting.',
-            ),
-          ],
         ],
       ),
     ),
@@ -92,13 +63,7 @@ class _AssignMaterialDialogState extends State<AssignMaterialDialog> {
       FilledButton(
         onPressed: _learnerId == null
             ? null
-            : () => Navigator.pop(
-                context,
-                AssignmentSelection(
-                  _learnerId!,
-                  widget.offerActivityMode ? _mode : null,
-                ),
-              ),
+            : () => Navigator.pop(context, AssignmentSelection(_learnerId!)),
         child: const Text('Assign'),
       ),
     ],

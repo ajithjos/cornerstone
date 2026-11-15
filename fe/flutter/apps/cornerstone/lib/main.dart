@@ -19,8 +19,6 @@ part 'ui/screens/home/home_shell.dart';
 part 'ui/screens/home/home_views.dart';
 part 'ui/widgets/markdown_widgets.dart';
 part 'ui/widgets/home/shell_widgets.dart';
-part 'ui/widgets/home/activity_dialog.dart';
-part 'ui/widgets/contract_chip_widgets.dart';
 part 'ui/widgets/workspace/shared_widgets.dart';
 part 'ui/widgets/workspace/owner_workspace_view.dart';
 part 'ui/widgets/workspace/learner_workspace_view.dart';

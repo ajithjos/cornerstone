@@ -94,65 +94,33 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
     for playlist in playlists.values():
         assert playlist["stage_ids"]
         assert playlist["skill_ids"]
-        assert playlist["sessions"]
-        has_lesson_note = False
-        has_practice = False
-        has_quick_check = False
-        lesson_note_seen = False
-
+        assert "sessions" not in playlist
+        sections = playlist["sections"]
+        assert list(sections) == ["teach", "learn", "practice", "checkpoint"]
+        assert all(sections[key] for key in ["learn", "practice", "checkpoint"])
         for stage_id in playlist["stage_ids"]:
             assert stage_id in stages
             playlist_stage_ids.add(stage_id)
         for skill_id in playlist["skill_ids"]:
             assert skill_id in skills
             playlist_skill_ids.add(skill_id)
-
-        playlist_session_ids = set()
-        for session in playlist["sessions"]:
-            assert session["id"]
-            assert session["id"] not in playlist_session_ids
-            playlist_session_ids.add(session["id"])
-            assert session["material_ids"]
-            assert session["skill_ids"]
-            session_material_kinds = []
-
-            for material_id in session["material_ids"]:
+        roles = {"teach": {"teaching_note"}, "learn": {"lesson_note"}, "practice": PRACTICE_KINDS, "checkpoint": {"quick_check"}}
+        for section_id, ids in sections.items():
+            assert len(ids) == len(set(ids))
+            for material_id in ids:
                 assert material_id in materials
+                assert materials[material_id]["type"] in roles[section_id]
                 playlist_material_ids.add(material_id)
-                session_material_kinds.append(materials[material_id]["type"])
-            for skill_id in session["skill_ids"]:
-                assert skill_id in skills
-                assert skill_id in playlist["skill_ids"]
-
-            if "lesson_note" in session_material_kinds:
-                has_lesson_note = True
-                lesson_note_seen = True
-            if any(kind in PRACTICE_KINDS for kind in session_material_kinds):
-                has_practice = True
-                assert lesson_note_seen, f"playlist {playlist['id']} schedules practice before any lesson note"
-            if "quick_check" in session_material_kinds:
-                has_quick_check = True
-                assert lesson_note_seen, f"playlist {playlist['id']} schedules a quick check before any lesson note"
-            if "teaching_note" in session_material_kinds:
-                assert any(kind in LEARNER_FACING_KINDS for kind in session_material_kinds), (
-                    f"playlist {playlist['id']} includes a teaching-note-only session"
-                )
-
-        assert has_lesson_note, f"playlist {playlist['id']} is missing a lesson note"
-        assert has_practice, f"playlist {playlist['id']} is missing practice material"
-        assert has_quick_check, f"playlist {playlist['id']} is missing a quick check"
 
         if pathway["id"] == FACT_FLUENCY_PATHWAY_ID:
             drill_material_ids = [
                 material_id
-                for session in playlist["sessions"]
-                for material_id in session["material_ids"]
+                for material_id in sections["practice"]
                 if materials[material_id]["type"] == "drill"
             ]
             quick_check_material_ids = [
                 material_id
-                for session in playlist["sessions"]
-                for material_id in session["material_ids"]
+                for material_id in sections["checkpoint"]
                 if materials[material_id]["type"] == "quick_check"
             ]
 
@@ -199,8 +167,7 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
     assert set(stages) <= stage_ids_from_skills | stage_ids_from_materials | playlist_stage_ids
     assert set(skills) <= skill_ids_in_materials | playlist_skill_ids
     assert set(materials) == material_ids_seen
-    # Standalone materials are selectable and directly assignable from Materials.
-    assert playlist_material_ids <= set(materials)
+    assert playlist_material_ids == set(materials)
     assert set(playlists) == set(pathway["playlist_ids"])
 
 

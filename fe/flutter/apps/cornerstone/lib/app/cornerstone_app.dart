@@ -4,30 +4,30 @@ part of '../main.dart';
 
 class _BrandPalette {
   // Core brand colours (drawn from the stone-block logo)
-  static const Color gold = Color(0xFFC9951C);
-  static const Color goldBright = Color(0xFFE2B54B);
-  static const Color goldSoft = Color(0xFFF3DA96);
-  static const Color goldDeep = Color(0xFF8F6710);
-  static const Color navy = Color(0xFF171D25);
+  static const Color gold = Color(0xFFBD8610);
+  static const Color goldBright = Color(0xFFF0C653);
+  static const Color goldSoft = Color(0xFFF8E7AF);
+  static const Color goldDeep = Color(0xFF806016);
+  static const Color navy = Color(0xFF252820);
 
   // Light mode: warm limestone
-  static const Color limestone = Color(0xFFF4EFE6);
-  static const Color warmPaper = Color(0xFFFBF7F0);
-  static const Color warmWhite = Color(0xFFFFFCF7);
-  static const Color sand = Color(0xFFD8CBB8);
-  static const Color stone = Color(0xFFE8DDCE);
-  static const Color clay = Color(0xFF8E7A62);
-  static const Color navySoft = Color(0xFFF1E8D6);
+  static const Color limestone = Color(0xFFF7F7F2);
+  static const Color warmPaper = Color(0xFFF4F4ED);
+  static const Color warmWhite = Color(0xFFFFFFFF);
+  static const Color sand = Color(0xFFDDDFD4);
+  static const Color stone = Color(0xFFEAECE2);
+  static const Color clay = Color(0xFF777B6E);
+  static const Color navySoft = Color(0xFFF2F0E5);
 
   // Dark mode: graphite stone
-  static const Color obsidian = Color(0xFF11100F);
-  static const Color slatePanel = Color(0xFF171513);
-  static const Color slateCard = Color(0xFF1D1A18);
-  static const Color slateRaised = Color(0xFF24211E);
-  static const Color slateHigh = Color(0xFF2E2925);
-  static const Color slateBorder = Color(0xFF3D3630);
-  static const Color slateMuted = Color(0xFFB8AEA0);
-  static const Color slateText = Color(0xFFF6EFE6);
+  static const Color obsidian = Color(0xFF161915);
+  static const Color slatePanel = Color(0xFF1A1E19);
+  static const Color slateCard = Color(0xFF20251F);
+  static const Color slateRaised = Color(0xFF262D25);
+  static const Color slateHigh = Color(0xFF30382E);
+  static const Color slateBorder = Color(0xFF424B3E);
+  static const Color slateMuted = Color(0xFFB9C2B3);
+  static const Color slateText = Color(0xFFEFF2E9);
 }
 
 class CornerstoneApp extends StatelessWidget {
@@ -58,7 +58,7 @@ class CornerstoneApp extends StatelessWidget {
 
   TextTheme _buildTextTheme(ColorScheme scheme) {
     final base = GoogleFonts.manropeTextTheme();
-    final headingFamily = GoogleFonts.sora().fontFamily;
+    final headingFamily = GoogleFonts.manrope().fontFamily;
     return base.copyWith(
       headlineLarge: base.headlineLarge?.copyWith(
         fontFamily: headingFamily,
@@ -148,11 +148,11 @@ class CornerstoneApp extends StatelessWidget {
           seedColor: _BrandPalette.gold,
           brightness: brightness,
         ).copyWith(
-          primary: isDark ? _BrandPalette.goldBright : _BrandPalette.gold,
-          onPrimary: _BrandPalette.navy,
+          primary: isDark ? _BrandPalette.goldBright : _BrandPalette.goldDeep,
+          onPrimary: isDark ? _BrandPalette.navy : Colors.white,
           primaryContainer: isDark
-              ? const Color(0xFF47330C)
-              : const Color(0xFFFFEDC1),
+              ? const Color(0xFF3E351D)
+              : const Color(0xFFF8EDC3),
           onPrimaryContainer: isDark
               ? _BrandPalette.goldSoft
               : _BrandPalette.navy,
@@ -182,7 +182,7 @@ class CornerstoneApp extends StatelessWidget {
           onSurface: isDark ? _BrandPalette.slateText : _BrandPalette.navy,
           onSurfaceVariant: isDark
               ? _BrandPalette.slateMuted
-              : const Color(0xFF6F655A),
+              : const Color(0xFF666C5F),
           error: isDark ? const Color(0xFFFFB4AB) : const Color(0xFFB3261E),
           onError: isDark ? _BrandPalette.obsidian : _BrandPalette.warmWhite,
           errorContainer: isDark
@@ -195,7 +195,7 @@ class CornerstoneApp extends StatelessWidget {
 
     final textTheme = _buildTextTheme(scheme);
     final panelShape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(16),
     );
 
     return ThemeData(
@@ -207,12 +207,12 @@ class CornerstoneApp extends StatelessWidget {
           ? _BrandPalette.obsidian
           : _BrandPalette.limestone,
       appBarTheme: AppBarTheme(
-        backgroundColor: Colors.transparent,
+        backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.sora(
+        titleTextStyle: GoogleFonts.manrope(
           color: scheme.onSurface,
           fontWeight: FontWeight.w700,
           fontSize: 20,
@@ -226,7 +226,7 @@ class CornerstoneApp extends StatelessWidget {
           scheme.surfaceContainerLow,
         ),
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       dividerTheme: DividerThemeData(
         color: scheme.outlineVariant.withValues(alpha: 0.54),
@@ -269,7 +269,7 @@ class CornerstoneApp extends StatelessWidget {
                 scheme.surfaceContainerLow,
               ),
         indicatorShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
         ),
         selectedIconTheme: IconThemeData(color: scheme.primary, size: 21),
         unselectedIconTheme: IconThemeData(
@@ -300,19 +300,19 @@ class CornerstoneApp extends StatelessWidget {
                 scheme.primary.withValues(alpha: 0.10),
                 scheme.surface,
               ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: isDark ? scheme.primary : scheme.secondary,
-          foregroundColor: isDark ? scheme.onPrimary : scheme.onSecondary,
+          backgroundColor: scheme.primary,
+          foregroundColor: scheme.onPrimary,
           elevation: 0,
           textStyle: GoogleFonts.manrope(
             fontWeight: FontWeight.w700,
             fontSize: 14,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(10),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
         ),
@@ -333,7 +333,7 @@ class CornerstoneApp extends StatelessWidget {
             color: scheme.outlineVariant.withValues(alpha: 0.72),
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(10),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
         ),
@@ -397,25 +397,25 @@ class CornerstoneApp extends StatelessWidget {
           fontWeight: FontWeight.w500,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: scheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(
             color: scheme.outlineVariant.withValues(alpha: 0.84),
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: scheme.primary, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: scheme.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: scheme.error, width: 1.5),
         ),
       ),
@@ -442,7 +442,7 @@ class CornerstoneApp extends StatelessWidget {
           color: Colors.white,
           fontSize: 14,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         behavior: SnackBarBehavior.floating,
       ),
       textSelectionTheme: TextSelectionThemeData(
@@ -456,114 +456,10 @@ class CornerstoneApp extends StatelessWidget {
 
 class _AppBackdrop extends StatelessWidget {
   const _AppBackdrop({required this.child});
-
   final Widget child;
-
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? const [Color(0xFF11100F), Color(0xFF1A1714), Color(0xFF121110)]
-              : const [Color(0xFFFBF8F1), Color(0xFFF3EBDD), Color(0xFFF9F5EE)],
-          stops: const [0.0, 0.48, 1.0],
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withValues(alpha: isDark ? 0.02 : 0.14),
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: isDark ? 0.18 : 0.0),
-                    ],
-                    stops: const [0.0, 0.38, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          _BackdropOrb(
-            diameter: 380,
-            alignment: Alignment.topLeft,
-            colors: [
-              _BrandPalette.gold.withValues(alpha: isDark ? 0.18 : 0.16),
-              _BrandPalette.gold.withValues(alpha: 0.0),
-            ],
-            translation: const Offset(-110, -120),
-          ),
-          _BackdropOrb(
-            diameter: 320,
-            alignment: Alignment.topRight,
-            colors: [
-              (isDark ? _BrandPalette.slateMuted : _BrandPalette.stone)
-                  .withValues(alpha: isDark ? 0.10 : 0.22),
-              Colors.transparent,
-            ],
-            translation: const Offset(80, -20),
-          ),
-          _BackdropOrb(
-            diameter: 420,
-            alignment: Alignment.bottomLeft,
-            colors: [
-              (isDark ? _BrandPalette.goldDeep : _BrandPalette.goldSoft)
-                  .withValues(alpha: isDark ? 0.12 : 0.16),
-              Colors.transparent,
-            ],
-            translation: const Offset(-90, 140),
-          ),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _BackdropOrb extends StatelessWidget {
-  const _BackdropOrb({
-    required this.diameter,
-    required this.alignment,
-    required this.colors,
-    required this.translation,
-  });
-
-  final double diameter;
-  final Alignment alignment;
-  final List<Color> colors;
-  final Offset translation;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: Align(
-          alignment: alignment,
-          child: Transform.translate(
-            offset: translation,
-            child: Container(
-              width: diameter,
-              height: diameter,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(colors: colors),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => ColoredBox(
+    color: Theme.of(context).scaffoldBackgroundColor,
+    child: child,
+  );
 }

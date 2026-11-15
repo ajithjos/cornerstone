@@ -2,7 +2,7 @@
 
 An activity package is an independently served HTML, JavaScript, and CSS
 presentation for a backend-owned activity. The main Flutter app provides one
-shared host. Adding a package that uses the existing host protocol does not
+shared host, framed inside the current playbook. Adding a package that uses the existing host protocol does not
 require a Flutter rebuild.
 
 Rust still owns curriculum rules, question generation, valid answers, scoring,
@@ -20,7 +20,19 @@ The packages currently supplied are:
 | `written-arithmetic/1.0.0` | Column grids for the four operations | Assisted `check`; `complete` in either mode |
 | `numeric-questions/1.0.0` | One integer input per fact-fluency question | `complete` only; corrections after submission |
 
-Each package is self-contained:
+Each package is self-contained. Shared authoring sources live in
+`content/activity_foundation/bridge.js` and `foundation.css`. Build their package
+copies and integrity manifests with:
+
+```bash
+python3 scripts/build_activity_packages.py
+python3 scripts/build_activity_packages.py --check
+```
+
+Do not hand-edit generated copies of the bridge or foundation. Each published
+bundle contains its own exact copy; it never imports a mutable shared URL.
+
+Package layout:
 
 ```text
 content/activity_packages/
@@ -29,17 +41,19 @@ content/activity_packages/
     manifest.json
     index.html
     styles.css
+    foundation.css
     bridge.js
     activity.js
   numeric-questions/1.0.0/
     manifest.json
     index.html
     styles.css
+    foundation.css
     bridge.js
     activity.js
 ```
 
-`bridge.js` implements the common message protocol. Each package has its own
+`bridge.js` implements the common message protocol. Each package has a generated
 copy so a version does not depend on another package's mutable files. The
 activity-specific script renders its payload and displays backend feedback.
 Neither script receives authentication credentials or a private answer key.
@@ -70,6 +84,14 @@ file types, checksums, and size bounds. Supported asset types include HTML, JS,
 CSS, JSON, SVG, PNG, JPEG, and WOFF2. Keep scripts and styles in local external
 files; inline scripts, inline styles, external CDNs, and direct network requests
 are not part of the package contract.
+
+## Fresh-install cutover
+
+This contract is installed with the clean database schema. Pre-cutover attempts,
+native numeric players, old package bytes, and previous workspace contracts are
+not migrated or retained as compatibility paths. The reset establishes a single
+current implementation. Manifest pinning below protects attempts issued by this
+implementation from changing while the child is working.
 
 ## Version pinning
 
@@ -120,7 +142,7 @@ updated through the installation's normal deployment or mount workflow.
 
 ## Shared host and message protocol
 
-The Flutter host opens the descriptor's API-origin entry URL in an iframe with
+The Flutter web host embeds the descriptor's API-origin entry URL in an iframe with
 `sandbox="allow-scripts"`. The package has an opaque origin. The host binds all
 actions to the activity represented by its callbacks, retains authentication,
 and sends the result back to that iframe.
@@ -129,7 +151,7 @@ Every message uses `protocol: "cornerstone.activity"` and `version: 1`.
 
 1. The child sends `{protocol, version, type: "ready"}` to its parent. It retries
    until initialized. This message carries no learner data.
-2. The parent sends `{protocol, version, type: "initialize", channel, payload}`.
+2. The parent sends `{protocol, version, type: "initialize", channel, payload, appearance}`.
    `channel` is a random per-host token.
 3. The child accepts initialization only from `window.parent` with a non-null
    HTTP(S) origin. It pins that parent origin and channel.
@@ -185,6 +207,65 @@ connections and form submission, and applies the script-only sandbox. Set
 `CORNERSTONE_FRONTEND_PUBLIC_URL` to the frontend URL actually used by the browser
 so its origin is allowed to embed the activity.
 
+## Appearance and interaction foundation
+
+The activity has no separate theme switch. The Flutter app owns appearance and
+sends the current `ThemeData` colours on initialization. When appearance changes,
+it sends an `appearance` message on the same pinned channel:
+
+```json
+{
+  "protocol": "cornerstone.activity",
+  "version": 1,
+  "type": "appearance",
+  "channel": "<host-issued-channel>",
+  "appearance": {
+    "mode": "light",
+    "colors": { "background": "#f7f7f2", "surface": "#ffffff" }
+  }
+}
+```
+
+The abbreviated example shows two colours; actual messages provide all required
+tokens: `background`, `surface`, `surface-muted`, `text`, `muted`, `border`,
+`primary`, `on-primary`, `primary-container`, `on-primary-container`, `error`,
+`error-container`, `on-error-container`, `success`, `success-container`, `focus`.
+Each is a six-digit hexadecimal colour. The shared bridge rejects incomplete or
+invalid colour sets, ignores unknown tokens, and accepts updates only from the
+pinned host window, origin and channel. Updates set CSS custom properties
+`--cs-<token>` without invoking the activity initializer or clearing any answers.
+
+Every package loads `foundation.css` before its own stylesheet. It supplies the
+semantic palette, a system font stack, colour-scheme defaults, box sizing,
+selection colours and reduced-motion behavior. `activity_package_appearance.dart`
+is the single mapping from the live app theme to package colours. App colour
+changes therefore reach all compatible activities automatically. Foundation
+spacing and typography changes are bundled using the build script.
+
+Authoring rules:
+
+- Use foundation tokens for all colours. Pair foreground/background tokens;
+  use `--cs-on-primary` for primary-button labels rather than hard-coded white.
+- Keep interactive content within a readable maximum width. Let narrow screens
+  stack cards and scroll long written grids within their card.
+- Keep native navigation and the playbook visible around the activity. The
+  package contains the exercise, not a second navigation system or login flow.
+- Use real buttons and labelled inputs, visible keyboard focus, touch targets
+  around 44px, and text or symbols as well as colour for correctness.
+- Keep activity state intact during appearance updates. Avoid animations when
+  reduced motion is requested.
+- Use the backend's purpose-built print endpoint for compact or guided sheets;
+  printing remains white-paper output independent of the screen theme.
+- Preserve the backend's assessment policy. A package must not reveal private
+  answers or invent grading rules.
+
+`ActivityPackagePage` supports an `onClose` callback for embedded use. Its public
+`requestClose()` guards unsent answers and blocks leaving while submission is in
+flight. The host displays recorded results and exact-mistake retries. The native
+shell uses this guard before changing destination or identity. The web iframe is
+the implemented platform adapter; other Flutter targets need a web-view adapter
+before packages can run there.
+
 ## Payload and result shapes
 
 The host passes the backend's payload through unchanged.
@@ -236,8 +317,8 @@ these server results; they do not calculate scores or infer mastery.
    are final. Hash the actual bytes; changing whitespace also changes a hash.
 4. Add the package/version to `registry.json` and reference it from an executable
    material whose Rust engine supplies the required payload and scoring.
-5. Test the protocol, package integrity, launch, checking where supported,
-   completion, and an in-progress attempt pinned to the earlier version.
+5. Test the protocol, package integrity, theme updates without losing answers,
+   embedded launch/exit, checking where supported, completion and retry.
 
 The current package checks run with:
 

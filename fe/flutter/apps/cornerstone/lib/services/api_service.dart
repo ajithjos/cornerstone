@@ -117,9 +117,7 @@ class CornerstoneApiClient {
 
   Future<void> createAssignment({
     required String learnerId,
-    String? playlistId,
-    String? materialId,
-    String? activityMode,
+    required String playlistId,
     String? startDate,
   }) async {
     final response = await _client.post(
@@ -127,9 +125,7 @@ class CornerstoneApiClient {
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
         'learner_id': learnerId,
-        'playlist_id': ?playlistId,
-        'material_id': ?materialId,
-        'activity_mode': ?activityMode,
+        'playlist_id': playlistId,
         if (startDate != null && startDate.isNotEmpty) 'start_date': startDate,
       }),
     );
@@ -166,30 +162,6 @@ class CornerstoneApiClient {
       ),
     );
     return ActivityStartPayload.fromJson(_decode(response)).activity;
-  }
-
-  Future<CompleteActivityResponse> completeActivity({
-    required String activityInstanceId,
-    required List<String> answers,
-    required List<ActivityItem> items,
-    required int durationSeconds,
-    required String notes,
-  }) async {
-    final response = await _client.post(
-      Uri.parse(
-        '$baseUrl/api/v1/activity-instances/$activityInstanceId/complete',
-      ),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'responses': List.generate(
-          items.length,
-          (index) => {'item_id': items[index].itemId, 'value': answers[index]},
-        ),
-        'duration_seconds': durationSeconds,
-        'notes': notes,
-      }),
-    );
-    return CompleteActivityResponse.fromJson(_decode(response));
   }
 
   Future<ActivityInstance> retryActivity(String activityInstanceId) async {

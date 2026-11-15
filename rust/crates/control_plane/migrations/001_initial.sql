@@ -68,6 +68,8 @@ create table assignment (
     status text not null,
     total_sessions integer not null,
     completed_sessions integer not null,
+    checkpoint_count integer not null default 0,
+    completed_checkpoint_count integer not null default 0,
     created_at timestamptz not null
 );
 
@@ -269,3 +271,8 @@ create table learner_material_readiness_override (
 
 create index learner_material_readiness_override_learner_idx
     on learner_material_readiness_override (learner_id, enabled);
+
+-- One resumable issued attempt per material is serialized by the start transaction.
+create index activity_instance_unfinished_material_idx
+    on activity_instance (session_id, material_id, started_at desc)
+    where status = 'in_progress';

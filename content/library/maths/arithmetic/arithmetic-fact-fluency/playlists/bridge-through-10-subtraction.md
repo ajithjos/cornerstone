@@ -2,36 +2,26 @@
 id: bridge_through_10_subtraction
 title: Bridge Through 10 Subtraction
 stage_ids:
-  - bridge_through_10_subtraction
+- bridge_through_10_subtraction
 skill_ids:
-  - bridge_through_10_for_subtraction
+- bridge_through_10_for_subtraction
 recommended_age_min: 7
 recommended_age_max: 10
-sessions:
-  - id: instruction
-    title: Teach how to step back to 10 first when subtracting through 20
-    material_ids:
-      - bridge_through_10_subtraction_lesson_note
-      - addition_subtraction_foundations_teaching_note
-    skill_ids:
-      - bridge_through_10_for_subtraction
-  - id: live_drill
-    title: Run a short mixed subtraction drill that crosses 10
-    material_ids:
-      - bridge_through_10_subtraction_drill
-    skill_ids:
-      - bridge_through_10_for_subtraction
-  - id: quick_check
-    title: Assessment on bridge-through-10 subtraction
-    material_ids:
-      - bridge_through_10_subtraction_check
-    skill_ids:
-      - bridge_through_10_for_subtraction
+sections:
+  teach:
+  - arithmetic_fact_fluency_teaching_context
+  - addition_subtraction_foundations_teaching_note
+  learn:
+  - bridge_through_10_subtraction_lesson_note
+  practice:
+  - bridge_through_10_subtraction_drill
+  checkpoint:
+  - bridge_through_10_subtraction_check
 ---
 
 # Bridge Through 10 Subtraction
 
-This playlist teaches the main derivation method for subtraction through `20`.
+This playbook teaches the main derivation method for subtraction through `20`.
 
 ## Completion Rule
 

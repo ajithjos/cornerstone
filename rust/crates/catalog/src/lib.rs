@@ -117,7 +117,14 @@ pub struct Playlist {
     pub skill_ids: Vec<String>,
     pub duration_days: i32,
     pub session_pattern: SessionPattern,
+    pub sections: Vec<PlaylistSection>,
     pub source_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaylistSection {
+    pub section_id: String,
+    pub material_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,9 +174,18 @@ pub struct MaterialDocument {
     pub difficulty: String,
     pub estimated_minutes: u16,
     pub runtime: Option<MaterialRuntime>,
+    pub checkpoint: Option<MaterialCheckpoint>,
     pub title: String,
     pub body: String,
     pub source_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MaterialCheckpoint {
+    pub question_count: usize,
+    pub target_accuracy: f64,
+    pub max_duration_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -309,6 +325,7 @@ struct SkillFrontmatter {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PlaylistFrontmatter {
     id: String,
     title: String,
@@ -316,15 +333,16 @@ struct PlaylistFrontmatter {
     skill_ids: Vec<String>,
     recommended_age_min: u8,
     recommended_age_max: u8,
-    sessions: Vec<PlaylistFrontmatterSession>,
+    sections: PlaylistFrontmatterSections,
 }
 
 #[derive(Debug, Deserialize)]
-struct PlaylistFrontmatterSession {
-    id: String,
-    title: String,
-    material_ids: Vec<String>,
-    skill_ids: Vec<String>,
+#[serde(deny_unknown_fields)]
+struct PlaylistFrontmatterSections {
+    teach: Vec<String>,
+    learn: Vec<String>,
+    practice: Vec<String>,
+    checkpoint: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -338,6 +356,7 @@ struct MaterialFrontmatter {
     recommended_age: Option<u8>,
     difficulty: Option<String>,
     runtime: Option<MaterialRuntime>,
+    checkpoint: Option<MaterialCheckpoint>,
 }
 
 #[derive(Debug, Default)]
@@ -389,7 +408,26 @@ pub struct BootstrapMembership {
 
 pub fn load_library_content(content_root: &Path) -> anyhow::Result<LibraryContent> {
     let registry: LibraryRegistry = read_yaml(content_root.join("library/registry.yaml"))?;
-    let loaded = load_library_documents(content_root, &registry.pathways)?;
+    let mut loaded = load_library_documents(content_root, &registry.pathways)?;
+    for playlist in &mut loaded.playlists {
+        for session in &mut playlist.session_pattern.sessions {
+            if let Some(material) = loaded
+                .material_documents
+                .iter()
+                .find(|material| session.material_ids.first() == Some(&material.id))
+            {
+                session.title = material.title.clone();
+            }
+            session.skill_ids.retain(|skill_id| {
+                session.material_ids.iter().any(|id| {
+                    loaded
+                        .material_documents
+                        .iter()
+                        .any(|material| &material.id == id && material.skill_ids.contains(skill_id))
+                })
+            });
+        }
+    }
 
     validate_pathways(
         &loaded.pathways,
@@ -672,18 +710,67 @@ fn load_library_documents(
                 description: playlist_description.clone(),
                 body: playlist_body,
             });
-            let sessions = playlist_meta
-                .sessions
-                .into_iter()
+            let sections = [
+                ("teach", playlist_meta.sections.teach),
+                ("learn", playlist_meta.sections.learn),
+                ("practice", playlist_meta.sections.practice),
+                ("checkpoint", playlist_meta.sections.checkpoint),
+            ]
+            .into_iter()
+            .map(|(section_id, material_ids)| PlaylistSection {
+                section_id: section_id.to_owned(),
+                material_ids,
+            })
+            .collect::<Vec<_>>();
+            for section in &sections {
+                if section.section_id != "teach" && section.material_ids.is_empty() {
+                    bail!(
+                        "playbook '{}' must declare {} materials",
+                        playlist_meta.id,
+                        section.section_id
+                    );
+                }
+                let unique = section.material_ids.iter().collect::<BTreeSet<_>>();
+                if unique.len() != section.material_ids.len() {
+                    bail!(
+                        "playbook '{}' repeats a material in {}",
+                        playlist_meta.id,
+                        section.section_id
+                    );
+                }
+            }
+            // Sessions are execution references, not another authored curriculum layer.
+            // Each learner material has its own result boundary. Teach remains attached
+            // to the first learning block and is never a separate learner task.
+            let mut sessions = sections
+                .iter()
+                .filter(|section| section.section_id != "teach")
+                .flat_map(|section| {
+                    section
+                        .material_ids
+                        .iter()
+                        .map(move |material_id| (section, material_id))
+                })
                 .enumerate()
-                .map(|(index, session)| PlaylistSession {
-                    session_id: session.id,
+                .map(|(index, (section, material_id))| PlaylistSession {
+                    session_id: format!("{}_{}", section.section_id, material_id),
                     day_offset: index as i32,
-                    title: session.title,
-                    skill_ids: session.skill_ids,
-                    material_ids: session.material_ids,
+                    title: format!(
+                        "{} · {}",
+                        playlist_meta.title,
+                        match section.section_id.as_str() {
+                            "learn" => "Learn",
+                            "practice" => "Practice",
+                            _ => "Checkpoint",
+                        }
+                    ),
+                    skill_ids: playlist_meta.skill_ids.clone(),
+                    material_ids: vec![material_id.clone()],
                 })
                 .collect::<Vec<_>>();
+            if let Some(first) = sessions.first_mut() {
+                first.material_ids.extend(sections[0].material_ids.clone());
+            }
             let recommended_age = playlist_meta.recommended_age_min;
             playlist_documents.insert(
                 playlist_meta.id.clone(),
@@ -698,6 +785,7 @@ fn load_library_documents(
                     skill_ids: playlist_meta.skill_ids,
                     duration_days: sessions.len() as i32,
                     session_pattern: SessionPattern { sessions },
+                    sections,
                     source_path: playlist_relative_path,
                 },
             );
@@ -750,6 +838,7 @@ fn load_library_documents(
                 difficulty,
                 estimated_minutes: material_meta.estimated_minutes,
                 runtime: material_meta.runtime,
+                checkpoint: material_meta.checkpoint,
                 title,
                 body: material_body,
                 source_path: material_relative_path,
@@ -1285,6 +1374,22 @@ fn validate_catalog(
             bail!("playlist '{}' has no sessions", playlist.playlist_id);
         }
 
+        for section in &playlist.sections {
+            for id in &section.material_ids {
+                let material = lookup_required(&material_map, id.as_str(), "section material", &playlist.playlist_id)?;
+                let valid = match section.section_id.as_str() {
+                    "teach" => material.kind == TEACHING_NOTE_KIND,
+                    "learn" => material.kind == LESSON_NOTE_KIND,
+                    "practice" => matches!(material.kind.as_str(), WORKSHEET_KIND | DRILL_KIND),
+                    "checkpoint" => material.kind == QUICK_CHECK_KIND,
+                    _ => false,
+                };
+                if !valid {
+                    bail!("material '{}' has an invalid role in {}", id, section.section_id);
+                }
+            }
+        }
+
         let mut allowed_stage_skills = BTreeSet::new();
         for stage_id in &playlist.stage_ids {
             ensure_contains(&stage_ids, stage_id.as_str(), "playlist stage", &playlist.playlist_id)?;
@@ -1583,6 +1688,20 @@ fn validate_catalog(
                 material.kind
             );
         }
+        if let Some(checkpoint) = &material.checkpoint
+            && (material.kind != QUICK_CHECK_KIND
+                || material.runtime.is_some()
+                || checkpoint.question_count == 0
+                || !checkpoint.target_accuracy.is_finite()
+                || checkpoint.target_accuracy <= 0.0
+                || checkpoint.target_accuracy > 1.0
+                || checkpoint.max_duration_seconds == Some(0))
+        {
+            bail!("material '{}' has an invalid paper checkpoint policy", material.id);
+        }
+        if material.kind == QUICK_CHECK_KIND && material.runtime.is_none() && material.checkpoint.is_none() {
+            bail!("paper checkpoint '{}' must declare its completion policy", material.id);
+        }
         if let Some(runtime) = &material.runtime {
             if runtime.spec_version != 1 {
                 bail!(
@@ -1697,7 +1816,10 @@ fn validate_catalog(
                         material.id
                     );
                 }
-                QUICK_CHECK_KIND if runtime.readiness.is_some() || runtime.gate.is_none() => {
+                QUICK_CHECK_KIND
+                    if runtime.readiness.is_some()
+                        || (runtime.gate.is_none() && runtime.engine_id != "written_arithmetic.v1") =>
+                {
                     bail!(
                         "executable quick_check '{}' must declare a gate and must not declare readiness",
                         material.id
@@ -1835,8 +1957,17 @@ fn validate_catalog(
         }
     }
 
-    // Valid standalone materials are assignable directly from the materials catalog.
-    // Playlist references are still validated above when a playlist includes a material.
+    // Every authored material belongs to at least one explicit playbook section.
+    for material in material_documents {
+        if !playlists.iter().any(|playlist| {
+            playlist
+                .sections
+                .iter()
+                .any(|section| section.material_ids.contains(&material.id))
+        }) {
+            bail!("material '{}' is not referenced by a playbook section", material.id);
+        }
+    }
 
     Ok(())
 }

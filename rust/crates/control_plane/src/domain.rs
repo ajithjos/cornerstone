@@ -191,13 +191,6 @@ pub struct PathwayWorkspaceSummary {
     pub route_path: Option<String>,
     pub entry_points: Vec<PathwayEntryPointSummary>,
     pub playlists: Vec<PlaylistWorkspaceSummary>,
-    pub extra_practice_groups: Vec<LibraryPracticeGroupSummary>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LibraryPracticeGroupSummary {
-    pub title: String,
-    pub material_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -208,7 +201,31 @@ pub struct PathwayEntryPointSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct PlaybookSectionSummary {
+    pub section_id: String,
+    pub title: String,
+    pub description: String,
+    pub items: Vec<PlaybookSectionItemSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaybookSectionItemSummary {
+    pub material_id: String,
+    pub session_index: usize,
+    pub session_id: Option<String>,
+    pub session_material_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckpointPolicySummary {
+    pub question_count: usize,
+    pub target_accuracy: f64,
+    pub max_duration_seconds: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct PlaylistWorkspaceSummary {
+    pub sections: Vec<PlaybookSectionSummary>,
     pub playlist_id: String,
     pub title: String,
     pub description: String,
@@ -267,6 +284,9 @@ pub struct PlaylistSessionWorkspaceSummary {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MaterialWorkspaceSummary {
+    pub printable: bool,
+    pub activity_level_id: Option<String>,
+    pub checkpoint_policy: Option<CheckpointPolicySummary>,
     pub material_id: String,
     pub title: String,
     pub kind: String,
@@ -288,7 +308,6 @@ pub struct MaterialCatalogSummary {
     pub difficulty: String,
     pub assignable: bool,
     pub assignment_targets: Vec<PlaylistAssignmentTargetSummary>,
-    pub activity_level_id: Option<String>,
     pub context_label: String,
     pub contexts: Vec<MaterialContextSummary>,
 }
@@ -442,6 +461,7 @@ pub struct LearnerWorkspaceResponse {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LearnerAssignedJourneySummary {
+    pub sections: Vec<PlaybookSectionSummary>,
     pub assignment: AssignmentSummary,
     pub journey: LearnerJourneySummary,
     pub current_session_id: Option<String>,
@@ -461,7 +481,6 @@ pub struct LearnerAssignedPathwaySummary {
     pub pending_session_count: usize,
     pub assignments: Vec<LearnerAssignedJourneySummary>,
     pub assignment_count: usize,
-    pub material_assignment_count: usize,
     pub summary_label: String,
 }
 
@@ -506,9 +525,7 @@ pub struct LearnerRecentWinSummary {
 pub struct LearnerJourneySummary {
     pub title: String,
     pub description: String,
-    pub source_kind: String,
     pub source_label: String,
-    pub source_material_id: Option<String>,
     pub pathway_id: Option<String>,
     pub pathway_title: Option<String>,
     pub pathway_description: Option<String>,
@@ -541,15 +558,14 @@ pub struct LearnerSummary {
 pub struct AssignmentSummary {
     pub assignment_id: String,
     pub playlist_id: String,
-    pub source_kind: String,
-    pub material_id: Option<String>,
-    pub activity_mode: Option<String>,
     pub title: String,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
     pub status: String,
     pub total_sessions: i32,
     pub completed_sessions: i32,
+    pub checkpoint_count: i32,
+    pub completed_checkpoint_count: i32,
     pub completion_percent: i32,
 }
 
@@ -597,6 +613,8 @@ pub struct SessionNextStepSummary {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionMaterialSummary {
+    pub activity_level_id: Option<String>,
+    pub checkpoint_policy: Option<CheckpointPolicySummary>,
     pub session_material_id: String,
     pub title: String,
     pub material_id: String,
@@ -754,9 +772,7 @@ pub struct StageProgress {
 #[serde(deny_unknown_fields)]
 pub struct AssignmentRequest {
     pub learner_id: String,
-    pub playlist_id: Option<String>,
-    pub material_id: Option<String>,
-    pub activity_mode: Option<learning_activity_runtime::written_arithmetic::PracticeMode>,
+    pub playlist_id: String,
     pub start_date: Option<NaiveDate>,
 }
 
@@ -973,15 +989,14 @@ pub struct AssignmentRow {
     pub assignment_id: String,
     pub learner_id: String,
     pub playlist_id: String,
-    pub source_kind: String,
-    pub material_id: Option<String>,
-    pub activity_mode: Option<String>,
     pub title: String,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
     pub status: String,
     pub total_sessions: i32,
     pub completed_sessions: i32,
+    pub checkpoint_count: i32,
+    pub completed_checkpoint_count: i32,
 }
 
 #[allow(dead_code)]

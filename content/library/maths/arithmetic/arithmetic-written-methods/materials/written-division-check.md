@@ -2,12 +2,15 @@
 id: written_division_check
 type: quick_check
 stage_ids:
-  - written_division
+- written_division
 skill_ids:
-  - interpret_division_as_sharing_and_grouping
-  - divide_whole_numbers_with_written_methods
-  - check_written_division_with_multiplication
+- interpret_division_as_sharing_and_grouping
+- divide_whole_numbers_with_written_methods
+- check_written_division_with_multiplication
 estimated_minutes: 10
+checkpoint:
+  question_count: 8
+  target_accuracy: 0.9
 ---
 
 # Written Division Assessment
@@ -24,3 +27,7 @@ Do not help during the assessment except to read the question.
 8. Which answer is more sensible for `945 / 27`: `35` or `305`?
 
 Passing guide: 6 or more secure answers means the learner has a usable written-division base. Keep remainder checks in review until they are automatic.
+
+## Completion target
+
+Complete the paper assessment independently. The owner records the marked score; at least 90% is required to complete this checkpoint. There is no time limit.

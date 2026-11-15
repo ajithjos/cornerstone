@@ -324,6 +324,7 @@ mod tests {
 
     fn build_material(template_id: &str, parameters: JsonValue) -> MaterialDocument {
         MaterialDocument {
+            checkpoint: None,
             id: format!("test_{template_id}"),
             kind: "drill".to_string(),
             subject_id: "maths".to_string(),

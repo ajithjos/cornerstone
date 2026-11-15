@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:ui_web' as ui_web;
 
@@ -7,6 +8,7 @@ import 'package:web/web.dart' as web;
 
 import '../../../models/activity_presentation.dart';
 import 'activity_package_protocol.dart';
+import 'activity_package_appearance.dart';
 
 // Dart equality may inspect a WindowProxy's dispatch properties, which the
 // browser forbids across a sandbox boundary. JavaScript identity does not.
@@ -40,6 +42,8 @@ class _ActivityPackagePlayerViewState extends State<ActivityPackagePlayerView> {
   Timer? _timeout;
   String? _error;
   bool _initialized = false;
+  Map<String, dynamic> _appearance = {};
+  String? _appearanceKey;
 
   @override
   void initState() {
@@ -74,7 +78,12 @@ class _ActivityPackagePlayerViewState extends State<ActivityPackagePlayerView> {
             if (!_initialized) {
               _initialized = true;
               _timeout?.cancel();
-              _send(_protocol.initialize(widget.presentation.payload));
+              _send(
+                _protocol.initialize(
+                  widget.presentation.payload,
+                  appearance: _appearance,
+                ),
+              );
               if (mounted) setState(() => _error = null);
             }
             return;
@@ -97,6 +106,17 @@ class _ActivityPackagePlayerViewState extends State<ActivityPackagePlayerView> {
     } catch (error) {
       _error = error.toString();
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final appearance = activityPackageAppearance(Theme.of(context));
+    final key = jsonEncode(appearance);
+    if (_appearanceKey == key) return;
+    _appearance = appearance;
+    _appearanceKey = key;
+    if (_initialized) _send(_protocol.appearance(appearance));
   }
 
   void _send(Map<String, dynamic> message) {

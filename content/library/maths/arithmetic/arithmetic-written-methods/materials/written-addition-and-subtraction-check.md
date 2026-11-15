@@ -2,12 +2,15 @@
 id: written_addition_and_subtraction_check
 type: quick_check
 stage_ids:
-  - written_addition_and_subtraction
+- written_addition_and_subtraction
 skill_ids:
-  - add_whole_numbers_with_column_method
-  - subtract_whole_numbers_with_column_method
-  - explain_exchange_in_written_methods
+- add_whole_numbers_with_column_method
+- subtract_whole_numbers_with_column_method
+- explain_exchange_in_written_methods
 estimated_minutes: 8
+checkpoint:
+  question_count: 10
+  target_accuracy: 0.9
 ---
 
 # Column Addition And Subtraction Assessment
@@ -26,3 +29,7 @@ Do not help during the assessment except to read the question.
 10. Which answer is more sensible for `4,203 - 587`: `3,616` or `4,790`?
 
 Passing guide: 8 or more secure answers means the learner is ready for written multiplication. If written answers are right but explanations are empty, repeat one more guided session before moving on.
+
+## Completion target
+
+Complete the paper assessment independently. The owner records the marked score; at least 90% is required to complete this checkpoint. There is no time limit.

@@ -37,7 +37,7 @@ class _LibraryDocumentReader extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Select a pathway, playlist, or material to read it here.',
+              'Choose a reference to read it here.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -49,12 +49,9 @@ class _LibraryDocumentReader extends StatelessWidget {
     }
 
     final activeDocument = document!;
-    final resolvedMaterialKind = _materialKindFromDocument(activeDocument);
+    final resolvedMaterialKind = activeDocument.kind;
     final canPrintDocument =
         learningMaterialPrintingSupported &&
-        activeDocument.kind == 'material' &&
-        (resolvedMaterialKind == 'lesson_note' ||
-            resolvedMaterialKind == 'worksheet') &&
         activeDocument.body.trim().isNotEmpty;
 
     final markdownStyle = MarkdownStyleSheet.fromTheme(theme).copyWith(
@@ -108,7 +105,7 @@ class _LibraryDocumentReader extends StatelessWidget {
                   Text(
                     activeDocument.kind == 'material'
                         ? _materialKindLabel(resolvedMaterialKind)
-                        : _humanizeLabel(activeDocument.kind),
+                        : _contractTermLabel(activeDocument.kind),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),

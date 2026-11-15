@@ -24,6 +24,3 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/logo_symbol.png
-    - assets/images/logo_wordmark.png

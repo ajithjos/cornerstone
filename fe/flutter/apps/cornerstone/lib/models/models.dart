@@ -273,7 +273,9 @@ class LibraryCatalogMaterial extends LibraryWorkspaceMaterial {
     required this.difficulty,
     required this.assignable,
     required this.assignmentTargets,
-    this.activityLevelId,
+    super.activityLevelId,
+    super.printable,
+    super.checkpointPolicy,
     this.contexts = const [],
     this.contextLabel = '',
   });
@@ -284,7 +286,6 @@ class LibraryCatalogMaterial extends LibraryWorkspaceMaterial {
   final String difficulty;
   final bool assignable;
   final List<PlaylistAssignmentTarget> assignmentTargets;
-  final String? activityLevelId;
   final List<LibraryMaterialContext> contexts;
   final String contextLabel;
 
@@ -305,6 +306,12 @@ class LibraryCatalogMaterial extends LibraryWorkspaceMaterial {
         difficulty: json['difficulty'] as String,
         assignable: json['assignable'] as bool,
         activityLevelId: json['activity_level_id'] as String?,
+        printable: json['printable'] as bool,
+        checkpointPolicy: json['checkpoint_policy'] == null
+            ? null
+            : CheckpointPolicy.fromJson(
+                json['checkpoint_policy'] as Map<String, dynamic>,
+              ),
         contexts: ((json['contexts'] as List?) ?? const [])
             .map(
               (item) =>
@@ -351,17 +358,6 @@ class LibraryMaterialContext {
       );
 }
 
-class LibraryPracticeGroup {
-  const LibraryPracticeGroup({required this.title, required this.materialIds});
-  final String title;
-  final List<String> materialIds;
-  factory LibraryPracticeGroup.fromJson(Map<String, dynamic> json) =>
-      LibraryPracticeGroup(
-        title: json['title'] as String,
-        materialIds: (json['material_ids'] as List).cast<String>(),
-      );
-}
-
 class LibraryWorkspacePathway {
   LibraryWorkspacePathway({
     required this.pathwayId,
@@ -375,7 +371,6 @@ class LibraryWorkspacePathway {
     required this.entryPoints,
     required this.playlists,
     this.routePath,
-    this.extraPracticeGroups = const [],
   });
 
   factory LibraryWorkspacePathway.fromJson(Map<String, dynamic> json) {
@@ -389,13 +384,6 @@ class LibraryWorkspacePathway {
       stageCount: (json['stage_count'] as num).toInt(),
       playlistCount: (json['playlist_count'] as num).toInt(),
       routePath: json['route_path'] as String?,
-      extraPracticeGroups:
-          ((json['extra_practice_groups'] as List?) ?? const [])
-              .map(
-                (item) =>
-                    LibraryPracticeGroup.fromJson(item as Map<String, dynamic>),
-              )
-              .toList(),
       entryPoints: (json['entry_points'] as List<dynamic>)
           .map(
             (item) => PathwayEntryPoint.fromJson(item as Map<String, dynamic>),
@@ -421,7 +409,6 @@ class LibraryWorkspacePathway {
   final String? routePath;
   final List<PathwayEntryPoint> entryPoints;
   final List<LibraryWorkspacePlaylist> playlists;
-  final List<LibraryPracticeGroup> extraPracticeGroups;
 }
 
 class PathwayEntryPoint {
@@ -444,6 +431,70 @@ class PathwayEntryPoint {
   final String playlistTitle;
 }
 
+/// Ordered delivery sections are authored and resolved by the control plane.
+/// Widgets never infer these from a material's type or a scheduled session.
+class PlaybookSection {
+  const PlaybookSection({
+    required this.sectionId,
+    required this.title,
+    required this.description,
+    required this.items,
+  });
+  factory PlaybookSection.fromJson(Map<String, dynamic> json) =>
+      PlaybookSection(
+        sectionId: json['section_id'] as String,
+        title: json['title'] as String,
+        description: json['description'] as String,
+        items: (json['items'] as List)
+            .map(
+              (item) =>
+                  PlaybookSectionItem.fromJson(item as Map<String, dynamic>),
+            )
+            .toList(),
+      );
+  final String sectionId;
+  final String title;
+  final String description;
+  final List<PlaybookSectionItem> items;
+}
+
+class PlaybookSectionItem {
+  const PlaybookSectionItem({
+    required this.materialId,
+    required this.sessionIndex,
+    this.sessionId,
+    this.sessionMaterialId,
+  });
+  factory PlaybookSectionItem.fromJson(Map<String, dynamic> json) =>
+      PlaybookSectionItem(
+        materialId: json['material_id'] as String,
+        sessionIndex: (json['session_index'] as num).toInt(),
+        sessionId: json['session_id'] as String?,
+        sessionMaterialId: json['session_material_id'] as String?,
+      );
+  final String materialId;
+  final int sessionIndex;
+  final String? sessionId;
+  final String? sessionMaterialId;
+}
+
+class CheckpointPolicy {
+  const CheckpointPolicy({
+    required this.questionCount,
+    required this.targetAccuracy,
+    this.maxDurationSeconds,
+  });
+  factory CheckpointPolicy.fromJson(Map<String, dynamic> json) =>
+      CheckpointPolicy(
+        questionCount: (json['question_count'] as num).toInt(),
+        targetAccuracy: (json['target_accuracy'] as num).toDouble(),
+        maxDurationSeconds: (json['max_duration_seconds'] as num?)?.toInt(),
+      );
+  final int questionCount;
+  final double targetAccuracy;
+  final int? maxDurationSeconds;
+}
+
 class LibraryWorkspacePlaylist {
   LibraryWorkspacePlaylist({
     required this.playlistId,
@@ -459,6 +510,7 @@ class LibraryWorkspacePlaylist {
     required this.deliveryShape,
     required this.assignmentTargets,
     required this.sessions,
+    this.sections = const [],
     this.routePath,
   });
 
@@ -484,6 +536,9 @@ class LibraryWorkspacePlaylist {
           )
           .toList(),
       routePath: json['route_path'] as String?,
+      sections: (json['sections'] as List)
+          .map((item) => PlaybookSection.fromJson(item as Map<String, dynamic>))
+          .toList(),
       sessions: (json['sessions'] as List<dynamic>)
           .map(
             (item) =>
@@ -507,6 +562,7 @@ class LibraryWorkspacePlaylist {
   final List<PlaylistAssignmentTarget> assignmentTargets;
   final String? routePath;
   final List<LibraryWorkspaceSession> sessions;
+  final List<PlaybookSection> sections;
 }
 
 class PlaylistDeliveryShape {
@@ -653,6 +709,9 @@ class LibraryWorkspaceMaterial {
     required this.skillIds,
     required this.executable,
     this.routePath,
+    this.activityLevelId,
+    this.checkpointPolicy,
+    this.printable = false,
   });
 
   factory LibraryWorkspaceMaterial.fromJson(Map<String, dynamic> json) {
@@ -667,6 +726,13 @@ class LibraryWorkspaceMaterial {
           .toList(),
       executable: json['executable'] as bool? ?? false,
       routePath: json['route_path'] as String?,
+      activityLevelId: json['activity_level_id'] as String?,
+      printable: json['printable'] as bool,
+      checkpointPolicy: json['checkpoint_policy'] == null
+          ? null
+          : CheckpointPolicy.fromJson(
+              json['checkpoint_policy'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -678,6 +744,9 @@ class LibraryWorkspaceMaterial {
   final List<String> skillIds;
   final bool executable;
   final String? routePath;
+  final String? activityLevelId;
+  final bool printable;
+  final CheckpointPolicy? checkpointPolicy;
 
   bool get isAdultFacing => audience == 'adult';
   bool get isLearnerFacing => audience == 'learner';
@@ -1301,6 +1370,7 @@ class LearnerAssignedJourney {
     required this.assignment,
     required this.journey,
     required this.sessions,
+    this.sections = const [],
     this.currentSessionId,
     this.continueBlock,
   });
@@ -1317,6 +1387,9 @@ class LearnerAssignedJourney {
           : LearnerContinueBlock.fromJson(
               json['continue_block'] as Map<String, dynamic>,
             ),
+      sections: (json['sections'] as List)
+          .map((item) => PlaybookSection.fromJson(item as Map<String, dynamic>))
+          .toList(),
       sessions: (json['sessions'] as List<dynamic>)
           .map((item) => SessionDetail.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -1328,6 +1401,7 @@ class LearnerAssignedJourney {
   final String? currentSessionId;
   final LearnerContinueBlock? continueBlock;
   final List<SessionDetail> sessions;
+  final List<PlaybookSection> sections;
 }
 
 class LearnerAssignedPathway {
@@ -1342,7 +1416,6 @@ class LearnerAssignedPathway {
     this.pathwayId,
     this.pathwayRoutePath,
     this.assignmentCount = 0,
-    this.materialAssignmentCount = 0,
     this.summaryLabel = '',
   });
   factory LearnerAssignedPathway.fromJson(Map<String, dynamic> json) =>
@@ -1353,8 +1426,6 @@ class LearnerAssignedPathway {
         pathwayRoutePath: json['pathway_route_path'] as String?,
         playlistCount: (json['playlist_count'] as num?)?.toInt() ?? 0,
         assignmentCount: (json['assignment_count'] as num?)?.toInt() ?? 0,
-        materialAssignmentCount:
-            (json['material_assignment_count'] as num?)?.toInt() ?? 0,
         summaryLabel: json['summary_label'] as String? ?? '',
         totalSessionCount: (json['total_session_count'] as num?)?.toInt() ?? 0,
         completedSessionCount:
@@ -1374,7 +1445,6 @@ class LearnerAssignedPathway {
   final String? pathwayRoutePath;
   final int playlistCount;
   final int assignmentCount;
-  final int materialAssignmentCount;
   final String summaryLabel;
   final int totalSessionCount;
   final int completedSessionCount;
@@ -1461,9 +1531,7 @@ class LearnerJourney {
     this.nextSessionId,
     this.title = '',
     this.description = '',
-    this.sourceKind = '',
     this.sourceLabel = '',
-    this.sourceMaterialId,
   });
 
   factory LearnerJourney.fromJson(Map<String, dynamic> json) {
@@ -1491,9 +1559,7 @@ class LearnerJourney {
           json['description'] as String? ??
           json['playlist_description'] as String? ??
           '',
-      sourceKind: json['source_kind'] as String? ?? '',
       sourceLabel: json['source_label'] as String? ?? '',
-      sourceMaterialId: json['source_material_id'] as String?,
     );
   }
 
@@ -1516,9 +1582,7 @@ class LearnerJourney {
   final String? nextSessionId;
   final String title;
   final String description;
-  final String sourceKind;
   final String sourceLabel;
-  final String? sourceMaterialId;
 }
 
 class LearnerSummary {
@@ -1558,6 +1622,8 @@ class AssignmentSummary {
     required this.totalSessions,
     required this.completedSessions,
     required this.completionPercent,
+    this.checkpointCount = 0,
+    this.completedCheckpointCount = 0,
   });
 
   factory AssignmentSummary.fromJson(Map<String, dynamic> json) {
@@ -1571,6 +1637,9 @@ class AssignmentSummary {
       totalSessions: (json['total_sessions'] as num).toInt(),
       completedSessions: (json['completed_sessions'] as num).toInt(),
       completionPercent: (json['completion_percent'] as num).toInt(),
+      checkpointCount: (json['checkpoint_count'] as num).toInt(),
+      completedCheckpointCount: (json['completed_checkpoint_count'] as num)
+          .toInt(),
     );
   }
 
@@ -1583,6 +1652,8 @@ class AssignmentSummary {
   final int totalSessions;
   final int completedSessions;
   final int completionPercent;
+  final int checkpointCount;
+  final int completedCheckpointCount;
 }
 
 class SessionSummary {
@@ -1735,6 +1806,8 @@ class SessionMaterial {
     this.runtime,
     this.readiness,
     this.gate,
+    this.activityLevelId,
+    this.checkpointPolicy,
   });
 
   factory SessionMaterial.fromJson(Map<String, dynamic> json) {
@@ -1749,7 +1822,13 @@ class SessionMaterial {
           .map((item) => item as String)
           .toList(),
       status: SessionMaterialStatus.fromJson(json['status']),
-      printable: json['printable'] as bool? ?? false,
+      printable: json['printable'] as bool,
+      activityLevelId: json['activity_level_id'] as String?,
+      checkpointPolicy: json['checkpoint_policy'] == null
+          ? null
+          : CheckpointPolicy.fromJson(
+              json['checkpoint_policy'] as Map<String, dynamic>,
+            ),
       documentRoutePath: json['document_route_path'] as String?,
       documentBody: json['document_body'] as String?,
       runtime: json['runtime'] == null
@@ -1779,6 +1858,8 @@ class SessionMaterial {
   final List<String> skillIds;
   final SessionMaterialStatus status;
   final bool printable;
+  final String? activityLevelId;
+  final CheckpointPolicy? checkpointPolicy;
   final String? documentRoutePath;
   final String? documentBody;
   final SessionMaterialRuntimeSummary? runtime;

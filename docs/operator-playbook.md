@@ -73,7 +73,7 @@ If the reset-era baseline migration changes incompatibly, rotate `CORNERSTONE_DE
 
 Material body/runtime edits are read from the current library by `material_id`.
 
-Playlist session membership edits are assignment-plan edits. Existing assignments keep their own `session` and `session_material` rows until the database is reset or an owner explicitly reconciles active assignments:
+Playbook section membership edits are assignment-plan edits. Existing assignments keep their own `session` and `session_material` rows until the database is reset or an owner explicitly reconciles active assignments:
 
 ```bash
 make dev-reset
@@ -87,7 +87,7 @@ POST /api/v1/assignments/reconcile
 {}
 ```
 
-The reset-era schema is intentionally kept in one SQLx migration file: `rust/crates/control_plane/migrations/001_initial.sql`. Practice Quality v1 starts data revision `02`; moving an existing deployment to this revision is a deliberate database reset, followed by bootstrap and assignment recreation or reconciliation as appropriate.
+The reset-era schema is intentionally kept in one SQLx migration file: `rust/crates/control_plane/migrations/001_initial.sql`. The Teach / Learn / Practice / Checkpoint cutover starts data revision `04`. It requires a fresh database and bootstrap; older assignments are not migrated. Tracked local and hosted defaults use new `04` data directories, preserving previous directories. A local override may explicitly keep an existing Postgres cluster while selecting a newly created, separate database and fresh artifact/export directories.
 
 ## Runtime Expectations
 

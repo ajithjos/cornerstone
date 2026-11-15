@@ -28,12 +28,24 @@ class ActivityPackageProtocol {
       message['version'] == 1 &&
       (ready ? message['type'] == 'ready' : message['channel'] == channel);
 
-  Map<String, dynamic> initialize(Map<String, dynamic> payload) => {
+  Map<String, dynamic> initialize(
+    Map<String, dynamic> payload, {
+    Map<String, dynamic>? appearance,
+  }) => {
     'protocol': name,
     'version': 1,
     'type': 'initialize',
     'channel': channel,
     'payload': payload,
+    'appearance': ?appearance,
+  };
+
+  Map<String, dynamic> appearance(Map<String, dynamic> appearance) => {
+    'protocol': name,
+    'version': 1,
+    'type': 'appearance',
+    'channel': channel,
+    'appearance': appearance,
   };
 
   Future<Map<String, dynamic>?> handle(Map<String, dynamic> message) async {

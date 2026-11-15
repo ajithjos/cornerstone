@@ -10,630 +10,469 @@ class _LearnerWorkContent extends StatefulWidget {
     required this.onStartReview,
     this.onSetReadinessOverride,
     this.onClearReadinessOverride,
+    this.onCreateWorksheetForLevel,
+    this.onRecordPaperResult,
+    this.initialAssignmentId,
+    this.onInitialAssignmentHandled,
   });
-
+  final String? initialAssignmentId;
+  final VoidCallback? onInitialAssignmentHandled;
   final LearnerWorkspacePayload workspace;
   final bool viewerCanReadLibrary;
   final ValueChanged<String> onOpenLibraryRoute;
-  final Future<void> Function(SessionDetail session, SessionMaterial material)
-  onStartActivity;
-  final Future<void> Function(ReviewItem reviewItem) onStartReview;
-  final Future<void> Function(SessionMaterial material)? onSetReadinessOverride;
-  final Future<void> Function(SessionMaterial material)?
-  onClearReadinessOverride;
-
+  final Future<void> Function(SessionDetail, SessionMaterial) onStartActivity;
+  final Future<void> Function(ReviewItem) onStartReview;
+  final Future<void> Function(SessionMaterial)? onSetReadinessOverride;
+  final Future<void> Function(SessionMaterial)? onClearReadinessOverride;
+  final ValueChanged<String>? onCreateWorksheetForLevel;
+  final Future<void> Function(SessionDetail)? onRecordPaperResult;
   @override
   State<_LearnerWorkContent> createState() => _LearnerWorkContentState();
 }
 
 class _LearnerWorkContentState extends State<_LearnerWorkContent> {
-  String? _selectedSessionId;
-  String? _selectedAssignmentId;
-  String? _readingMaterialId;
-  String? _expandedPathwayId;
-  bool _browseOpen = false;
+  String? _assignmentId;
+  String? _sectionId;
+  String? _readingId;
   bool _progressOpen = false;
-  final _sessionKey = GlobalKey();
-  final _readingKey = GlobalKey();
-  final _progressKey = GlobalKey();
-
+  bool _restored = false;
   LearnerWorkspacePayload get _data => widget.workspace;
   bool get _support => _data.workspaceView == 'owner_support';
-  LearnerContinueBlock? get _continue => _data.workspace.continueBlock;
+  LearnerAssignedJourney? get _assignment => _data.assignedJourneys
+      .where((a) => a.assignment.assignmentId == _assignmentId)
+      .firstOrNull;
+  PlaybookSection? get _section => _assignment?.sections
+      .where((section) => section.sectionId == _sectionId)
+      .firstOrNull;
+
+  SessionDetail? _sessionFor(PlaybookSectionItem item) => _assignment?.sessions
+      .where((session) => session.sessionId == item.sessionId)
+      .firstOrNull;
+  SessionMaterial? _materialFor(PlaybookSectionItem item) => _sessionFor(item)
+      ?.materials
+      .where((material) => material.sessionMaterialId == item.sessionMaterialId)
+      .firstOrNull;
 
   @override
-  void initState() {
-    super.initState();
-    _selectedSessionId = _continue?.session.sessionId;
-    _selectedAssignmentId = _assignmentFor(
-      _selectedSessionId,
-    )?.assignment.assignmentId;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_restored) return;
+    _restored = true;
+    final saved = PageStorage.maybeOf(context)?.readState(
+      context,
+      identifier: 'playbook-work-${_data.learner.learnerId}',
+    );
+    if (saved is Map) {
+      _assignmentId = saved['assignment'] as String?;
+      _sectionId = saved['section'] as String?;
+      _readingId = saved['reading'] as String?;
+    }
+    _applyInitialAssignment();
+  }
+
+  void _applyInitialAssignment() {
+    final initial = _data.assignedJourneys
+        .where((a) => a.assignment.assignmentId == widget.initialAssignmentId)
+        .firstOrNull;
+    if (initial == null) return;
+    _openAssignment(initial);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onInitialAssignmentHandled?.call();
+    });
+  }
+
+  void _change(VoidCallback change) {
+    setState(change);
+    if (_restored) {
+      PageStorage.maybeOf(context)?.writeState(context, {
+        'assignment': _assignmentId,
+        'section': _sectionId,
+        'reading': _readingId,
+      }, identifier: 'playbook-work-${_data.learner.learnerId}');
+    }
   }
 
   @override
   void didUpdateWidget(covariant _LearnerWorkContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final previousCurrent =
-        oldWidget.workspace.workspace.continueBlock?.session.sessionId;
-    final followCurrent =
-        _selectedSessionId == previousCurrent && _readingMaterialId == null;
-    if (followCurrent ||
-        (_selectedSessionId != null &&
-            _findSession(_selectedSessionId) == null)) {
-      _selectedSessionId = _continue?.session.sessionId;
-      _selectedAssignmentId = _assignmentFor(
-        _selectedSessionId,
-      )?.assignment.assignmentId;
-      _readingMaterialId = null;
+    if (oldWidget.initialAssignmentId != widget.initialAssignmentId) {
+      _applyInitialAssignment();
+    }
+    if (_assignmentId != null && _assignment == null) {
+      _assignmentId = null;
+      _readingId = null;
     }
   }
 
-  SessionDetail? _findSession(String? id) {
-    if (id == null) return null;
-    for (final session in _data.sessions) {
-      if (session.sessionId == id) return session;
-    }
-    for (final assignment in _data.assignedJourneys) {
-      for (final session in assignment.sessions) {
-        if (session.sessionId == id) return session;
+  void _openAssignment(
+    LearnerAssignedJourney assignment, {
+    bool resume = false,
+  }) {
+    var section = assignment.sections.firstOrNull;
+    String? reading;
+    if (resume) {
+      final next = assignment.continueBlock?.session.nextStep;
+      section =
+          assignment.sections
+              .where(
+                (section) => section.items.any(
+                  (item) => item.sessionMaterialId == next?.sessionMaterialId,
+                ),
+              )
+              .firstOrNull ??
+          section;
+      if (next?.actionKind == 'open_material') {
+        reading = next?.sessionMaterialId;
       }
     }
-    return _continue?.session.sessionId == id ? _continue?.session : null;
-  }
-
-  LearnerAssignedJourney? _assignmentFor(String? sessionId) {
-    if (sessionId == null) return null;
-    return _data.assignedJourneys
-        .where(
-          (item) =>
-              item.sessions.any((session) => session.sessionId == sessionId),
-        )
-        .firstOrNull;
-  }
-
-  LearnerAssignedJourney? get _selectedAssignment => _data.assignedJourneys
-      .where((item) => item.assignment.assignmentId == _selectedAssignmentId)
-      .firstOrNull;
-
-  SessionDetail? get _selectedSession => _findSession(_selectedSessionId);
-
-  List<SessionMaterial> _visibleMaterials(SessionDetail session) => session
-      .materials
-      .where((item) => item.isLearnerFacing || (_support && item.isAdultFacing))
-      .toList(growable: false);
-
-  void _scrollTo(GlobalKey key) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final target = key.currentContext;
-      if (mounted && target != null) {
-        Scrollable.ensureVisible(
-          target,
-          duration: const Duration(milliseconds: 220),
-          alignment: 0.04,
-        );
-      }
+    _change(() {
+      _assignmentId = assignment.assignment.assignmentId;
+      _sectionId = section?.sectionId;
+      _readingId = reading;
+      _progressOpen = false;
     });
   }
 
-  void _selectSession(SessionDetail session, {bool closeBrowse = false}) {
-    setState(() {
-      _selectedSessionId = session.sessionId;
-      _selectedAssignmentId = _assignmentFor(
-        session.sessionId,
-      )?.assignment.assignmentId;
-      _readingMaterialId = null;
-      if (closeBrowse) _browseOpen = false;
-    });
-    _scrollTo(_sessionKey);
-  }
+  void _selectSection(String id) => _change(() {
+    _sectionId = id;
+    _readingId = null;
+  });
 
-  void _selectAssignment(LearnerAssignedJourney assignment) {
-    setState(() {
-      _selectedAssignmentId = assignment.assignment.assignmentId;
-      _selectedSessionId = assignment.currentSessionId;
-      _readingMaterialId = null;
-    });
-    _scrollTo(_sessionKey);
-  }
-
-  void _openMaterial(SessionDetail session, SessionMaterial material) {
-    if (!(material.gate?.enabled ?? true)) return;
-    setState(() {
-      _selectedSessionId = session.sessionId;
-      _selectedAssignmentId = _assignmentFor(
-        session.sessionId,
-      )?.assignment.assignmentId;
-      _readingMaterialId = material.sessionMaterialId;
-    });
-    _scrollTo(_readingKey);
-  }
-
-  void _performNextStep(SessionDetail session) {
-    final step = session.nextStep;
-    if (step == null) {
-      _selectSession(session);
-      return;
-    }
-    if (!step.enabled) return;
-    final material = _visibleMaterials(session)
-        .where((item) => item.sessionMaterialId == step.sessionMaterialId)
-        .firstOrNull;
-    if (material == null) {
-      _selectSession(session);
-      return;
-    }
-    if (step.actionKind == 'start_activity') {
-      widget.onStartActivity(session, material);
-    } else {
-      _openMaterial(session, material);
-    }
-  }
-
-  Widget _panel(Widget child, {bool emphasized = false}) {
-    final theme = Theme.of(context);
-    return Material(
+  Widget _panel(Widget child, {bool emphasized = false}) => Container(
+    padding: const EdgeInsets.all(22),
+    decoration: BoxDecoration(
       color: emphasized
-          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
-          : theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: emphasized
-              ? theme.colorScheme.primary.withValues(alpha: 0.25)
-              : theme.colorScheme.outlineVariant,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: SizedBox(width: double.infinity, child: child),
-      ),
-    );
-  }
-
-  String _materialRole(SessionMaterial material) => switch (material.kind) {
-    'lesson_note' => 'Learn',
-    'teaching_note' => 'Parent guidance',
-    'quick_check' => 'Check',
-    'worksheet' || 'drill' => 'Practise',
-    _ => _materialKindLabel(material.kind),
-  };
-
-  Widget _status(String label) => Text(
-    label,
-    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ? Theme.of(
+              context,
+            ).colorScheme.primaryContainer.withValues(alpha: .45)
+          : Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
     ),
+    child: child,
   );
 
-  Widget _continueCard() {
-    final theme = Theme.of(context);
-    final block = _continue;
-    if (block == null) {
-      return _panel(
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _data.assignedJourneys.isEmpty
-                  ? 'No work assigned yet'
-                  : 'Choose something to revisit',
-              style: theme.textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _data.assignedJourneys.isEmpty
-                  ? (_support
-                        ? 'Choose a playlist or material in Learning library for ${_data.learner.displayName}.'
-                        : 'Your parent or teacher will choose your first lesson and practice.')
-                  : 'Open an assigned session below, or visit Progress & review.',
-            ),
-          ],
-        ),
-      );
-    }
-    final session = block.session;
-    final assignment = _assignmentFor(session.sessionId);
-    final step = session.nextStep;
-    return _panel(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Continue learning',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            session.title,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (assignment != null) ...[
-            const SizedBox(height: 6),
-            _status(
-              [
-                if ((assignment.journey.pathwayTitle ?? '').isNotEmpty)
-                  assignment.journey.pathwayTitle!,
-                assignment.journey.title,
-              ].join('  ›  '),
-            ),
-          ],
-          const SizedBox(height: 10),
-          Text(
-            step?.instruction ?? block.description,
-            style: theme.textTheme.bodyLarge,
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              FilledButton.icon(
-                key: const ValueKey('continue-learning'),
-                onPressed: step?.enabled == false
-                    ? null
-                    : () => _performNextStep(session),
-                icon: Icon(
-                  step?.actionKind == 'start_activity'
-                      ? Icons.play_arrow_rounded
-                      : Icons.arrow_forward_rounded,
-                ),
-                label: Text(step?.actionLabel ?? 'Open session'),
-              ),
-              TextButton(
-                onPressed: () => _selectSession(session),
-                child: const Text('View session'),
-              ),
-              if (session.estimatedMinutes > 0)
-                _status('About ${session.estimatedMinutes} minutes'),
-            ],
-          ),
-        ],
-      ),
-      emphasized: true,
-    );
-  }
+  Widget _status(String label) =>
+      Text(label, style: Theme.of(context).textTheme.bodySmall);
 
-  Widget _breadcrumb(
-    SessionDetail? session,
-    LearnerAssignedJourney? assignment,
-  ) {
+  Widget _assignedWork() {
     final theme = Theme.of(context);
-    final journey = assignment?.journey;
-    final pieces = <Widget>[
-      TextButton(
-        onPressed: () {
-          final current = _continue?.session;
-          if (current != null) _selectSession(current);
-        },
-        child: Text(_support ? 'Student work' : 'My work'),
-      ),
-      if ((journey?.pathwayTitle ?? '').isNotEmpty)
-        TextButton(
-          onPressed: () => setState(() {
-            _browseOpen = true;
-            _expandedPathwayId = journey.pathwayId;
-          }),
-          child: Text(journey!.pathwayTitle!),
-        ),
-      if (assignment != null)
-        TextButton(
-          onPressed: () => _selectAssignment(assignment),
-          child: Text(journey!.title),
-        ),
-      if (session != null)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          child: Text(
-            session.sequenceNumber == null
-                ? 'Session'
-                : 'Session ${session.sequenceNumber}',
-            style: theme.textTheme.labelLarge,
-          ),
-        ),
-    ];
-    return Wrap(
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 0,
+    final currentId = _data.workspace.continueBlock?.session.sessionId;
+    final current = _data.assignedJourneys
+        .where((a) => a.sessions.any((s) => s.sessionId == currentId))
+        .firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < pieces.length; i++) ...[
-          if (i > 0)
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 16,
-              color: theme.colorScheme.onSurfaceVariant,
+        if (current != null) ...[
+          _panel(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Continue learning', style: theme.textTheme.labelLarge),
+                const SizedBox(height: 8),
+                Text(
+                  current.journey.title,
+                  style: theme.textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  current.continueBlock?.session.nextStep?.instruction ??
+                      'Open your playbook to learn, practise or take a checkpoint.',
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  key: const ValueKey('continue-learning'),
+                  onPressed: () => _openAssignment(current, resume: true),
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  label: const Text('Continue'),
+                ),
+              ],
             ),
-          pieces[i],
+            emphasized: true,
+          ),
+          const SizedBox(height: 28),
         ],
+        Text('Your playbooks', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 6),
+        Text(
+          'Everything you need to learn, practise and check your understanding.',
+          style: theme.textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 18),
+        if (_data.assignedJourneys.isEmpty)
+          _panel(
+            Text(
+              _support
+                  ? 'Assign a playbook from the library to get started.'
+                  : 'Your teacher will choose your first playbook.',
+            ),
+          ),
+        for (final assignment in _data.assignedJourneys)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _LibraryStepRow(
+              key: ValueKey(
+                'assigned-playbook-${assignment.assignment.assignmentId}',
+              ),
+              number: null,
+              icon: Icons.auto_stories_outlined,
+              title: assignment.journey.title,
+              description: assignment.journey.pathwayTitle ?? '',
+              detail: assignment.assignment.status == 'completed'
+                  ? 'Completed · Open again to revisit or practise'
+                  : '${assignment.assignment.completedCheckpointCount} of ${assignment.assignment.checkpointCount} checkpoints complete',
+              actionLabel: 'Open playbook',
+              onTap: () => _openAssignment(assignment),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _sessionPanel() {
-    final theme = Theme.of(context);
-    final session = _selectedSession;
-    final assignment = _selectedAssignment;
-    if (session == null) {
-      return _panel(
+  Widget _materialActions(
+    SessionDetail session,
+    SessionMaterial material, {
+    bool reading = false,
+  }) {
+    final checkpoint = _sectionId == 'checkpoint';
+    final locked = !(material.gate?.enabled ?? true);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (material.isExecutable)
+          FilledButton.icon(
+            key: ValueKey('start-${material.sessionMaterialId}'),
+            onPressed: material.canStartActivity
+                ? () => widget.onStartActivity(session, material)
+                : null,
+            icon: Icon(
+              checkpoint ? Icons.flag_outlined : Icons.play_arrow_rounded,
+              size: 18,
+            ),
+            label: Text(
+              checkpoint
+                  ? 'Take checkpoint'
+                  : material.status == SessionMaterialStatus.completed
+                  ? 'Practise again'
+                  : 'Start practice',
+            ),
+          ),
+        if (!reading && (material.documentBody ?? '').isNotEmpty)
+          OutlinedButton.icon(
+            onPressed: locked
+                ? null
+                : () => _change(() => _readingId = material.sessionMaterialId),
+            icon: const Icon(Icons.menu_book_outlined, size: 18),
+            label: Text(material.isExecutable ? 'Instructions' : 'Read'),
+          ),
+        if (material.activityLevelId != null &&
+            widget.onCreateWorksheetForLevel != null)
+          OutlinedButton.icon(
+            key: ValueKey('fresh-print-${material.materialId}'),
+            onPressed: () =>
+                widget.onCreateWorksheetForLevel!(material.activityLevelId!),
+            icon: const Icon(Icons.print_outlined, size: 18),
+            label: const Text('Print fresh questions'),
+          ),
+        if (material.printable &&
+            learningMaterialPrintingSupported &&
+            (reading ||
+                !material.isExecutable ||
+                material.activityLevelId == null ||
+                widget.onCreateWorksheetForLevel == null))
+          OutlinedButton.icon(
+            onPressed: locked
+                ? null
+                : () => _runPrintAction(
+                    context,
+                    () => printLearningMaterial(
+                      _learningMaterialPrintPayload(
+                        session: session,
+                        material: material,
+                        body: material.documentBody ?? '',
+                      ),
+                    ),
+                  ),
+            icon: const Icon(Icons.print_outlined, size: 18),
+            label: Text(material.isExecutable ? 'Print instructions' : 'Print'),
+          ),
+        if (_support &&
+            checkpoint &&
+            !material.isExecutable &&
+            widget.onRecordPaperResult != null)
+          FilledButton.tonalIcon(
+            onPressed: () => widget.onRecordPaperResult!(session),
+            icon: const Icon(Icons.task_alt, size: 18),
+            label: const Text('Record paper result'),
+          ),
+        if (_support && material.readiness != null)
+          TextButton.icon(
+            onPressed: () => _showReadiness(material),
+            icon: const Icon(Icons.tune, size: 18),
+            label: const Text('Practice target'),
+          ),
+      ],
+    );
+  }
+
+  Widget _materialCard(PlaybookSectionItem item) {
+    final session = _sessionFor(item);
+    final material = _materialFor(item);
+    if (session == null || material == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _panel(
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (assignment != null) ...[
-              _breadcrumb(null, assignment),
-              Text(assignment.journey.title, style: theme.textTheme.titleLarge),
-              const SizedBox(height: 6),
-              _status(assignment.journey.sourceLabel),
-              const SizedBox(height: 12),
-              for (final item in assignment.sessions) _sessionLink(item),
-            ] else ...[
-              Text('Your session', style: theme.textTheme.titleLarge),
-              const SizedBox(height: 8),
-              const Text(
-                'Choose a session from Assigned learning to see its lesson and practice.',
+            Text(
+              material.title,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            if (material.checkpointPolicy != null)
+              _CheckpointConditions(policy: material.checkpointPolicy!),
+            const SizedBox(height: 6),
+            if (material.readiness != null)
+              _status(material.readiness!.detailLabel),
+            if (material.gate?.enabled == false)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  material.gate!.reasonLabel,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
-            ],
+            if (material.status == SessionMaterialStatus.completed)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: _status('Previous attempt recorded'),
+              ),
+            const SizedBox(height: 14),
+            _materialActions(session, material),
           ],
         ),
-      );
-    }
-    final materials = _visibleMaterials(session);
-    final reading = materials
-        .where((item) => item.sessionMaterialId == _readingMaterialId)
-        .firstOrNull;
+      ),
+    );
+  }
+
+  Widget _reader(PlaybookSectionItem item) {
+    final session = _sessionFor(item)!;
+    final material = _materialFor(item)!;
     return _panel(
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _breadcrumb(session, assignment),
-          const SizedBox(height: 6),
-          Text(
-            session.title,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _status(
-            [
-              session.status.label,
-              if (session.estimatedMinutes > 0)
-                '${session.estimatedMinutes} min',
-              if (session.requiresAdultSupport) 'With adult support',
-              if (assignment != null) assignment.journey.sourceLabel,
-            ].join(' · '),
-          ),
-          const SizedBox(height: 20),
-          Text('In this session', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 6),
-          if (materials.isEmpty)
-            const Text('The materials for this session are not available yet.')
-          else
-            for (var i = 0; i < materials.length; i++)
-              _materialRow(session, materials[i], i + 1),
-          if (reading != null) ...[
-            const SizedBox(height: 20),
-            Container(key: _readingKey, child: _readingPanel(session, reading)),
-          ],
-          if (assignment != null && assignment.sessions.length > 1) ...[
-            const Divider(height: 32),
-            Theme(
-              data: theme.copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: EdgeInsets.zero,
-                title: const Text('Other sessions in this playlist'),
-                subtitle: Text(
-                  '${assignment.journey.completedSessionCount} of ${assignment.journey.totalSessionCount} sessions finished',
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _materialActions(session, material, reading: true),
+              if (_readingId != null &&
+                  _sectionId != 'learn' &&
+                  _sectionId != 'teach')
+                TextButton.icon(
+                  onPressed: () => _change(() => _readingId = null),
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Close reading'),
                 ),
-                children: [
-                  for (final item in assignment.sessions) _sessionLink(item),
-                ],
-              ),
+            ],
+          ),
+          const Divider(height: 32),
+          SelectionArea(
+            child: MarkdownBody(
+              data: material.documentBody ?? '',
+              selectable: true,
+              styleSheet: _workspaceMarkdownStyle(Theme.of(context)),
             ),
-          ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _materialRow(
-    SessionDetail session,
-    SessionMaterial material,
-    int number,
-  ) {
-    final theme = Theme.of(context);
-    final next =
-        session.nextStep?.sessionMaterialId == material.sessionMaterialId;
-    final locked = !(material.gate?.enabled ?? true);
-    final reading = _readingMaterialId == material.sessionMaterialId;
-    final canRead =
-        !locked &&
-        (material.documentBody ?? '').trim().isNotEmpty &&
-        (!material.isExecutable || _support);
-    final repeat = material.status == SessionMaterialStatus.completed;
-    final action = material.isExecutable
-        ? _materialActionLabel(material.kind, repeat: repeat)
-        : _materialDocumentActionLabel(material.kind);
-    return Container(
-      key: ValueKey('session-step-${material.sessionMaterialId}'),
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: reading
-            ? theme.colorScheme.secondaryContainer.withValues(alpha: 0.3)
-            : next
-            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.18)
-            : null,
-        border: Border.all(
-          color: next
-              ? theme.colorScheme.primary.withValues(alpha: 0.35)
-              : theme.colorScheme.outlineVariant,
+  Widget _playbook() {
+    final assignment = _assignment!;
+    final section = _section;
+    final items =
+        section?.items.where((item) => _materialFor(item) != null).toList() ??
+        <PlaybookSectionItem>[];
+    final explicitReading = items
+        .where((item) => item.sessionMaterialId == _readingId)
+        .firstOrNull;
+    final reading =
+        explicitReading ??
+        ((_sectionId == 'learn' || _sectionId == 'teach')
+            ? items
+                  .where(
+                    (item) =>
+                        (_materialFor(item)?.documentBody ?? '').isNotEmpty,
+                  )
+                  .firstOrNull
+            : null);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => _change(() {
+              _assignmentId = null;
+              _readingId = null;
+            }),
+            icon: const Icon(Icons.arrow_back, size: 18),
+            label: const Text('All my playbooks'),
+          ),
         ),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 28,
-                child: Text('$number', style: theme.textTheme.titleMedium),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 12),
+        if ((assignment.journey.pathwayTitle ?? '').isNotEmpty)
+          _status(assignment.journey.pathwayTitle!),
+        const SizedBox(height: 6),
+        Text(
+          assignment.journey.title,
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 20),
+        _PlaybookSectionTabs(
+          sections: assignment.sections,
+          selectedId: _sectionId ?? '',
+          onSelected: _selectSection,
+        ),
+        const SizedBox(height: 24),
+        if (section != null) ...[
+          Text(
+            section.description,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          const SizedBox(height: 20),
+          if (items.isEmpty)
+            _panel(const Text('No additional material is needed here.')),
+          if (reading != null) ...[
+            if (items.length > 1 &&
+                (_sectionId == 'learn' || _sectionId == 'teach'))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    Text(
-                      _materialRole(material),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.primary,
+                    for (final item in items)
+                      ChoiceChip(
+                        label: Text(_materialFor(item)!.title),
+                        selected:
+                            reading.sessionMaterialId == item.sessionMaterialId,
+                        onSelected: (_) =>
+                            _change(() => _readingId = item.sessionMaterialId),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(material.title, style: theme.textTheme.titleSmall),
-                    const SizedBox(height: 4),
-                    _status(
-                      [
-                        if (next) 'Next step',
-                        if (material.estimatedMinutes > 0)
-                          '${material.estimatedMinutes} min',
-                        if (repeat) 'Finished',
-                        if (material.readiness != null)
-                          material.readiness!.statusLabel,
-                      ].join(' · '),
-                    ),
                   ],
                 ),
               ),
-              if (locked)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Icon(Icons.lock_outline_rounded, size: 19),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              if (material.isExecutable)
-                FilledButton.tonalIcon(
-                  onPressed: material.canStartActivity
-                      ? () => widget.onStartActivity(session, material)
-                      : null,
-                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                  label: Text(action),
-                )
-              else
-                OutlinedButton.icon(
-                  onPressed: canRead
-                      ? () => _openMaterial(session, material)
-                      : null,
-                  icon: const Icon(Icons.menu_book_outlined, size: 18),
-                  label: Text(action),
-                ),
-              if (material.isExecutable && canRead)
-                TextButton(
-                  onPressed: () => _openMaterial(session, material),
-                  child: const Text('Activity notes'),
-                ),
-              if (_support && material.readiness != null)
-                TextButton.icon(
-                  onPressed: () => _showReadiness(material),
-                  icon: const Icon(Icons.tune_rounded, size: 17),
-                  label: const Text('Practice target'),
-                ),
-            ],
-          ),
-          if (locked) ...[
-            const SizedBox(height: 6),
-            Text(
-              material.gate!.reasonLabel,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-            ),
-          ],
+            _reader(reading),
+          ] else
+            for (final item in items) _materialCard(item),
         ],
-      ),
-    );
-  }
-
-  Widget _readingPanel(SessionDetail session, SessionMaterial material) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(material.title, style: theme.textTheme.titleLarge),
-            ),
-            IconButton(
-              onPressed: () => setState(() => _readingMaterialId = null),
-              tooltip: 'Close material and return to session',
-              icon: const Icon(Icons.close_rounded),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SelectionArea(
-          child: MarkdownBody(
-            data: material.documentBody ?? '',
-            selectable: true,
-            styleSheet: _workspaceMarkdownStyle(theme),
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (_support && !material.isExecutable) ...[
-          _status('Record completed paper work in Learners.'),
-          const SizedBox(height: 8),
-        ],
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          children: [
-            TextButton.icon(
-              onPressed: () {
-                setState(() => _readingMaterialId = null);
-                _scrollTo(_sessionKey);
-              },
-              icon: const Icon(Icons.arrow_back_rounded, size: 18),
-              label: const Text('Back to session'),
-            ),
-            if (_support &&
-                material.printable &&
-                learningMaterialPrintingSupported)
-              OutlinedButton.icon(
-                onPressed: () => _runPrintAction(
-                  context,
-                  () => printLearningMaterial(
-                    _learningMaterialPrintPayload(
-                      session: session,
-                      material: material,
-                      body: material.documentBody ?? '',
-                    ),
-                  ),
-                ),
-                icon: const Icon(Icons.print_outlined, size: 18),
-                label: const Text('Print'),
-              ),
-            if (widget.viewerCanReadLibrary &&
-                material.documentRoutePath != null)
-              TextButton(
-                onPressed: () =>
-                    widget.onOpenLibraryRoute(material.documentRoutePath!),
-                child: const Text('Open reference page'),
-              ),
-          ],
-        ),
       ],
     );
   }
@@ -684,133 +523,6 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
                 readiness.overrideApplied ? 'Edit target' : 'Set target',
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sessionLink(SessionDetail session, {bool closeBrowse = false}) =>
-      ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-        selected: session.sessionId == _selectedSessionId,
-        leading: Icon(
-          session.status == SessionStatus.completed
-              ? Icons.check_circle_outline_rounded
-              : Icons.circle_outlined,
-          size: 18,
-        ),
-        title: Text(
-          session.sequenceNumber == null
-              ? session.title
-              : '${session.sequenceNumber}. ${session.title}',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: session.sessionId == _continue?.session.sessionId
-            ? const Text('Continue here')
-            : null,
-        onTap: () => _selectSession(session, closeBrowse: closeBrowse),
-      );
-
-  Widget _assignmentOutline(
-    LearnerAssignedJourney assignment, {
-    required bool narrow,
-  }) {
-    final current = assignment.assignment.assignmentId == _selectedAssignmentId;
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        key: ValueKey(
-          'learning-assignment-${assignment.assignment.assignmentId}-$current',
-        ),
-        initiallyExpanded: current,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-        childrenPadding: const EdgeInsets.only(left: 12),
-        title: Text(
-          assignment.journey.title,
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-        subtitle: Text(
-          '${assignment.journey.sourceLabel} · ${assignment.journey.completedSessionCount}/${assignment.journey.totalSessionCount} sessions finished',
-        ),
-        children: [
-          for (final session in assignment.sessions)
-            _sessionLink(session, closeBrowse: narrow),
-        ],
-      ),
-    );
-  }
-
-  Widget _assignedLearning({required bool narrow}) {
-    final theme = Theme.of(context);
-    return _panel(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _browseOpen ? 'Browse learning' : 'Assigned learning',
-            style: theme.textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          if (_data.assignedPathways.isEmpty && _data.assignedJourneys.isEmpty)
-            const Text('Assigned lessons and practice will appear here.'),
-          for (final pathway in _data.assignedPathways)
-            if (_browseOpen)
-              Theme(
-                data: theme.copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  key: ValueKey(
-                    'learning-pathway-${pathway.pathwayId}-${_expandedPathwayId == pathway.pathwayId}',
-                  ),
-                  initiallyExpanded: _expandedPathwayId == pathway.pathwayId,
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: EdgeInsets.zero,
-                  title: Text(
-                    pathway.pathwayTitle,
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  subtitle: Text(pathway.summaryLabel),
-                  children: [
-                    for (final assignment in pathway.assignments)
-                      _assignmentOutline(assignment, narrow: narrow),
-                  ],
-                ),
-              )
-            else
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  pathway.pathwayTitle,
-                  style: theme.textTheme.titleSmall,
-                ),
-                subtitle: Text(
-                  '${pathway.summaryLabel}\n${pathway.completedSessionCount}/${pathway.totalSessionCount} sessions finished',
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-                onTap: () => setState(() {
-                  _browseOpen = true;
-                  _expandedPathwayId = pathway.pathwayId;
-                }),
-              ),
-          if (_data.assignedPathways.isEmpty)
-            for (final assignment in _data.assignedJourneys)
-              _browseOpen
-                  ? _assignmentOutline(assignment, narrow: narrow)
-                  : ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(assignment.journey.title),
-                      subtitle: Text(assignment.journey.sourceLabel),
-                      onTap: () => _selectAssignment(assignment),
-                    ),
-          if (!_browseOpen && _data.assignedJourneys.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            TextButton.icon(
-              onPressed: () => setState(() => _browseOpen = true),
-              icon: const Icon(Icons.account_tree_outlined, size: 18),
-              label: const Text('Browse learning'),
-            ),
-          ],
         ],
       ),
     );
@@ -873,90 +585,43 @@ class _LearnerWorkContentState extends State<_LearnerWorkContent> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 980;
-        final assigned = _assignedLearning(narrow: !wide);
-        final session = Container(key: _sessionKey, child: _sessionPanel());
-        return ListView(
-          padding: EdgeInsets.all(wide ? 24 : 16),
-          children: [
-            Wrap(
-              spacing: 20,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.center,
+  Widget build(BuildContext context) => ListView(
+    padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 700 ? 16 : 28),
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _support
-                          ? '${_data.learner.displayName}’s work'
-                          : 'My work',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (!_support) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        _data.learner.displayName,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
+                Text(
+                  _support ? '${_data.learner.displayName}’s work' : 'My work',
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                OutlinedButton.icon(
-                  onPressed: () => setState(() => _browseOpen = !_browseOpen),
-                  icon: Icon(
-                    _browseOpen
-                        ? Icons.close_rounded
-                        : Icons.account_tree_outlined,
-                    size: 18,
-                  ),
-                  label: Text(
-                    _browseOpen ? 'Close learning outline' : 'Browse learning',
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() => _progressOpen = !_progressOpen);
-                    if (_progressOpen) _scrollTo(_progressKey);
-                  },
-                  icon: const Icon(Icons.insights_outlined, size: 18),
-                  label: const Text('Progress & review'),
+                const SizedBox(height: 4),
+                _status(
+                  _support
+                      ? 'Viewing learner work · owner profile'
+                      : _data.learner.displayName,
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            _continueCard(),
-            const SizedBox(height: 20),
-            if (wide)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(width: 300, child: assigned),
-                  const SizedBox(width: 20),
-                  Expanded(child: session),
-                ],
-              )
-            else ...[
-              if (_browseOpen) ...[assigned, const SizedBox(height: 16)],
-              session,
-              if (!_browseOpen) ...[const SizedBox(height: 16), assigned],
-            ],
-            if (_progressOpen) ...[
-              const SizedBox(height: 20),
-              Container(key: _progressKey, child: _progressPanel()),
-            ],
-            const SizedBox(height: 20),
-          ],
-        );
-      },
-    );
-  }
+          ),
+          IconButton(
+            tooltip: _progressOpen ? 'Close progress' : 'Progress and review',
+            onPressed: () => _change(() => _progressOpen = !_progressOpen),
+            icon: const Icon(Icons.insights_outlined),
+          ),
+        ],
+      ),
+      const SizedBox(height: 24),
+      if (_progressOpen)
+        _progressPanel()
+      else if (_assignment != null)
+        _playbook()
+      else
+        _assignedWork(),
+      const SizedBox(height: 32),
+    ],
+  );
 }

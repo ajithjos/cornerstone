@@ -13,8 +13,16 @@ class LearnerWorkspaceView extends StatelessWidget {
     required this.onStartReview,
     this.onSetReadinessOverride,
     this.onClearReadinessOverride,
+    this.onCreateWorksheetForLevel,
+    this.onRecordPaperResult,
+    this.initialAssignmentId,
+    this.onInitialAssignmentHandled,
   });
 
+  final ValueChanged<String>? onCreateWorksheetForLevel;
+  final Future<void> Function(SessionDetail)? onRecordPaperResult;
+  final String? initialAssignmentId;
+  final VoidCallback? onInitialAssignmentHandled;
   final ViewerUser? viewer;
   final LearnerWorkspacePayload? workspace;
   final bool viewerCanReadLibrary;
@@ -51,6 +59,10 @@ class LearnerWorkspaceView extends StatelessWidget {
       onStartReview: onStartReview,
       onSetReadinessOverride: onSetReadinessOverride,
       onClearReadinessOverride: onClearReadinessOverride,
+      onCreateWorksheetForLevel: onCreateWorksheetForLevel,
+      onRecordPaperResult: onRecordPaperResult,
+      initialAssignmentId: initialAssignmentId,
+      onInitialAssignmentHandled: onInitialAssignmentHandled,
     );
   }
 }

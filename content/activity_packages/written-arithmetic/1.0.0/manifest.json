@@ -4,15 +4,17 @@
   "protocol_version": 1,
   "entry": "index.html",
   "files": [
-    "index.html",
-    "styles.css",
+    "activity.js",
     "bridge.js",
-    "activity.js"
+    "foundation.css",
+    "index.html",
+    "styles.css"
   ],
   "sha256": {
-    "index.html": "54d114120bbce5851775773473691348e6521727ba5018ac8ec05d1f484ee1d6",
-    "styles.css": "d0a83458fd35fe5e81caf425baee7e83241249695659b1c003919e9b7c45d6a5",
-    "bridge.js": "ec3037daa3b1fca43ec5a4c2d60298a328c445f163fb3d1f517b2ff8d9940e91",
-    "activity.js": "57e6c207b0767bbbd4441efe27167b203f7c6fdbe87d8569d3ffadcd886e4135"
+    "activity.js": "57e6c207b0767bbbd4441efe27167b203f7c6fdbe87d8569d3ffadcd886e4135",
+    "bridge.js": "985194aa8f27228934ca908034c5864f1272e375e65aa027c629dba1146ed473",
+    "foundation.css": "c4017ef18b6b434b7d4772838e481dbf028ebcfbf5b50d1f92f92b6d878d456a",
+    "index.html": "f6e0b8c55acb5bf2b3da554065e8fb0d78e1886775b31c9b0d1da6c7bd6e33d4",
+    "styles.css": "103c726085e0135dfc8369729bd9f2b2ea16032c2b3b480404983c7438b375e3"
   }
 }

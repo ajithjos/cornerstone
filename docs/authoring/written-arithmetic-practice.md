@@ -1,22 +1,17 @@
 # Written arithmetic practice
 
-Written arithmetic is available both as assignable curriculum materials and as a
-fresh worksheet generator. Both use the same Rust arithmetic engine and the same
-versioned on-screen activity package. Start with the **Arithmetic Written Methods**
-lesson notes, demonstrate one example, then select a small practice set.
+Written arithmetic lives inside the Arithmetic Written Methods playbooks. Each playbook contains owner-only Teach, learner Learn, repeatable Practice levels and independent Checkpoints. Screen exercises and printable sheets use the same Rust engine and separately delivered activity package.
 
 ## Choose how to use it
 
 | Need | Route | What is recorded |
 | --- | --- | --- |
-| Give one learner a particular arithmetic level | Open **Library**, browse **Arithmetic Written Methods → Extra practice**, choose the level, and assign it to the learner | A scheduled session, a stored activity attempt, and completion evidence |
-| Teach an ordered sequence of lessons and practice | Assign a playlist | Its scheduled sessions and their evidence |
-| Print fresh practice or try an extra on-screen set | Choose **Create a worksheet** | No learner progress or completion evidence |
+| Teach the method | Open the playbook's Teach and Learn sections | Printable reference and teaching guidance |
+| Give a learner repeated practice | Assign the playbook, open Practice and choose a level | Stored attempts and practice results |
+| Check a level independently | Open Checkpoint and choose the matching level | Passed only when its stated accuracy/time contract is met |
+| Print fresh practice | Use Print practice for the chosen level | Blank guided or compact sheets; answer keys only for owners |
 
-A material can be assigned on its own without adding it to a playlist. Written
-materials offer **Assisted practice** and **Assessment** assignment modes.
-Assisted practice is the default. The assignment owns the selected mode; the
-learner cannot switch an assessment into assisted practice while completing it.
+Practice supplies assisted correction. Checkpoints are independent assessments; the learner cannot switch an assigned checkpoint into assisted practice. A separate free worksheet generator is also available for unrecorded paper or screen work.
 
 In assisted practice, **Check this exercise** checks the entered boxes in one
 calculation and explains mistakes. The learner can correct the working before
@@ -80,7 +75,7 @@ Open the HTML file in a browser and print or save as PDF. Omit `--seed` for a
 fresh set and omit `--answers` for questions only. The default is six questions;
 the engine accepts 1–24. The default layout is `guided`.
 
-## Author an assignable written material
+## Author a written practice material
 
 Each level is an ordinary `worksheet` material inside the owning pathway. Its
 runtime block selects a Rust level and a presentation package:
@@ -101,10 +96,7 @@ runtime:
 
 Keep the material's skill and stage links, prerequisite, and teaching instructions
 clear. The lesson note teaches the method; the interactive worksheet supplies
-practice. A standalone material remains visible and directly assignable from
-the learning library even when no playlist references it. The pathway's **Extra
-practice** groups preserve the operation and level progression alongside the
-authored playlists and sessions.
+practice. Reference the material in its playbook's Practice section, and its independent assessment in Checkpoint. The learner stays within the same playbook for learning, fresh practice and checks.
 
 The exact grid, grading plan, mode, and package descriptor are stored when an
 assigned attempt starts. Reopening an in-progress attempt resumes that plan.
@@ -153,3 +145,7 @@ with a new version without compiling the main Flutter application; see
 
 All operations in this table require an authenticated session. Assignment and
 answer-key permissions are enforced by the control plane.
+
+## Current playbook contract
+
+All 23 written practice levels are now part of the corresponding playbook Practice section. Each has a matching generated Checkpoint with six questions, all calculations correct, no time limit and corrections after submission. These establish level completion, not broad skill confirmation. Broader paper checkpoints remain available with an explicit 90% target. Owners see Teach; both audiences see Learn, Practice and Checkpoint. A learner can generate blank sheets; answer keys are owner-only. Assign whole playbooks.

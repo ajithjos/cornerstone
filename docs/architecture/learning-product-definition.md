@@ -1,70 +1,28 @@
-# Learning Product Definition
+# Learning product definition
 
-Cornerstone uses one stable domain model across authored content, backend APIs, frontend UI, and docs.
+Cornerstone delivers one assignable playbook. The persisted curriculum name is `playlist`; “playbook” is its user-facing name. A pathway orders related playbooks. Subjects and areas organise browsing, stages organise progression, and skills describe what evidence can establish.
 
-## Core Objects
+## Four explicit sections
 
-### Curriculum
+Every playbook declares, in order:
 
-- Subject: the top-level discipline, such as maths or english.
-- Area: a coherent slice inside a subject, such as arithmetic or reading.
-- Pathway: the canonical whole-route container inside one subject and area.
-- Stage: a parent-facing learning progression step inside a pathway.
-- Skill: the smallest unit tracked in learner progress.
-- Material: one reusable teaching, practice, drill, or checking artifact.
-- Playlist: an ordered set of sessions that uses real materials.
+- **Teach**: owner-only teaching rationale, sequence, examples, correction advice and answer keys. Shared guidance is referenced by several playbooks, not copied per lesson. This section stays accessible during learning, practice and checking.
+- **Learn**: the learner's durable explanation, worked examples and reference tables; readable and printable.
+- **Practice**: reusable practice capabilities and paper exercises. A new attempt generates a fresh valid set. An unfinished attempt resumes its issued plan. A completed attempt can be followed by another. Written levels belong here, inside their playbook.
+- **Checkpoint**: independent work with explicit coverage, accuracy and optional time criteria. A generated checkpoint uses the same runtime capabilities as practice with assessment rules. Paper checkpoints carry explicit marking targets.
 
-### Runtime
+Owners see all four. Learners receive only Learn, Practice and Checkpoint from the backend; Teach is not merely hidden by Flutter. Viewing a learner's work never changes the owner's active identity. Profile switching is a separate action.
 
-- Team: the learning team.
-- User: one person in the team.
-- Learner: a user who receives assignments.
-- Assignment: one learner's live use of one playlist over time.
-- Session: a scheduled unit of work inside an assignment.
-- Evidence: the recorded outcome of a completed session.
-- Progress: the learner's current state for each skill, derived from evidence.
+## Assignment and completion
 
-## Relationship Model
+Assign a playbook to an explicitly selected learner. Materials are reusable assets inside the playbook, not separately assigned work. Opening a material retains its playbook and section context.
 
-- A subject contains one or more areas.
-- An area contains one or more pathways.
-- A pathway contains stages, skills, playlists, materials, and entry guidance.
-- A stage groups a meaningful set of skills.
-- A material supports one or more skills and one or more stages.
-- A playlist sequences materials into sessions for a learner.
-- An assignment instantiates one playlist for one learner.
-- A session produces evidence.
-- Evidence updates progress.
+An assignment completes when all its checkpoints are completed successfully. Reading and unlimited practice do not require artificial completion actions. Submitted failed checkpoints remain unfinished and can be attempted again. A completed checkpoint is not automatically evidence that every broader skill is confirmed: that requires representative skill coverage.
 
-## File Ownership
+`completion_percent`, `checkpoint_count` and `completed_checkpoint_count` describe this contract. Session counts remain internal execution statistics.
 
-- `content/library/registry.yaml`
-- `content/library/{subject}/{area}/{pathway}/pathway.md`
-- `content/library/{subject}/{area}/{pathway}/stages/*.md`
-- `content/library/{subject}/{area}/{pathway}/skills/*.md`
-- `content/library/{subject}/{area}/{pathway}/playlists/*.md`
-- `content/library/{subject}/{area}/{pathway}/materials/*.md`
+## Ownership
 
-The pathway directory is the canonical authored source for cleaned curriculum slices.
+Authored files declare section membership, skills, runtime parameters and assessment criteria. Rust compiles these into explicit owner and learner delivery contracts and owns generation, marking, assignments, evidence and progress. Flutter renders those contracts. Independently delivered activity packages render backend-owned exercises inside the app frame using the host's appearance contract.
 
-## Product Rules
-
-- Track learner progress at the skill level, not at the material level.
-- Use pathways for the whole route and playlists for the directly assignable block.
-- Use stages for learning progression, not for age bands or one-off session events.
-- Keep age or school-year guidance on pathways and playlists as entry guidance.
-- Keep materials reusable. A playlist should reference materials; it should not contain curriculum data that belongs in skills or stages.
-- Keep subject and area visible in authoring and browsing surfaces. They are stable navigation boundaries.
-
-## What We Do Not Model
-
-- No mandatory `program` object.
-- No vague planning object that duplicates pathway, playlist, or assignment responsibilities.
-- No `capability`, `milestone`, `resource`, or `plan template` aliases.
-- No separate progress object for every worksheet or page.
-
-## Operational Notes
-
-- Review queues or reminders can exist as derived runtime helpers.
-- They are downstream of progress, not part of the core curriculum model.
-- The runtime loader reads directly from `content/library/`.
+There is one current model and one initial database migration. This cutover requires a fresh database. It does not migrate or reinterpret older assignments, package pins or activity instances.

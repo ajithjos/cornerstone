@@ -42,7 +42,7 @@ use crate::domain::{
     SessionSummary, SkillProgressRow, SkillProgressSummary, StageProgress, TeamMemberRow, TeamMemberSummary, TeamRow,
     TeamSummary, ViewerSessionResponse, WorkspaceMaterialKindGroupSummary,
 };
-use crate::domain::{LibraryPracticeGroupSummary, MaterialContextSummary, SessionNextStepSummary};
+use crate::domain::{MaterialContextSummary, SessionNextStepSummary};
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
@@ -515,9 +515,118 @@ fn material_audience(kind: &str) -> &'static str {
     }
 }
 
-fn material_printable(kind: &str, document_body: Option<&str>) -> bool {
-    matches!(kind, LESSON_NOTE_KIND | WORKSHEET_KIND)
-        && document_body.map(|body| !body.trim().is_empty()).unwrap_or(false)
+fn material_printable(_kind: &str, document_body: Option<&str>) -> bool {
+    document_body.is_some_and(|body| !body.trim().is_empty())
+}
+
+fn material_activity_level(material: &catalog::MaterialDocument) -> Option<String> {
+    material
+        .runtime
+        .as_ref()
+        .filter(|runtime| runtime.engine_id == written_arithmetic::ENGINE_ID)
+        .map(|runtime| runtime.template_id.clone())
+}
+
+fn checkpoint_policy(material: &catalog::MaterialDocument) -> Option<crate::domain::CheckpointPolicySummary> {
+    if material.kind != QUICK_CHECK_KIND {
+        return None;
+    }
+    if let Some(policy) = &material.checkpoint {
+        return Some(crate::domain::CheckpointPolicySummary {
+            question_count: policy.question_count,
+            target_accuracy: policy.target_accuracy,
+            max_duration_seconds: policy.max_duration_seconds,
+        });
+    }
+    let runtime = material.runtime.as_ref()?;
+    Some(crate::domain::CheckpointPolicySummary {
+        question_count: runtime.parameters.get("question_count")?.as_u64()? as usize,
+        target_accuracy: runtime.scoring.as_ref()?.target_accuracy?,
+        max_duration_seconds: runtime.scoring.as_ref()?.max_duration_seconds,
+    })
+}
+
+fn section_heading(id: &str) -> (&'static str, &'static str) {
+    match id {
+        "teach" => (
+            "Teach",
+            "Teaching approach, worked guidance and correction advice. For owners only.",
+        ),
+        "learn" => (
+            "Learn",
+            "Read the explanation, study the examples, or print a reference to keep.",
+        ),
+        "practice" => (
+            "Practice",
+            "Choose a level. Practise with fresh questions as often as needed, on screen or on paper.",
+        ),
+        _ => (
+            "Checkpoint",
+            "Work independently. Meet the stated target to complete each checkpoint.",
+        ),
+    }
+}
+
+fn library_playbook_sections(playlist: &catalog::Playlist) -> Vec<crate::domain::PlaybookSectionSummary> {
+    playlist
+        .sections
+        .iter()
+        .map(|section| {
+            let (title, description) = section_heading(&section.section_id);
+            crate::domain::PlaybookSectionSummary {
+                section_id: section.section_id.clone(),
+                title: title.into(),
+                description: description.into(),
+                items: section
+                    .material_ids
+                    .iter()
+                    .filter_map(|material_id| {
+                        let index = playlist
+                            .session_pattern
+                            .sessions
+                            .iter()
+                            .position(|session| session.material_ids.contains(material_id))?;
+                        Some(crate::domain::PlaybookSectionItemSummary {
+                            material_id: material_id.clone(),
+                            session_index: index + 1,
+                            session_id: None,
+                            session_material_id: None,
+                        })
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
+}
+
+fn assigned_playbook_sections(
+    playlist: &catalog::Playlist,
+    sessions: &[SessionDetail],
+) -> Vec<crate::domain::PlaybookSectionSummary> {
+    let mut sections = library_playbook_sections(playlist);
+    for section in &mut sections {
+        section.items.retain_mut(|item| {
+            let Some(session) = sessions.iter().find(|session| {
+                session
+                    .materials
+                    .iter()
+                    .any(|material| material.material_id == item.material_id)
+            }) else {
+                return false;
+            };
+            let Some(material) = session
+                .materials
+                .iter()
+                .find(|material| material.material_id == item.material_id)
+            else {
+                return false;
+            };
+            item.session_id = Some(session.session_id.clone());
+            item.session_material_id = Some(material.session_material_id.clone());
+            true
+        });
+    }
+    sections
 }
 
 fn dominant_kind_for_materials<'a>(kinds: impl IntoIterator<Item = &'a str>) -> String {
@@ -641,9 +750,9 @@ fn next_step_for_session(
     else {
         return (requires_adult_support || !materials.is_empty()).then(|| SessionNextStepSummary {
             session_material_id: None,
-            title: "Review and record this session".into(),
+            title: "Review your work".into(),
             instruction:
-                "The activity is finished. Ask an adult to review the reading or paper work and record this session."
+                "Your activity is finished. You can practise again or open Checkpoint. Ask an owner to record any marked paper work."
                     .into(),
             action_label: "Adult review".into(),
             action_kind: "adult_guidance".into(),
@@ -681,23 +790,23 @@ fn next_step_for_session(
     let (action_kind, action_label, instruction) = if material.audience == AUDIENCE_ADULT {
         (
             "open_material",
-            "Read teaching note",
-            "Read the teaching guidance, then help the learner with the materials in order.",
+            "Open Teach",
+            "Read the teaching guidance, then help the learner through Learn, Practice and Checkpoint.",
         )
     } else if material.runtime.as_ref().is_some_and(|runtime| runtime.executable) {
         if material.kind == QUICK_CHECK_KIND {
             (
                 "start_activity",
-                "Take check",
-                "Complete the check independently, then submit your answers.",
+                "Start checkpoint",
+                "Complete the checkpoint independently, then submit your answers.",
             )
         } else {
             (
                 "start_activity",
                 if material.status == SessionMaterialStatus::Active {
-                    "Continue activity"
+                    "Continue practice"
                 } else {
-                    "Start activity"
+                    "Start practice"
                 },
                 "Open the activity, complete the questions and working, then submit your work.",
             )
@@ -706,7 +815,7 @@ fn next_step_for_session(
         (
             "open_material",
             "Read lesson",
-            "Read the explanation and study the worked examples. Then move to the practice material in this session.",
+            "Read the explanation and study the worked examples. Then open Practice for fresh questions.",
         )
     } else if material.kind == WORKSHEET_KIND {
         (
@@ -717,8 +826,8 @@ fn next_step_for_session(
     } else {
         (
             "open_material",
-            "Open material",
-            "Complete this material, then continue through the session in order.",
+            "Open page",
+            "Work independently, then ask an owner to mark and record the paper checkpoint.",
         )
     };
     Some(SessionNextStepSummary {
@@ -741,7 +850,7 @@ fn session_action_label(session: &SessionDetail) -> String {
         WORKSHEET_KIND => "Open practice".to_string(),
         DRILL_KIND => "Start live practice".to_string(),
         QUICK_CHECK_KIND => "Take quick check".to_string(),
-        _ => "Open session".to_string(),
+        _ => "Open playbook".to_string(),
     }
 }
 
@@ -766,19 +875,19 @@ fn continue_block_description(session: &SessionDetail) -> String {
     } else {
         "a short focused block".to_string()
     };
-    if session.requires_adult_support {
+    if session.adult_material_count > 0 {
         format!(
-            "Start with the teaching note for this session, then move into the learner work. Plan {}.",
+            "Teach explains how to help the learner. Then open Learn, Practice or Checkpoint. Allow {}.",
             minute_label
         )
     } else if session.live_material_count > 0 {
         format!(
-            "Open the learner materials and launch the live activity when ready. Plan {}.",
+            "Open the playbook and start an exercise when ready. Allow {}.",
             minute_label
         )
     } else {
         format!(
-            "Open the learner materials for the next step in the journey. Plan {}.",
+            "Read the explanation, then open Practice for fresh questions. Allow {}.",
             minute_label
         )
     }
@@ -817,7 +926,7 @@ fn dashboard_attention_summary(
     (
         "needs_assignment".to_string(),
         "Needs assignment".to_string(),
-        "Choose a pathway or material".to_string(),
+        "Choose a playbook".to_string(),
     )
 }
 
@@ -1278,7 +1387,7 @@ async fn resolve_owner_for_google_identity(
 }
 
 pub async fn reload_library(state: &Arc<AppState>, context: &SessionContext) -> anyhow::Result<LibraryReloadResponse> {
-    ensure_viewer_can_manage_team(&context.authenticated_user)?;
+    ensure_viewer_can_manage_team(&context.active_user)?;
 
     let library_content = load_library_content(&state.config.content_root)?;
     validate_supported_material_runtimes(&library_content.bundle)?;
@@ -1925,23 +2034,11 @@ pub async fn create_assignment(
     ensure_learner_in_team(state, context, &request.learner_id).await?;
     let library = state.library.read().await.clone();
     let date = request.start_date.unwrap_or_else(|| Utc::now().date_naive());
-    let assignment = match (request.playlist_id.as_deref(), request.material_id.as_deref()) {
-        (Some(playlist_id), None) if !playlist_id.trim().is_empty() && request.activity_mode.is_none() => {
-            create_assignment_internal(state, &library, &request.learner_id, playlist_id, date).await?
-        }
-        (None, Some(material_id)) if !material_id.trim().is_empty() => {
-            create_material_assignment(
-                state,
-                &library,
-                &request.learner_id,
-                material_id,
-                date,
-                request.activity_mode,
-            )
-            .await?
-        }
-        _ => bail!("choose exactly one playlist_id or material_id; activity_mode is only valid for a written material"),
-    };
+    if request.playlist_id.trim().is_empty() {
+        bail!("choose a playbook");
+    }
+    let assignment =
+        create_assignment_internal(state, &library, &request.learner_id, &request.playlist_id, date).await?;
     Ok(AssignmentResponse {
         status: "ok".into(),
         assignment,
@@ -1964,56 +2061,6 @@ async fn ensure_learner_in_team(
         bail!("learner is not a member of the active team");
     }
     Ok(())
-}
-
-async fn create_material_assignment(
-    state: &Arc<AppState>,
-    library: &LibraryBundle,
-    learner_id: &str,
-    material_id: &str,
-    start_date: NaiveDate,
-    mode: Option<PracticeMode>,
-) -> anyhow::Result<AssignmentSummary> {
-    let material = library
-        .material(material_id)
-        .ok_or_else(|| anyhow!("unknown material '{material_id}'"))?;
-    let written = material
-        .runtime
-        .as_ref()
-        .is_some_and(|runtime| runtime.engine_id == written_arithmetic::ENGINE_ID);
-    if mode.is_some() && !written {
-        bail!("activity_mode applies only to written arithmetic materials");
-    }
-    let activity_mode = written.then(|| match mode.unwrap_or(PracticeMode::Assisted) {
-        PracticeMode::Assisted => "assisted".to_string(),
-        PracticeMode::Assessment => "assessment".to_string(),
-    });
-    let assignment_id = Uuid::new_v4().to_string();
-    let session_id = Uuid::new_v4().to_string();
-    let mut transaction = state.pool.begin().await?;
-    query("insert into assignment (assignment_id, learner_id, playlist_id, source_kind, material_id, activity_mode, title, start_date, end_date, status, total_sessions, completed_sessions, created_at) values ($1,$2,'','material',$3,$4,$5,$6,$6,'active',1,0,$7)")
-        .bind(&assignment_id).bind(learner_id).bind(material_id).bind(&activity_mode).bind(&material.title).bind(start_date).bind(Utc::now()).execute(&mut *transaction).await?;
-    query("insert into session (session_id, assignment_id, learner_id, authored_session_id, title, scheduled_date, status, day_offset, notes, completed_at) values ($1,$2,$3,'direct-material',$4,$5,'scheduled',0,'',null)")
-        .bind(&session_id).bind(&assignment_id).bind(learner_id).bind(&material.title).bind(start_date).execute(&mut *transaction).await?;
-    for skill_id in &material.skill_ids {
-        query("insert into session_material (session_material_id, session_id, title, skill_id, material_id, status) values ($1,$2,$3,$4,$5,'scheduled')")
-            .bind(Uuid::new_v4().to_string()).bind(&session_id).bind(&material.title).bind(skill_id).bind(material_id).execute(&mut *transaction).await?;
-    }
-    transaction.commit().await?;
-    Ok(AssignmentSummary {
-        assignment_id,
-        playlist_id: String::new(),
-        source_kind: "material".into(),
-        material_id: Some(material_id.into()),
-        activity_mode,
-        title: material.title.clone(),
-        start_date,
-        end_date: start_date,
-        status: "active".into(),
-        total_sessions: 1,
-        completed_sessions: 0,
-        completion_percent: 0,
-    })
 }
 
 pub async fn set_readiness_override(
@@ -2146,12 +2193,34 @@ pub async fn record_session(
     session_id: &str,
     request: RecordSessionRequest,
 ) -> anyhow::Result<RecordSessionResponse> {
-    ensure_viewer_can_manage_team(&context.authenticated_user)?;
+    ensure_viewer_can_manage_team(&context.active_user)?;
 
     if request.max_score <= 0.0 {
         bail!("max_score must be greater than zero");
     }
     let (session, materials) = load_session_and_material_rows(&state.pool, session_id).await?;
+    ensure_learner_in_team(state, context, &session.learner_id).await?;
+    if !request.score.is_finite()
+        || !request.max_score.is_finite()
+        || request.score < 0.0
+        || request.score > request.max_score
+        || !(0..=1440).contains(&request.duration_minutes)
+    {
+        bail!("invalid paper result");
+    }
+    let library = state.library.read().await;
+    let checkpoint_policies = materials
+        .iter()
+        .filter_map(|row| library.material(&row.material_id))
+        .filter_map(checkpoint_policy)
+        .collect::<Vec<_>>();
+    let target_met = checkpoint_policies.iter().all(|policy| {
+        request.score / request.max_score >= policy.target_accuracy
+            && policy
+                .max_duration_seconds
+                .is_none_or(|seconds| request.duration_minutes as u32 * 60 <= seconds)
+    });
+    drop(library);
     let notes = request.notes.trim().to_string();
     let artifact_summary = if notes.is_empty() {
         session.title.clone()
@@ -2185,7 +2254,7 @@ pub async fn record_session(
             // Manual evidence cannot establish confirmation, and it also cannot erase a
             // confirmation previously earned by a representative Check.
             allow_confirmed_downgrade: false,
-            complete_session_lifecycle: true,
+            complete_session_lifecycle: target_met,
             activity_completion: None,
         },
     )
@@ -2223,12 +2292,7 @@ pub async fn start_session_material_activity(
             bail!("{}", gate_summary.reason_label);
         }
     }
-    let assigned_mode =
-        query_scalar::<_, Option<String>>("select activity_mode from assignment where assignment_id = $1")
-            .bind(&session.assignment_id)
-            .fetch_one(&state.pool)
-            .await?;
-    let run_mode = if material.kind == QUICK_CHECK_KIND || assigned_mode.as_deref() == Some("assessment") {
+    let run_mode = if material.kind == QUICK_CHECK_KIND {
         runtime::RunMode::Check
     } else {
         runtime::RunMode::Practice
@@ -2925,10 +2989,8 @@ pub async fn complete_activity_instance(
                 generated.generation_context.run_mode,
                 target_met,
             ),
-            complete_session_lifecycle: matches!(
-                generated.generation_context.run_mode,
-                runtime::RunMode::Practice | runtime::RunMode::Check
-            ),
+            complete_session_lifecycle: generated.generation_context.run_mode == runtime::RunMode::Practice
+                || (generated.generation_context.run_mode == runtime::RunMode::Check && target_met),
             activity_completion: Some(ActivityCompletionRecord {
                 activity_instance_id: activity_instance_uuid,
                 run_mode: generated.generation_context.run_mode,
@@ -3275,7 +3337,7 @@ pub async fn rebuild_review_items(
     context: &SessionContext,
     learner_id: Option<String>,
 ) -> anyhow::Result<ReviewRebuildResponse> {
-    ensure_viewer_can_manage_team(&context.authenticated_user)?;
+    ensure_viewer_can_manage_team(&context.active_user)?;
 
     let learner_ids = if let Some(learner_id) = learner_id {
         vec![learner_id]
@@ -3407,80 +3469,11 @@ fn material_context_label(contexts: &[MaterialContextSummary], executable: bool)
     }
 }
 
-fn extra_practice_groups(library: &LibraryBundle, pathway: &catalog::Pathway) -> Vec<LibraryPracticeGroupSummary> {
-    let used = library
-        .playlists
-        .iter()
-        .flat_map(|playlist| &playlist.session_pattern.sessions)
-        .flat_map(|session| &session.material_ids)
-        .collect::<BTreeSet<_>>();
-    let levels = written_arithmetic::levels();
-    let standalone = library
-        .materials
-        .iter()
-        .filter(|material| {
-            !used.contains(&material.id)
-                && material
-                    .stage_ids
-                    .iter()
-                    .any(|stage_id| pathway.stage_ids.contains(stage_id))
-        })
-        .collect::<Vec<_>>();
-    let mut groups = Vec::new();
-    for (operation, title) in [
-        ("addition", "Addition"),
-        ("subtraction", "Subtraction"),
-        ("multiplication", "Multiplication"),
-        ("division", "Division"),
-    ] {
-        let ids = levels
-            .iter()
-            .filter(|level| level.operation == operation)
-            .filter_map(|level| {
-                standalone.iter().find(|material| {
-                    material.runtime.as_ref().is_some_and(|runtime| {
-                        runtime.engine_id == written_arithmetic::ENGINE_ID && runtime.template_id == level.id
-                    })
-                })
-            })
-            .map(|material| material.id.clone())
-            .collect::<Vec<_>>();
-        if !ids.is_empty() {
-            groups.push(LibraryPracticeGroupSummary {
-                title: title.into(),
-                material_ids: ids,
-            });
-        }
-    }
-    let remaining = standalone
-        .into_iter()
-        .filter(|material| !groups.iter().any(|group| group.material_ids.contains(&material.id)))
-        .map(|material| material.id.clone())
-        .collect::<Vec<_>>();
-    if !remaining.is_empty() {
-        groups.push(LibraryPracticeGroupSummary {
-            title: "Additional materials".into(),
-            material_ids: remaining,
-        });
-    }
-    groups
-}
-
-fn assignment_group_label(playlists: usize, materials: usize) -> String {
-    let mut labels = Vec::new();
-    if playlists > 0 {
-        labels.push(format!("{playlists} playlist{}", if playlists == 1 { "" } else { "s" }));
-    }
-    if materials > 0 {
-        labels.push(format!(
-            "{materials} individual material{}",
-            if materials == 1 { "" } else { "s" }
-        ));
-    }
-    if labels.is_empty() {
-        "No assigned work".into()
-    } else {
-        labels.join(" · ")
+fn assignment_group_label(playbooks: usize) -> String {
+    match playbooks {
+        0 => "No assigned work".into(),
+        1 => "1 playbook".into(),
+        count => format!("{count} playbooks"),
     }
 }
 
@@ -3503,14 +3496,13 @@ fn build_material_catalog(
                         .unwrap_or_default();
                     let assigned_here = assignments.iter().any(|assignment| {
                         assignment.status != "completed"
-                            && (assignment.material_id.as_deref() == Some(material.id.as_str())
-                                || library.playlist(&assignment.playlist_id).is_some_and(|playlist| {
-                                    playlist
-                                        .session_pattern
-                                        .sessions
-                                        .iter()
-                                        .any(|session| session.material_ids.contains(&material.id))
-                                }))
+                            && library.playlist(&assignment.playlist_id).is_some_and(|playlist| {
+                                playlist
+                                    .session_pattern
+                                    .sessions
+                                    .iter()
+                                    .any(|session| session.material_ids.contains(&material.id))
+                            })
                     });
                     let age = calculate_age(learner.date_of_birth);
                     PlaylistAssignmentTargetSummary {
@@ -3538,6 +3530,9 @@ fn build_material_catalog(
                 context_label: material_context_label(&contexts, material.runtime.is_some()),
                 contexts,
                 material: MaterialWorkspaceSummary {
+                    printable: material_printable(&material.kind, Some(&material.body)),
+                    activity_level_id: material_activity_level(material),
+                    checkpoint_policy: checkpoint_policy(material),
                     material_id: material.id.clone(),
                     title: material.title.clone(),
                     kind: material.kind.clone(),
@@ -3562,13 +3557,8 @@ fn build_material_catalog(
                     .unwrap_or_else(|| material.area_id.clone()),
                 recommended_age: material.recommended_age,
                 difficulty: material.difficulty.clone(),
-                assignable: true,
+                assignable: false,
                 assignment_targets: targets,
-                activity_level_id: material
-                    .runtime
-                    .as_ref()
-                    .filter(|runtime| runtime.engine_id == written_arithmetic::ENGINE_ID)
-                    .map(|runtime| runtime.template_id.clone()),
             }
         })
         .collect::<Vec<_>>();
@@ -3617,6 +3607,9 @@ fn build_library_workspace_pathways(
                     material_count += 1;
                     estimated_minutes += u32::from(material.estimated_minutes);
                     materials.push(MaterialWorkspaceSummary {
+                        printable: material_printable(&material.kind, Some(&material.body)),
+                        activity_level_id: material_activity_level(material),
+                        checkpoint_policy: checkpoint_policy(material),
                         material_id: material.id.clone(),
                         title: material.title.clone(),
                         kind: material.kind.clone(),
@@ -3653,6 +3646,7 @@ fn build_library_workspace_pathways(
             let assignment_targets = build_playlist_assignment_targets(playlist, learners, assignments_by_learner);
 
             playlists.push(PlaylistWorkspaceSummary {
+                sections: library_playbook_sections(playlist),
                 playlist_id: playlist.playlist_id.clone(),
                 title: playlist.title.clone(),
                 description: document_description_for_kind(documents, "playlist", &playlist.playlist_id)
@@ -3709,7 +3703,6 @@ fn build_library_workspace_pathways(
             recommended_age_max: pathway.recommended_age_max,
             stage_count: pathway.stage_ids.len(),
             playlist_count: playlists.len(),
-            extra_practice_groups: extra_practice_groups(library, pathway),
             route_path: document_route_path_for_source(documents, &pathway.source_path),
             entry_points,
             playlists,
@@ -3726,17 +3719,7 @@ fn build_learner_journey(
     sessions: &[SessionDetail],
 ) -> LearnerJourneySummary {
     let playlist = library.playlist(&assignment.playlist_id);
-    let direct_material = assignment.material_id.as_deref().and_then(|id| library.material(id));
-    let pathway = find_pathway_for_playlist(library, &assignment.playlist_id).or_else(|| {
-        direct_material.and_then(|material| {
-            library.pathways.iter().find(|pathway| {
-                material
-                    .stage_ids
-                    .iter()
-                    .any(|stage_id| pathway.stage_ids.contains(stage_id))
-            })
-        })
-    });
+    let pathway = find_pathway_for_playlist(library, &assignment.playlist_id);
     let completed_session_count = sessions
         .iter()
         .filter(|session| session.status == SessionStatus::Completed)
@@ -3760,20 +3743,11 @@ fn build_learner_journey(
         .map(|session| session.session_id.clone());
 
     let description = document_description_for_kind(documents, "playlist", &assignment.playlist_id)
-        .or_else(|| {
-            direct_material.and_then(|material| document_description_for_kind(documents, "material", &material.id))
-        })
         .unwrap_or_else(|| format!("{} sessions are queued in this learning path.", sessions.len()));
     LearnerJourneySummary {
         title: assignment.title.clone(),
         description: description.clone(),
-        source_kind: assignment.source_kind.clone(),
-        source_label: if assignment.source_kind == "material" {
-            "Individual material".into()
-        } else {
-            "Playlist".into()
-        },
-        source_material_id: assignment.material_id.clone(),
+        source_label: "Playbook".into(),
         pathway_id: pathway.map(|item| item.pathway_id.clone()),
         pathway_title: pathway.map(|item| item.title.clone()),
         pathway_description: pathway.map(|item| item.description.clone()),
@@ -3784,14 +3758,8 @@ fn build_learner_journey(
             .unwrap_or_else(|| assignment.title.clone()),
         playlist_description: description,
         playlist_route_path: document_route_path_for_kind(documents, "playlist", &assignment.playlist_id),
-        recommended_age: playlist
-            .map(|item| item.recommended_age)
-            .or_else(|| direct_material.map(|item| item.recommended_age))
-            .unwrap_or(0),
-        recommended_level: playlist
-            .map(|item| item.recommended_level.clone())
-            .or_else(|| direct_material.map(|item| item.difficulty.clone()))
-            .unwrap_or_default(),
+        recommended_age: playlist.map(|item| item.recommended_age).unwrap_or(0),
+        recommended_level: playlist.map(|item| item.recommended_level.clone()).unwrap_or_default(),
         duration_days: playlist
             .map(|item| item.duration_days)
             .unwrap_or(assignment.total_sessions),
@@ -4200,13 +4168,19 @@ async fn create_assignment_internal(
         .cloned()
         .ok_or_else(|| anyhow!("unknown playlist '{playlist_id}'"))?;
 
+    let checkpoint_count = playlist
+        .sections
+        .iter()
+        .find(|section| section.section_id == "checkpoint")
+        .map(|section| section.material_ids.len() as i32)
+        .unwrap_or(0);
     let end_date = start_date + Duration::days((playlist.duration_days.saturating_sub(1)) as i64);
 
     let mut transaction = state.pool.begin().await?;
     let assignment_id = Uuid::new_v4().to_string();
     query(
-        "insert into assignment (assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions, created_at)
-         values ($1, $2, $3, $4, $5, $6, 'active', $7, 0, $8)",
+        "insert into assignment (assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions, checkpoint_count, completed_checkpoint_count, created_at)
+         values ($1, $2, $3, $4, $5, $6, 'active', $7, 0, $9, 0, $8)",
     )
     .bind(&assignment_id)
     .bind(learner_id)
@@ -4216,6 +4190,7 @@ async fn create_assignment_internal(
     .bind(end_date)
     .bind(playlist.session_pattern.sessions.len() as i32)
     .bind(Utc::now())
+    .bind(checkpoint_count)
     .execute(&mut *transaction)
     .await?;
 
@@ -4263,15 +4238,14 @@ async fn create_assignment_internal(
     Ok(AssignmentSummary {
         assignment_id,
         playlist_id: playlist.playlist_id,
-        source_kind: "playlist".into(),
-        material_id: None,
-        activity_mode: None,
         title: playlist.title,
         start_date,
         end_date,
         status: "active".to_string(),
         total_sessions: playlist.session_pattern.sessions.len() as i32,
         completed_sessions: 0,
+        checkpoint_count,
+        completed_checkpoint_count: 0,
         completion_percent: 0,
     })
 }
@@ -4306,7 +4280,7 @@ pub async fn reconcile_assignments_from_library(
     context: &SessionContext,
     request: AssignmentReconcileRequest,
 ) -> anyhow::Result<AssignmentReconcileResponse> {
-    ensure_viewer_can_manage_team(&context.authenticated_user)?;
+    ensure_viewer_can_manage_team(&context.active_user)?;
 
     let library = state.library.read().await.clone();
     let assignments = fetch_reconcilable_assignments(
@@ -4334,9 +4308,9 @@ async fn fetch_reconcilable_assignments(
     learner_id: Option<&str>,
     assignment_id: Option<&str>,
 ) -> anyhow::Result<Vec<AssignmentRow>> {
-    let base_select = "select assignment_id, learner_id, playlist_id, source_kind, material_id, activity_mode, title, start_date, end_date, status, total_sessions, completed_sessions
+    let base_select = "select assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions, checkpoint_count, completed_checkpoint_count
          from assignment";
-    let active_filter = "source_kind = 'playlist' and status <> 'completed' and status <> 'replaced'";
+    let active_filter = "status <> 'completed' and status <> 'replaced'";
 
     let rows = match (learner_id, assignment_id) {
         (Some(learner_id), Some(assignment_id)) => {
@@ -4615,6 +4589,10 @@ async fn build_assigned_journeys(
                     .map(|session| session.session_id.clone())
             });
         journeys.push(crate::domain::LearnerAssignedJourneySummary {
+            sections: library
+                .playlist(&assignment.playlist_id)
+                .map(|playlist| assigned_playbook_sections(playlist, &sessions))
+                .unwrap_or_default(),
             assignment: assignment.clone(),
             journey,
             current_session_id,
@@ -4645,8 +4623,7 @@ fn build_assigned_pathways(
             .iter_mut()
             .find(|pathway| pathway.pathway_id == pathway_id && pathway.pathway_title == pathway_title)
         {
-            existing.playlist_count += usize::from(assigned_journey.assignment.source_kind == "playlist");
-            existing.material_assignment_count += usize::from(assigned_journey.assignment.source_kind == "material");
+            existing.playlist_count += 1;
             existing.assignment_count += 1;
             existing.total_session_count += journey.total_session_count;
             existing.completed_session_count += journey.completed_session_count;
@@ -4660,8 +4637,7 @@ fn build_assigned_pathways(
             pathway_title,
             pathway_description,
             pathway_route_path,
-            playlist_count: usize::from(assigned_journey.assignment.source_kind == "playlist"),
-            material_assignment_count: usize::from(assigned_journey.assignment.source_kind == "material"),
+            playlist_count: 1,
             assignment_count: 1,
             summary_label: String::new(),
             total_session_count: journey.total_session_count,
@@ -4672,7 +4648,7 @@ fn build_assigned_pathways(
     }
 
     for pathway in &mut pathways {
-        pathway.summary_label = assignment_group_label(pathway.playlist_count, pathway.material_assignment_count);
+        pathway.summary_label = assignment_group_label(pathway.playlist_count);
         pathway.assignments.sort_by(|left, right| {
             playlist_pathway_order(library, pathway.pathway_id.as_deref(), &left.journey.playlist_id)
                 .cmp(&playlist_pathway_order(
@@ -4714,7 +4690,7 @@ fn playlist_pathway_order(library: &LibraryBundle, pathway_id: Option<&str>, pla
 
 async fn fetch_assignments_for_learner(pool: &PgPool, learner_id: &str) -> anyhow::Result<Vec<AssignmentSummary>> {
     let rows = query_as::<_, AssignmentRow>(
-        "select assignment_id, learner_id, playlist_id, source_kind, material_id, activity_mode, title, start_date, end_date, status, total_sessions, completed_sessions
+        "select assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions, checkpoint_count, completed_checkpoint_count
          from assignment
          where learner_id = $1 and status in ('active', 'scheduled', 'completed')
          order by case status when 'active' then 0 when 'scheduled' then 1 else 2 end, start_date asc, title asc",
@@ -4748,7 +4724,7 @@ async fn fetch_assignments_for_learners_map(
         .map(|learner| learner.learner_id.clone())
         .collect::<Vec<_>>();
     let rows = query_as::<_, AssignmentRow>(
-        "select assignment_id, learner_id, playlist_id, source_kind, material_id, activity_mode, title, start_date, end_date, status, total_sessions, completed_sessions
+        "select assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions, checkpoint_count, completed_checkpoint_count
          from assignment
          where learner_id = any($1) and status in ('active', 'scheduled', 'completed')
          order by learner_id, case status when 'active' then 0 when 'scheduled' then 1 else 2 end, start_date asc, title asc",
@@ -4956,6 +4932,8 @@ fn build_session_material_summaries(
             SessionMaterialStatus::from_db(&first.status)
         };
         summaries.push(SessionMaterialSummary {
+            activity_level_id: material.and_then(material_activity_level),
+            checkpoint_policy: material.and_then(checkpoint_policy),
             session_material_id: first.session_material_id.clone(),
             title: material
                 .map(|item| item.title.clone())
@@ -6110,7 +6088,7 @@ async fn rebuild_review_items_for_learner(pool: &PgPool, learner_id: &str) -> an
 
 async fn refresh_assignment_progress(pool: &PgPool, learner_id: &str) -> anyhow::Result<()> {
     let assignments = query_as::<_, AssignmentRow>(
-        "select assignment_id, learner_id, playlist_id, source_kind, material_id, activity_mode, title, start_date, end_date, status, total_sessions, completed_sessions
+        "select assignment_id, learner_id, playlist_id, title, start_date, end_date, status, total_sessions, completed_sessions, checkpoint_count, completed_checkpoint_count
          from assignment
          where learner_id = $1",
     )
@@ -6123,18 +6101,23 @@ async fn refresh_assignment_progress(pool: &PgPool, learner_id: &str) -> anyhow:
                 .bind(&assignment.assignment_id)
                 .fetch_one(pool)
                 .await? as i32;
+        let checkpoint_counts = query_as::<_, (i64, i64)>(
+            "select count(*), count(*) filter (where status = 'completed') from session where assignment_id = $1 and left(authored_session_id, 11) = 'checkpoint_'"
+        ).bind(&assignment.assignment_id).fetch_one(pool).await?;
         let next_status = if assignment.status == "replaced" {
             "replaced"
-        } else if assignment.total_sessions > 0 && completed_sessions >= assignment.total_sessions {
+        } else if checkpoint_counts.0 > 0 && checkpoint_counts.0 == checkpoint_counts.1 {
             "completed"
         } else {
             "active"
         };
 
-        query("update assignment set completed_sessions = $2, status = $3 where assignment_id = $1")
+        query("update assignment set completed_sessions = $2, status = $3, checkpoint_count = $4, completed_checkpoint_count = $5 where assignment_id = $1")
             .bind(&assignment.assignment_id)
             .bind(completed_sessions)
             .bind(next_status)
+            .bind(checkpoint_counts.0 as i32)
+            .bind(checkpoint_counts.1 as i32)
             .execute(pool)
             .await?;
     }
@@ -6151,23 +6134,22 @@ fn calculate_age(date_of_birth: NaiveDate) -> i32 {
 }
 
 fn assignment_row_to_summary(row: AssignmentRow) -> AssignmentSummary {
-    let completion_percent = if row.total_sessions > 0 {
-        (row.completed_sessions * 100) / row.total_sessions
+    let completion_percent = if row.checkpoint_count > 0 {
+        (row.completed_checkpoint_count * 100) / row.checkpoint_count
     } else {
         0
     };
     AssignmentSummary {
         assignment_id: row.assignment_id,
         playlist_id: row.playlist_id,
-        source_kind: row.source_kind,
-        material_id: row.material_id,
-        activity_mode: row.activity_mode,
         title: row.title,
         start_date: row.start_date,
         end_date: row.end_date,
         status: row.status,
         total_sessions: row.total_sessions,
         completed_sessions: row.completed_sessions,
+        checkpoint_count: row.checkpoint_count,
+        completed_checkpoint_count: row.completed_checkpoint_count,
         completion_percent,
     }
 }
@@ -6233,6 +6215,12 @@ fn learner_safe_assigned_journey(
     assigned_journey: &crate::domain::LearnerAssignedJourneySummary,
 ) -> crate::domain::LearnerAssignedJourneySummary {
     crate::domain::LearnerAssignedJourneySummary {
+        sections: assigned_journey
+            .sections
+            .iter()
+            .filter(|section| section.section_id != "teach")
+            .cloned()
+            .collect(),
         assignment: assigned_journey.assignment.clone(),
         journey: assigned_journey.journey.clone(),
         current_session_id: assigned_journey.current_session_id.clone(),
@@ -6258,7 +6246,6 @@ fn learner_safe_assigned_pathway(
         pathway_route_path: assigned_pathway.pathway_route_path.clone(),
         playlist_count: assigned_pathway.playlist_count,
         assignment_count: assigned_pathway.assignment_count,
-        material_assignment_count: assigned_pathway.material_assignment_count,
         summary_label: assigned_pathway.summary_label.clone(),
         total_session_count: assigned_pathway.total_session_count,
         completed_session_count: assigned_pathway.completed_session_count,
@@ -6400,6 +6387,8 @@ mod tests {
 
     fn sample_session_on(year: i32, month: u32, day: u32, session_id: &str, title: &str) -> SessionDetail {
         let learner_material = SessionMaterialSummary {
+            activity_level_id: None,
+            checkpoint_policy: None,
             session_material_id: "sm-1".to_string(),
             title: "Learner note".to_string(),
             material_id: "m-1".to_string(),
@@ -6416,6 +6405,8 @@ mod tests {
             gate: None,
         };
         let teaching_material = SessionMaterialSummary {
+            activity_level_id: None,
+            checkpoint_policy: None,
             session_material_id: "sm-2".to_string(),
             title: "Adult note".to_string(),
             material_id: "m-2".to_string(),
@@ -6497,79 +6488,83 @@ mod tests {
     }
 
     #[test]
-    fn extra_practice_groups_and_flat_contexts_preserve_curriculum_order() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../content");
-        let content = catalog::load_library_content(&root).unwrap();
-        let pathway = content
-            .bundle
-            .pathways
-            .iter()
-            .find(|pathway| pathway.pathway_id == "arithmetic_written_methods")
-            .unwrap();
-        let groups = super::extra_practice_groups(&content.bundle, pathway);
+    fn learner_playbook_omits_teach_and_nested_adult_materials() {
+        let mut journey = sample_assigned_journey("a", sample_session());
+        journey.sections = ["teach", "learn", "practice", "checkpoint"]
+            .into_iter()
+            .map(|id| crate::domain::PlaybookSectionSummary {
+                section_id: id.into(),
+                title: id.into(),
+                description: String::new(),
+                items: vec![],
+            })
+            .collect();
+        let clean = super::learner_safe_assigned_journey(&journey);
         assert_eq!(
-            groups.iter().map(|group| group.title.as_str()).collect::<Vec<_>>(),
-            ["Addition", "Subtraction", "Multiplication", "Division"]
+            clean.sections.iter().map(|s| s.section_id.as_str()).collect::<Vec<_>>(),
+            ["learn", "practice", "checkpoint"]
         );
-        assert_eq!(groups.iter().map(|group| group.material_ids.len()).sum::<usize>(), 23);
-        assert_eq!(
-            groups[0].material_ids.first().map(String::as_str),
-            Some("written_addition_2_by_1")
+        assert!(
+            clean
+                .sessions
+                .iter()
+                .flat_map(|s| &s.materials)
+                .all(|m| m.audience == "learner")
         );
-        assert_eq!(
-            groups[2].material_ids.first().map(String::as_str),
-            Some("written_multiplication_2_by_1")
-        );
-        assert_eq!(
-            groups[2].material_ids.last().map(String::as_str),
-            Some("written_multiplication_4_by_2")
-        );
-        let material = content.bundle.material("written_addition_2_carry").unwrap();
-        let contexts = super::material_contexts(&content.bundle, material);
-        assert_eq!(contexts.len(), 1);
-        assert_eq!(contexts[0].pathway_id, pathway.pathway_id);
-        assert!(contexts[0].playlist_id.is_none());
-        assert!(super::material_context_label(&contexts, true).starts_with("Extra practice in "));
-        let playlist = content.bundle.playlist(&pathway.playlist_ids[0]).unwrap();
-        let lesson = content
-            .bundle
-            .material(&playlist.session_pattern.sessions[0].material_ids[0])
-            .unwrap();
-        let contexts = super::material_contexts(&content.bundle, lesson);
-        assert!(contexts.iter().any(
-            |context| context.playlist_id.as_deref() == Some(playlist.playlist_id.as_str())
-                && context.session_index == Some(1)
-        ));
+        assert_eq!(journey.sections.len(), 4);
     }
 
     #[test]
-    fn individual_materials_do_not_inflate_assigned_playlist_counts() {
-        let mut playlist =
-            sample_assigned_journey_for_playlist("p1", "playlist1", "pathway1", "Pathway", sample_session());
-        let mut direct = playlist.clone();
-        direct.assignment.assignment_id = "direct".into();
-        direct.assignment.source_kind = "material".into();
-        direct.assignment.playlist_id.clear();
-        direct.assignment.material_id = Some("material1".into());
-        direct.journey.source_kind = "material".into();
-        direct.journey.playlist_id.clear();
-        playlist.assignment.source_kind = "playlist".into();
-        let library = LibraryBundle {
-            subjects: vec![],
-            areas: vec![],
-            pathways: vec![],
-            skills: vec![],
-            stages: vec![],
-            playlists: vec![],
-            materials: vec![],
+    fn assignment_percentage_counts_checkpoints_not_optional_reading_or_practice() {
+        let row = crate::domain::AssignmentRow {
+            assignment_id: "a".into(),
+            learner_id: "l".into(),
+            playlist_id: "p".into(),
+            title: "Playbook".into(),
+            start_date: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            end_date: NaiveDate::from_ymd_opt(2026, 1, 2).unwrap(),
+            status: "active".into(),
+            total_sessions: 20,
+            completed_sessions: 1,
+            checkpoint_count: 2,
+            completed_checkpoint_count: 1,
         };
-        let grouped = super::build_assigned_pathways(&library, &[playlist, direct]);
-        assert_eq!(grouped.len(), 1);
-        assert_eq!(grouped[0].assignment_count, 2);
-        assert_eq!(grouped[0].playlist_count, 1);
-        assert_eq!(grouped[0].material_assignment_count, 1);
-        assert_eq!(grouped[0].summary_label, "1 playlist · 1 individual material");
-        assert_eq!(grouped[0].assignments.len(), 2);
+        assert_eq!(super::assignment_row_to_summary(row).completion_percent, 50);
+    }
+
+    #[test]
+    fn written_practice_and_checkpoints_belong_to_explicit_playbook_sections() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../content");
+        let content = catalog::load_library_content(&root).unwrap();
+        let mut practice_count = 0;
+        for playlist in &content.bundle.playlists {
+            let sections = super::library_playbook_sections(playlist);
+            assert_eq!(
+                sections.iter().map(|s| s.section_id.as_str()).collect::<Vec<_>>(),
+                ["teach", "learn", "practice", "checkpoint"]
+            );
+            for item in sections[2].items.iter() {
+                let material = content.bundle.material(&item.material_id).unwrap();
+                if super::material_activity_level(material).is_some() {
+                    practice_count += 1;
+                    let checkpoint = sections[3]
+                        .items
+                        .iter()
+                        .find(|check| check.material_id == format!("{}_checkpoint", material.id))
+                        .unwrap();
+                    let check = content.bundle.material(&checkpoint.material_id).unwrap();
+                    let policy = super::checkpoint_policy(check).unwrap();
+                    assert_eq!(policy.question_count, 6);
+                    assert_eq!(policy.target_accuracy, 1.0);
+                    assert!(policy.max_duration_seconds.is_none());
+                    assert_eq!(
+                        super::material_activity_level(material),
+                        super::material_activity_level(check)
+                    );
+                }
+            }
+        }
+        assert_eq!(practice_count, 23);
     }
 
     #[test]
@@ -6582,41 +6577,10 @@ mod tests {
             .iter()
             .find(|entry| entry.material.material_id == "written_addition_2_carry")
             .expect("standalone written material");
-        assert_eq!(written.activity_level_id.as_deref(), Some("addition_2_carry"));
-        assert!(written.assignable && written.material.executable);
+        assert_eq!(written.material.activity_level_id.as_deref(), Some("addition_2_carry"));
+        assert!(!written.assignable && written.material.executable);
         assert!(written.material.route_path.is_some());
         assert!(!written.subject_title.is_empty());
-    }
-
-    #[test]
-    fn direct_material_journeys_keep_their_pathway_without_a_fake_playlist() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../content");
-        let content = catalog::load_library_content(&root).expect("repo content");
-        let material = content
-            .bundle
-            .material("written_addition_2_carry")
-            .expect("written material");
-        let assignment = AssignmentSummary {
-            assignment_id: "direct-1".into(),
-            playlist_id: String::new(),
-            source_kind: "material".into(),
-            material_id: Some(material.id.clone()),
-            activity_mode: Some("assisted".into()),
-            title: material.title.clone(),
-            start_date: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            end_date: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            status: "active".into(),
-            total_sessions: 1,
-            completed_sessions: 0,
-            completion_percent: 0,
-        };
-        let journey =
-            super::build_learner_journey(&content.bundle, &content.documents, &assignment, &[sample_session()]);
-        assert_eq!(journey.pathway_id.as_deref(), Some("arithmetic_written_methods"));
-        assert!(journey.playlist_id.is_empty());
-        assert_eq!(journey.playlist_title, material.title);
-        assert_eq!(journey.recommended_age, material.recommended_age);
-        assert_eq!(journey.total_session_count, 1);
     }
 
     #[test]
@@ -6814,6 +6778,7 @@ mod tests {
     #[test]
     fn progress_counts_use_the_union_of_visible_playlist_skills_only() {
         let playlist = |playlist_id: &str, skill_ids: &[&str]| Playlist {
+            sections: vec![],
             playlist_id: playlist_id.to_string(),
             title: playlist_id.to_string(),
             subject_id: "maths".to_string(),
@@ -7093,6 +7058,7 @@ mod tests {
     #[test]
     fn check_evidence_is_normalized_to_its_prerequisite_practice_material() {
         let build_material = |id: &str, gate: Option<MaterialRuntimeGate>| MaterialDocument {
+            checkpoint: None,
             id: id.to_string(),
             kind: if gate.is_some() { "quick_check" } else { "drill" }.to_string(),
             subject_id: "maths".to_string(),
@@ -7193,6 +7159,7 @@ mod tests {
             stages: vec![],
             playlists: vec![],
             materials: vec![MaterialDocument {
+                checkpoint: None,
                 id: "unsupported_material".to_string(),
                 kind: "drill".to_string(),
                 subject_id: "maths".to_string(),
@@ -7421,26 +7388,24 @@ mod tests {
         session: SessionDetail,
     ) -> LearnerAssignedJourneySummary {
         LearnerAssignedJourneySummary {
+            sections: vec![],
             assignment: AssignmentSummary {
                 assignment_id: assignment_id.to_string(),
                 playlist_id: playlist_id.to_string(),
-                source_kind: "playlist".into(),
-                material_id: None,
-                activity_mode: None,
                 title: format!("Playlist {assignment_id}"),
                 start_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
                 end_date: NaiveDate::from_ymd_opt(2026, 1, 4).expect("valid date"),
                 status: "active".to_string(),
                 total_sessions: 1,
                 completed_sessions: 0,
+                checkpoint_count: 1,
+                completed_checkpoint_count: 0,
                 completion_percent: 0,
             },
             journey: LearnerJourneySummary {
                 title: format!("Playlist {assignment_id}"),
                 description: "Description".into(),
-                source_kind: "playlist".into(),
                 source_label: "Playlist".into(),
-                source_material_id: None,
                 pathway_id: Some(pathway_id.to_string()),
                 pathway_title: Some(pathway_title.to_string()),
                 pathway_description: Some("Description".to_string()),

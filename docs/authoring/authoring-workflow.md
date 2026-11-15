@@ -21,13 +21,13 @@ Before authoring or reviewing a slice, gather:
 4. Draft or revise the pathway as the whole route.
 5. Draft or revise the skills for the slice.
 6. Group those skills into stages that make sense to a parent or coach.
-7. Decide what materials are needed for explanation, practice, review, and checking.
+7. Decide what belongs in owner-only Teach and learner Learn, Practice, and Checkpoint.
 8. Write or revise the markdown materials.
-9. Assemble or revise one or more playlists.
+9. Assemble or revise one or more playbooks using the explicit `sections` in each playlist file. Keep reusable teaching guidance in Teach, printable explanations in Learn, repeatable generators in Practice, and completion conditions in Checkpoint.
 10. Add or revise entry guidance for age or current readiness.
 11. Run the [review checklist](./authoring-rules.md).
 12. Run `uv run --with pytest python -m pytest tests/test_pathway_library.py` while iterating on the cleaned tree.
-13. Run legacy validation commands only if you changed compatibility files.
+13. Validate generated activity packages when the slice includes interactive material; rebuild their shared foundation with `python scripts/build_activity_packages.py` after foundation changes.
 
 These checks should cover the whole in-scope pathway, not only one individual file.
 

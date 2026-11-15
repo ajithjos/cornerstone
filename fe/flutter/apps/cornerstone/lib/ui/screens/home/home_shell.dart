@@ -25,27 +25,22 @@ enum _ShellDestination {
 }
 
 class CornerstoneHomePage extends StatefulWidget {
-  const CornerstoneHomePage({required this.themeController, super.key});
+  const CornerstoneHomePage({
+    required this.themeController,
+    this.apiClient,
+    super.key,
+  });
+  final CornerstoneApiClient? apiClient;
   final CornerstoneThemeController themeController;
   @override
   State<CornerstoneHomePage> createState() => _CornerstoneHomePageState();
 }
 
 class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
-  final CornerstoneApiClient _apiClient = CornerstoneApiClient();
-  final TextEditingController _scoreController = TextEditingController(
-    text: '8',
-  );
-  final TextEditingController _maxScoreController = TextEditingController(
-    text: '10',
-  );
-  final TextEditingController _durationController = TextEditingController(
-    text: '15',
-  );
-  final TextEditingController _notesController = TextEditingController(
-    text: 'Worked well with one or two slow facts.',
-  );
-
+  late final CornerstoneApiClient _apiClient =
+      widget.apiClient ?? CornerstoneApiClient();
+  ActivityPackageRun? _openPackageRun;
+  final _activityKey = GlobalKey<ActivityPackagePageState>();
   ViewerSessionPayload? _viewerSession;
   DashboardPayload? _dashboard;
   LibraryWorkspacePayload? _libraryWorkspace;
@@ -54,9 +49,11 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   LearnerDetailPayload? _learnerDetail;
   LearnerWorkspacePayload? _learnerWorkspace;
   String? _selectedLearnerId;
+  String? _requestedAssignmentId;
   String? _selectedLibraryRoutePath;
   String? _requestedLibraryPreviewRoute;
   _ShellDestination _selectedDestination = _ShellDestination.library;
+  int _loadGeneration = 0;
   bool _shellNavExpanded = true;
   bool _sessionLoading = true;
   bool _loading = true;
@@ -70,15 +67,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   void initState() {
     super.initState();
     _restoreViewerSession();
-  }
-
-  @override
-  void dispose() {
-    _scoreController.dispose();
-    _maxScoreController.dispose();
-    _durationController.dispose();
-    _notesController.dispose();
-    super.dispose();
   }
 
   ViewerUser? get _currentViewer => _viewerSession?.authenticatedUser;
@@ -256,6 +244,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     String? preferredLearnerId,
     _ShellDestination? destination,
   }) async {
+    if (!await _leaveActivity() || !mounted) return;
+    _loadGeneration++;
     setState(() {
       _busy = true;
       _errorMessage = null;
@@ -284,6 +274,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   }
 
   Future<void> _switchActiveTeam(String teamId) async {
+    if (!await _leaveActivity() || !mounted) return;
+    _loadGeneration++;
     setState(() {
       _busy = true;
       _errorMessage = null;
@@ -313,6 +305,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   }
 
   Future<void> _logoutViewer() async {
+    if (!await _leaveActivity() || !mounted) return;
+    _loadGeneration++;
     setState(() {
       _authBusy = true;
       _sessionErrorMessage = null;
@@ -331,6 +325,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   }
 
   Future<void> _loadAll({bool preserveSelection = true}) async {
+    final generation = ++_loadGeneration;
     if (_currentViewer == null) {
       setState(() {
         _loading = false;
@@ -338,11 +333,13 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       return;
     }
     setState(() {
-      _loading = true;
+      _loading = _dashboard == null;
+      _busy = true;
       _errorMessage = null;
     });
     try {
       final dashboard = await _apiClient.fetchDashboard();
+      if (!mounted || generation != _loadGeneration) return;
       final nextLearnerId = _nextLearnerIdForViewer(
         dashboard,
         preserveSelection: preserveSelection,
@@ -381,7 +378,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
           nextLibraryRoutePath,
         );
       }
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _dashboard = dashboard;
         _libraryWorkspace = libraryWorkspace;
@@ -396,7 +393,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         _libraryDocumentBusy = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _busy = false;
@@ -483,13 +480,13 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       final document = await _apiClient.fetchLibraryDocument(
         normalizedRoutePath,
       );
-      if (!mounted) return;
+      if (!mounted || _selectedLibraryRoutePath != normalizedRoutePath) return;
       setState(() {
         _selectedLibraryDocument = document;
         _libraryDocumentBusy = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || _selectedLibraryRoutePath != normalizedRoutePath) return;
       setState(() {
         _libraryDocumentBusy = false;
       });
@@ -500,19 +497,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   }
 
   Future<void> _selectLearner(String learnerId) async {
-    final viewer = _currentViewer;
+    final viewer = _activeViewer;
     if (viewer != null && viewer.isLearner && viewer.learnerId != learnerId) {
-      return;
-    }
-    final activeViewer = _activeViewer;
-    if (viewer != null &&
-        viewer.canManageTeam &&
-        activeViewer?.learnerId != learnerId) {
-      await _switchActiveUser(
-        learnerId,
-        preferredLearnerId: learnerId,
-        destination: _selectedDestination,
-      );
       return;
     }
     setState(() {
@@ -525,14 +511,14 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         _apiClient.fetchLearnerDetail(learnerId),
         _apiClient.fetchLearnerWorkspace(learnerId),
       ]);
-      if (!mounted) return;
+      if (!mounted || _selectedLearnerId != learnerId) return;
       setState(() {
         _learnerDetail = results[0] as LearnerDetailPayload;
         _learnerWorkspace = results[1] as LearnerWorkspacePayload;
         _busy = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || _selectedLearnerId != learnerId) return;
       setState(() {
         _busy = false;
         _errorMessage = error.toString();
@@ -543,18 +529,12 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   Future<void> _showAssignment({
     required String title,
     required List<PlaylistAssignmentTarget> targets,
-    String? materialId,
-    String? playlistId,
-    bool offerActivityMode = false,
+    required String playlistId,
   }) async {
     if (!_viewerCanManage) return;
     final selection = await showDialog<AssignmentSelection>(
       context: context,
-      builder: (_) => AssignMaterialDialog(
-        title: title,
-        targets: targets,
-        offerActivityMode: offerActivityMode,
-      ),
+      builder: (_) => AssignMaterialDialog(title: title, targets: targets),
     );
     if (selection == null || !mounted) return;
     setState(() {
@@ -565,8 +545,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       await _apiClient.createAssignment(
         learnerId: selection.learnerId,
         playlistId: playlistId,
-        materialId: materialId,
-        activityMode: selection.activityMode,
       );
       await _loadAll();
       if (mounted) {
@@ -583,30 +561,129 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     }
   }
 
-  Future<void> _recordCurrentSession() async {
+  Future<void> _recordPaperSession(SessionDetail session) async {
     if (!_viewerCanManage) return;
-    final session = _currentActionSession;
-    if (session == null) return;
-    setState(() {
-      _busy = true;
-      _errorMessage = null;
-    });
-    try {
-      await _apiClient.recordSession(
-        sessionId: session.sessionId,
-        score: double.parse(_scoreController.text),
-        maxScore: double.parse(_maxScoreController.text),
-        durationMinutes: int.parse(_durationController.text),
-        notes: _notesController.text,
-      );
-      await _loadAll();
-    } catch (error) {
-      if (!mounted) return;
+    final score = TextEditingController();
+    final maximum = TextEditingController(text: '10');
+    final minutes = TextEditingController(text: '10');
+    final notes = TextEditingController();
+    final form = GlobalKey<FormState>();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Record paper result'),
+        content: SizedBox(
+          width: 420,
+          child: Form(
+            key: form,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(session.title),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: score,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Correct answers',
+                    ),
+                    validator: (value) {
+                      final n = double.tryParse(value ?? '');
+                      final max = double.tryParse(maximum.text);
+                      return n == null ||
+                              !n.isFinite ||
+                              n < 0 ||
+                              max == null ||
+                              n > max
+                          ? 'Enter a score between zero and the total.'
+                          : null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: maximum,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Total questions',
+                    ),
+                    validator: (value) {
+                      final n = double.tryParse(value ?? '');
+                      return n == null || !n.isFinite || n <= 0
+                          ? 'Enter a positive total.'
+                          : null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: minutes,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Time in minutes',
+                    ),
+                    validator: (value) => (int.tryParse(value ?? '') ?? 0) <= 0
+                        ? 'Enter the time taken.'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: notes,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (form.currentState!.validate()) {
+                Navigator.pop(dialogContext, true);
+              }
+            },
+            child: const Text('Save result'),
+          ),
+        ],
+      ),
+    );
+    if (accepted == true && mounted) {
       setState(() {
-        _busy = false;
-        _errorMessage = error.toString();
+        _busy = true;
+        _errorMessage = null;
       });
+      try {
+        await _apiClient.recordSession(
+          sessionId: session.sessionId,
+          score: double.parse(score.text),
+          maxScore: double.parse(maximum.text),
+          durationMinutes: int.parse(minutes.text),
+          notes: notes.text.trim(),
+        );
+        await _loadAll();
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _errorMessage = error.toString();
+          });
+        }
+      }
     }
+    // Wait for the dialog's exit animation before disposing its field controllers.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    score.dispose();
+    maximum.dispose();
+    minutes.dispose();
+    notes.dispose();
   }
 
   Future<void> _startActivityForMaterial(
@@ -640,28 +717,10 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
   Future<void> _openExecutableActivity(ActivityInstance activity) async {
     final presentation = activity.presentation;
     if (presentation != null) {
-      await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) => ActivityPackagePage(
-            apiBaseUrl: _apiClient.baseUrl,
-            run: _packageRun(activity),
-          ),
-        ),
-      );
-      if (mounted) await _loadAll();
+      setState(() => _openPackageRun = _packageRun(activity));
       return;
     }
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (context) => ExecutableActivityPage(
-          activity: activity,
-          onComplete: _completeExecutableActivity,
-          onRetry: _retryExecutableActivity,
-        ),
-      ),
-    );
+    throw StateError('The activity has no presentation package.');
   }
 
   ActivityPackageRun _packageRun(ActivityInstance activity) =>
@@ -682,32 +741,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
           await _apiClient.retryActivity(activity.activityInstanceId),
         ),
       );
-
-  Future<ActivityInstance> _retryExecutableActivity(
-    ActivityInstance activity,
-  ) async {
-    setState(() {
-      _busy = true;
-      _errorMessage = null;
-    });
-    try {
-      final retry = await _apiClient.retryActivity(activity.activityInstanceId);
-      if (mounted) {
-        setState(() {
-          _busy = false;
-        });
-      }
-      return retry;
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _errorMessage = error.toString();
-        });
-      }
-      rethrow;
-    }
-  }
 
   Future<void> _startReviewItem(ReviewItem reviewItem) async {
     if (reviewItem.reviewStatus != ReviewStatus.due) return;
@@ -730,37 +763,6 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         _busy = false;
         _errorMessage = error.toString();
       });
-    }
-  }
-
-  Future<CompleteActivityResponse> _completeExecutableActivity(
-    ActivityInstance activity,
-    List<String> answers,
-    int durationSeconds,
-    String notes,
-  ) async {
-    setState(() {
-      _busy = true;
-      _errorMessage = null;
-    });
-    try {
-      final response = await _apiClient.completeActivity(
-        activityInstanceId: activity.activityInstanceId,
-        answers: answers,
-        items: activity.items,
-        durationSeconds: durationSeconds,
-        notes: notes,
-      );
-      await _loadAll();
-      return response;
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _errorMessage = error.toString();
-        });
-      }
-      rethrow;
     }
   }
 
@@ -1049,22 +1051,22 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     }
   }
 
-  SessionDetail? get _currentActionSession {
-    final detail = _learnerDetail;
-    if (detail == null) return null;
-    for (final session in detail.sessions) {
-      if (session.status != SessionStatus.completed) return session;
-    }
-    return null;
-  }
-
   String _destinationLabel(_ShellDestination destination) =>
       destination == _ShellDestination.learner && _viewerCanManage
       ? 'Student work'
       : destination.label;
 
-  void _setDestination(_ShellDestination d) {
+  Future<bool> _leaveActivity() async {
+    if (_openPackageRun == null) return true;
+    return await _activityKey.currentState?.requestClose() ?? false;
+  }
+
+  Future<void> _setDestination(_ShellDestination d) async {
     if (!_availableDestinations.contains(d)) return;
+    if (_openPackageRun != null) {
+      final leave = await _activityKey.currentState?.requestClose();
+      if (leave != true || !mounted) return;
+    }
     setState(() => _selectedDestination = d);
   }
 
@@ -1103,9 +1105,9 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
 
   double _contentMaxWidthFor(_ShellDestination destination) {
     return switch (destination) {
-      _ShellDestination.owner => 1460,
-      _ShellDestination.learner => 1360,
-      _ShellDestination.library => 1780,
+      _ShellDestination.owner => 1240,
+      _ShellDestination.learner => 1240,
+      _ShellDestination.library => 1320,
       _ShellDestination.account => 1080,
     };
   }
@@ -1334,26 +1336,8 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
         return Container(
           padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: theme.brightness == Brightness.dark
-                  ? [_BrandPalette.slateRaised, _BrandPalette.slateCard]
-                  : [Colors.white, _BrandPalette.warmPaper],
-            ),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.44),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(
-                  alpha: theme.brightness == Brightness.dark ? 0.16 : 0.05,
-                ),
-                blurRadius: 14,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             children: [
@@ -1418,270 +1402,90 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     );
   }
 
-  Widget _buildShellHeader(ThemeData theme) {
-    final isDark = theme.brightness == Brightness.dark;
-    final shellEyebrow = _viewerCanManage ? 'TEAM' : 'LEARNING';
-    final shellTitle = _viewerCanManage ? _shellTeamName() : 'My learning';
-    final shellDescription = _viewerCanManage
-        ? 'Learners, sessions, pathways, and profile.'
-        : 'Progress and current sessions.';
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        _shellNavExpanded ? 16 : 10,
-        14,
-        _shellNavExpanded ? 16 : 10,
-        8,
-      ),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.fromLTRB(
-          _shellNavExpanded ? 16 : 8,
-          14,
-          _shellNavExpanded ? 16 : 8,
-          14,
-        ),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? [_BrandPalette.slateHigh, _BrandPalette.slateRaised]
-                : [Colors.white, _BrandPalette.warmPaper],
+  Widget _buildShellHeader(ThemeData theme) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 24, 12, 22),
+    child: Row(
+      children: [
+        if (_shellNavExpanded)
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_shellTeamName(), style: theme.textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Text(
+                  _viewerCanManage ? 'Owner workspace' : 'Learning space',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
           ),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.46),
-          ),
-        ),
-        child: _shellNavExpanded
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    shellEyebrow,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          shellTitle,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      _buildShellRailToggle(theme),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(shellDescription, style: theme.textTheme.bodySmall),
-                ],
-              )
-            : Center(child: _buildShellRailToggle(theme)),
-      ),
-    );
-  }
+        _buildShellRailToggle(theme),
+      ],
+    ),
+  );
 
   Widget _buildDesktopNavItem(
     BuildContext context,
     _ShellDestination destination,
   ) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final selected = _selectedDestination == destination;
-    final compactMode = !_shellNavExpanded;
-
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => _setDestination(destination),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.symmetric(
-            horizontal: compactMode ? 2 : 12,
-            vertical: compactMode ? 8 : 12,
-          ),
-          decoration: BoxDecoration(
-            gradient: selected
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: isDark
-                        ? [
-                            Color.alphaBlend(
-                              _BrandPalette.goldBright.withValues(alpha: 0.14),
-                              _BrandPalette.slateRaised,
-                            ),
-                            _BrandPalette.slateCard,
-                          ]
-                        : [
-                            Color.alphaBlend(
-                              theme.colorScheme.primary.withValues(alpha: 0.14),
-                              Colors.white,
-                            ),
-                            _BrandPalette.warmPaper,
-                          ],
-                  )
-                : null,
-            color: selected ? null : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected
-                  ? theme.colorScheme.primary.withValues(alpha: 0.34)
-                  : theme.colorScheme.outlineVariant.withValues(alpha: 0.46),
-            ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: theme.colorScheme.primary.withValues(
-                        alpha: isDark ? 0.14 : 0.08,
-                      ),
-                      blurRadius: 18,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: compactMode ? 36 : 44,
-                height: compactMode ? 36 : 44,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? theme.colorScheme.primary.withValues(
-                          alpha: isDark ? 0.16 : 0.14,
-                        )
-                      : theme.colorScheme.surface.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: selected
-                        ? theme.colorScheme.primary.withValues(alpha: 0.24)
-                        : theme.colorScheme.outlineVariant.withValues(
-                            alpha: 0.46,
-                          ),
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  destination.icon,
-                  color: selected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                  size: 20,
-                ),
-              ),
-              if (_shellNavExpanded) ...[
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _destinationLabel(destination),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: selected
-                              ? theme.colorScheme.onSurface
-                              : theme.colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        destination.subtitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: selected
-                              ? theme.colorScheme.onSurfaceVariant
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Tooltip(
+        message: _destinationLabel(destination),
+        child: ListTile(
+          selected: selected,
+          dense: true,
+          selectedTileColor: theme.colorScheme.primaryContainer,
+          leading: Icon(destination.icon, size: 21),
+          title: _shellNavExpanded
+              ? Text(
+                  _destinationLabel(destination),
+                  style: theme.textTheme.labelLarge,
+                )
+              : null,
+          onTap: () => _setDestination(destination),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: _shellNavExpanded ? 14 : 10,
+            vertical: 6,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildDesktopShell(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final panelColor = Color.alphaBlend(
-      isDark
-          ? Colors.white.withValues(alpha: 0.04)
-          : Colors.white.withValues(alpha: 0.72),
-      theme.colorScheme.surfaceContainerLow,
-    );
-
-    return SafeArea(
-      right: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          width: _shellNavExpanded ? 256 : 92,
-          decoration: BoxDecoration(
-            color: panelColor,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: isDark
-                  ? _BrandPalette.slateBorder
-                  : theme.colorScheme.primary.withValues(alpha: 0.14),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.08),
-                blurRadius: 32,
-                offset: const Offset(0, 20),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: Column(
-              children: [
-                _buildShellHeader(theme),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(10, 2, 10, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: _availableDestinations
-                          .map(
-                            (destination) =>
-                                _buildDesktopNavItem(context, destination),
-                          )
-                          .toList(growable: false),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 14),
-                  child: _buildProfileMenuAnchor(compact: !_shellNavExpanded),
-                ),
-              ],
-            ),
+  Widget _buildDesktopShell(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.surface,
+    child: Container(
+      width: _shellNavExpanded ? 220 : 76,
+      decoration: BoxDecoration(
+        border: Border(
+          right: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
           ),
         ),
       ),
-    );
-  }
+      child: Column(
+        children: [
+          _buildShellHeader(Theme.of(context)),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: _availableDestinations
+                  .map((d) => _buildDesktopNavItem(context, d))
+                  .toList(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: _buildProfileMenuAnchor(compact: !_shellNavExpanded),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _buildMobileDrawer(BuildContext context) {
     final theme = Theme.of(context);
@@ -1853,6 +1657,7 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
           ),
         ),
         actions: [
+          _ThemeMenu(controller: widget.themeController),
           if (_busy || _authBusy)
             const Padding(
               padding: EdgeInsets.all(16),
@@ -1893,7 +1698,44 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
               },
               child: KeyedSubtree(
                 key: ValueKey(_selectedDestination),
-                child: _buildContentBody(context),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Offstage(
+                      offstage: _openPackageRun != null,
+                      child: ExcludeFocus(
+                        excluding: _openPackageRun != null,
+                        child: Column(
+                          children: [
+                            if (_viewerCanManage &&
+                                _selectedDestination ==
+                                    _ShellDestination.learner)
+                              _buildLearnerContext(),
+                            Expanded(child: _buildContentBody(context)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_openPackageRun != null)
+                      Positioned.fill(
+                        child: _wrapMainContent(
+                          Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: ActivityPackagePage(
+                              key: _activityKey,
+                              run: _openPackageRun!,
+                              apiBaseUrl: _apiClient.baseUrl,
+                              onClose: (_) {
+                                setState(() => _openPackageRun = null);
+                                _loadAll();
+                              },
+                            ),
+                          ),
+                          maxWidth: 1280,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1902,49 +1744,72 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
     );
   }
 
+  Widget _buildLearnerContext() => _wrapMainContent(
+    Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Row(
+        children: [
+          const Icon(Icons.visibility_outlined, size: 18),
+          const SizedBox(width: 10),
+          const Text('Viewing work for'),
+          const SizedBox(width: 12),
+          Flexible(
+            child: DropdownButton<String>(
+              value: _selectedLearnerId,
+              isExpanded: false,
+              items: _visibleLearners
+                  .map(
+                    (learner) => DropdownMenuItem(
+                      value: learner.learnerId,
+                      child: Text(learner.displayName),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _busy
+                  ? null
+                  : (id) {
+                      if (id != null) _selectLearner(id);
+                    },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
   Widget _buildOwnerView(
     BuildContext context,
     DashboardPayload dashboard,
     LibraryWorkspacePayload libraryWorkspace,
   ) {
-    final owners = (_viewerSession?.availableUsers ?? const <ViewerUser>[])
-        .where((user) => user.canManageTeam)
-        .toList(growable: false);
     return _OwnerWorkspaceView(
-      viewer: _currentViewer,
       learners: _visibleLearners,
-      owners: owners,
       selectedLearnerId: _selectedLearnerId,
       detail: _learnerDetail,
-      libraryWorkspace: libraryWorkspace,
-      currentActionSession: _currentActionSession,
-      scoreController: _scoreController,
-      maxScoreController: _maxScoreController,
-      durationController: _durationController,
-      notesController: _notesController,
       onSelectLearner: _selectLearner,
-      onOpenLibraryRoute: _openLibraryDocumentFromWork,
-      onOpenLibraryWorkspace: () => _setDestination(_ShellDestination.library),
-      onRecordSession: _recordCurrentSession,
-      onStartActivity: _startActivityForMaterial,
+      onOpenLearning: () => _setDestination(_ShellDestination.learner),
+      onOpenAssignment: (id) {
+        setState(() => _requestedAssignmentId = id);
+        _setDestination(_ShellDestination.learner);
+      },
+      onOpenLibrary: () => _setDestination(_ShellDestination.library),
       onStartReview: _startReviewItem,
-      onSetReadinessOverride: _viewerCanManage
-          ? _setReadinessOverrideForMaterial
-          : null,
-      onClearReadinessOverride: _viewerCanManage
-          ? _clearReadinessOverrideForMaterial
-          : null,
     );
   }
 
   Widget _buildLearnerView(BuildContext context) {
     return LearnerWorkspaceView(
-      viewer: _currentViewer,
+      viewer: _activeViewer,
       workspace: _learnerWorkspace,
+      initialAssignmentId: _requestedAssignmentId,
+      onInitialAssignmentHandled: () =>
+          setState(() => _requestedAssignmentId = null),
       viewerCanReadLibrary: _viewerCanReadLibrary,
       onOpenLibraryRoute: _openLibraryDocumentFromWork,
       onStartActivity: _startActivityForMaterial,
       onStartReview: _startReviewItem,
+      onCreateWorksheetForLevel: _openWorksheetLevel,
+      onRecordPaperResult: _viewerCanManage ? _recordPaperSession : null,
       onSetReadinessOverride: _viewerCanManage
           ? _setReadinessOverrideForMaterial
           : null,
@@ -1968,26 +1833,27 @@ class _CornerstoneHomePageState extends State<CornerstoneHomePage> {
       }),
       documentBusy: _libraryDocumentBusy,
       canAssign: _viewerCanManage,
-      onAssignMaterial: (material) => _showAssignment(
-        title: material.title,
-        targets: material.assignmentTargets,
-        materialId: material.materialId,
-        offerActivityMode: material.activityLevelId != null,
-      ),
       onAssignPlaylist: (playlist) => _showAssignment(
         title: playlist.title,
         targets: playlist.assignmentTargets,
         playlistId: playlist.playlistId,
       ),
       onOpenDocument: _selectLibraryDocument,
-      onCreateWorksheet: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => WrittenArithmeticScreen(
-            apiClient: _apiClient,
-            canPrintAnswers: _viewerCanManage,
-          ),
-        ),
-      ),
+      onCreateWorksheetForLevel: _openWorksheetLevel,
+      onPreviewActivity: (material) {
+        final level = material.activityLevelId;
+        if (level != null) _openWorksheetLevel(level);
+      },
     );
   }
+
+  void _openWorksheetLevel(String levelId) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => WrittenArithmeticScreen(
+        apiClient: _apiClient,
+        canPrintAnswers: _viewerCanManage,
+        initialLevelId: levelId,
+      ),
+    ),
+  );
 }

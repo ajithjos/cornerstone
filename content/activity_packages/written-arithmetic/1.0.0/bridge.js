@@ -25,6 +25,32 @@
     return 'The activity could not save this request. Please try again.';
   }
 
+  const COLOR_TOKENS = Object.freeze([
+    'background', 'surface', 'surface-muted', 'text', 'muted', 'border',
+    'primary', 'on-primary', 'primary-container', 'on-primary-container',
+    'error', 'error-container', 'on-error-container', 'success',
+    'success-container', 'focus',
+  ]);
+
+  // CSS values are deliberately limited to colours. Packages cannot turn a
+  // theme message into a URL, stylesheet, selector, or executable content.
+  function applyAppearance(surface, appearance) {
+    if (!appearance || (appearance.mode !== 'light' && appearance.mode !== 'dark')
+      || !appearance.colors || typeof appearance.colors !== 'object') return false;
+    for (const token of COLOR_TOKENS) {
+      if (typeof appearance.colors[token] !== 'string'
+        || !/^#[0-9a-f]{6}$/i.test(appearance.colors[token])) return false;
+    }
+    const element = surface.document?.documentElement;
+    if (!element) return false;
+    element.setAttribute('data-appearance', appearance.mode);
+    element.style.colorScheme = appearance.mode;
+    for (const token of COLOR_TOKENS) {
+      element.style.setProperty(`--cs-${token}`, appearance.colors[token]);
+    }
+    return true;
+  }
+
   function connect(surface, onInitialize) {
     let hostOrigin = null;
     let channel = null;
@@ -47,6 +73,7 @@
         if (data.type !== 'initialize' || !validOrigin(event.origin)
           || typeof data.channel !== 'string' || data.channel.length < 1 || data.channel.length > 200) return;
         try {
+          applyAppearance(surface, data.appearance);
           onInitialize(data.payload);
         } catch (_) {
           return; // A malformed initialization cannot establish the channel.
@@ -57,8 +84,12 @@
         readyTimer = null;
         return;
       }
-      if (event.origin !== hostOrigin || data.channel !== channel || data.type !== 'response'
-        || typeof data.request_id !== 'string' || !pending.has(data.request_id)) return;
+      if (event.origin !== hostOrigin || data.channel !== channel) return;
+      if (data.type === 'appearance') {
+        applyAppearance(surface, data.appearance);
+        return;
+      }
+      if (data.type !== 'response' || typeof data.request_id !== 'string' || !pending.has(data.request_id)) return;
       if (data.ok !== true && data.ok !== false) return;
       const request = pending.get(data.request_id);
       pending.delete(data.request_id);
@@ -100,7 +131,7 @@
     };
   }
 
-  const api = Object.freeze({ connect, validOrigin, envelope });
+  const api = Object.freeze({ connect, validOrigin, envelope, applyAppearance, COLOR_TOKENS });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CornerstoneActivityBridge = api;
 }(typeof window === 'undefined' ? globalThis : window));

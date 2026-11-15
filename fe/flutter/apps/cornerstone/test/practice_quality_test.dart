@@ -247,54 +247,6 @@ void main() {
     });
   });
 
-  testWidgets('shows corrections and starts a missed-fact retry', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(900, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    var retryCount = 0;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ExecutableActivityPage(
-          activity: ActivityInstance.fromJson(_activityJson()),
-          onComplete: (_, _, _, _) async =>
-              CompleteActivityResponse.fromJson(_completeJson()),
-          onRetry: (_) async {
-            retryCount += 1;
-            return ActivityInstance.fromJson(
-              _activityJson(
-                id: 'activity-retry-1',
-                instructions: 'Practise only the missed facts.',
-              ),
-            );
-          },
-        ),
-      ),
-    );
-
-    await tester.enterText(find.byType(TextField).first, '54');
-    await tester.tap(find.text('Submit activity'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Keep practising'), findsOneWidget);
-    expect(find.text('Your answer: 54'), findsOneWidget);
-    expect(find.text('Correct answer: 56'), findsOneWidget);
-    expect(find.text('Seven groups of eight make 56.'), findsOneWidget);
-
-    final retryButton = find.byKey(const ValueKey('practise-missed-facts'));
-    await tester.ensureVisible(retryButton);
-    await tester.tap(retryButton);
-    await tester.pumpAndSettle();
-
-    expect(retryCount, 1);
-    expect(find.text('Practise only the missed facts.'), findsOneWidget);
-    expect(find.text('Submit activity'), findsOneWidget);
-    expect(find.text('Corrections'), findsNothing);
-  });
-
   testWidgets('renders mastery evidence and actionable review', (tester) async {
     var startedReview = false;
     final mastery = PracticeMastery.fromJson(<String, dynamic>{
