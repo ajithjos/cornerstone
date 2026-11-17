@@ -13,6 +13,7 @@ stage_ids:
 - doubles_and_add_10
 - bridge_through_10_addition
 - bridge_through_10_subtraction
+- quick_ten_and_nine
 - multiplication_tables_to_10
 - division_facts_from_tables
 playlist_ids:
@@ -20,6 +21,7 @@ playlist_ids:
 - doubles_and_add_10
 - bridge_through_10_addition
 - bridge_through_10_subtraction
+- quick_ten_and_nine
 - multiplication_tables_to_10
 - division_facts_from_tables
 entry_points:

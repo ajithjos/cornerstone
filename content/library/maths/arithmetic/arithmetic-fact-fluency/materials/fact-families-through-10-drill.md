@@ -35,4 +35,4 @@ runtime:
 
 # Fact Families Through 10 Drill
 
-Start the live drill after the lesson note and guided practice. Keep addition and subtraction evidence balanced.
+Put the parts together to add. When you subtract, use the matching addition fact to find the missing part.

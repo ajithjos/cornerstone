@@ -181,6 +181,9 @@ pub(super) fn integer_candidate(
     correction_cue: impl Into<String>,
 ) -> GeneratedActivityItem {
     GeneratedActivityItem {
+        steps: Vec::new(),
+        answer_prompt: None,
+        equation: None,
         item_id: String::new(),
         fact_key: fact_key.into(),
         family_keys: sorted_unique(family_keys),
@@ -213,12 +216,43 @@ pub(super) fn build_generated_activity(
     required_family_keys: Vec<String>,
 ) -> anyhow::Result<GeneratedActivity> {
     validate_candidate_capacity(question_count, &candidates)?;
-    let (items, coverage) = select_items(
+    let (mut items, coverage) = select_items(
         candidates,
         question_count,
         &sorted_unique(required_family_keys),
         context,
     )?;
+    let guided = matches!(context.run_mode, RunMode::Practice | RunMode::Retry)
+        && runtime
+            .presentation
+            .as_ref()
+            .is_none_or(|package| package.package_id == "numeric-questions" && package.version == "1.1.0");
+    // Fade bridge practice from writing both parts, to finding the rest, to recall.
+    // A retry reteaches the complete split, even for a previously missed recall item.
+    let fade_bridge = context.run_mode == RunMode::Practice
+        && matches!(
+            runtime.template_id.as_str(),
+            super::bridge_through_10_addition::TEMPLATE_ID | super::bridge_through_10_subtraction::TEMPLATE_ID
+        );
+    let both_parts_count = (items.len() / 3).max(1);
+    let guided_count = (items.len() * 2 / 3).max(both_parts_count);
+    for (position, item) in items.iter_mut().enumerate() {
+        if !guided || (fade_bridge && position >= guided_count) {
+            item.steps.clear();
+            item.answer_prompt = None;
+            item.equation = None;
+            continue;
+        }
+        if fade_bridge && position >= both_parts_count {
+            let given = item.steps.remove(0);
+            if let Some(equation) = &mut item.equation {
+                *equation = equation.replacen('□', &given.expected_response.to_string(), 1);
+            }
+        }
+        for (index, step) in item.steps.iter_mut().enumerate() {
+            step.item_id = format!("{}_step_{index}", item.item_id);
+        }
+    }
 
     Ok(GeneratedActivity {
         written_plan: None,
@@ -369,7 +403,7 @@ fn select_items(
     let mut adaptive_item_count = 0usize;
 
     while selected.len() < item_count {
-        let mut best: Option<(usize, i64, bool)> = None;
+        let mut best = None;
         for (index, candidate) in candidates.iter().enumerate() {
             if selected_fact_keys.contains(candidate.fact_key.as_str()) {
                 continue;
@@ -425,11 +459,15 @@ fn select_items(
                 RunMode::Retry if related => 120_000,
                 RunMode::Retry => 0,
             };
-            let score = coverage_gain * 100_000
-                + i64::from(band_deficit) * 20_000
-                + i64::from(unseen_practice_fact) * 12_000
-                + mode_priority
-                - i64::from(over_adaptive_cap) * 300_000;
+            // Balance is a launch requirement. A weak or recently seen family can
+            // still supply a required fact after its adaptive quota has been used.
+            let preference =
+                i64::from(unseen_practice_fact) * 12_000 + mode_priority - i64::from(over_adaptive_cap) * 300_000;
+            let score = if enforce_balance {
+                (coverage_gain, band_deficit, preference)
+            } else {
+                (0, false, preference + i64::from(band_deficit) * 20_000)
+            };
             if best.is_none_or(|(_, best_score, _)| score > best_score) {
                 best = Some((index, score, allocate_adaptive));
             }
@@ -502,16 +540,24 @@ pub(super) fn score_integer_activity(
         .collect::<BTreeMap<_, _>>();
     let mut attempted_count = 0usize;
     let mut correct_count = 0usize;
+    let mut all_fields_answered = true;
     let mut weak_family_counts = BTreeMap::<String, usize>::new();
     let mut facts = BTreeMap::<String, FactAccumulator>::new();
     let mut families = BTreeMap::<String, CountAccumulator>::new();
     let mut corrections = Vec::new();
 
     for item in &generated.items {
-        let submitted = responses_by_item.get(item.item_id.as_str()).copied().unwrap_or("");
-        let parsed = submitted.parse::<i32>().ok();
-        let is_attempted = !submitted.is_empty();
-        let is_correct = parsed == Some(item.expected_response);
+        let mut is_attempted = false;
+        let mut first_mistake = None;
+        for field in item.fields() {
+            let submitted = responses_by_item.get(field.id).copied().unwrap_or("");
+            is_attempted |= !submitted.is_empty();
+            all_fields_answered &= !submitted.is_empty();
+            if first_mistake.is_none() && !field.correct(submitted) {
+                first_mistake = Some((field, submitted));
+            }
+        }
+        let is_correct = first_mistake.is_none();
         if is_attempted {
             attempted_count += 1;
         }
@@ -535,15 +581,15 @@ pub(super) fn score_integer_activity(
             }
         }
 
-        if !is_correct {
+        if let Some((field, submitted)) = first_mistake {
             corrections.push(ActivityCorrection {
-                item_id: item.item_id.clone(),
-                content: item.content.clone(),
+                item_id: field.id.to_string(),
+                content: field.prompt.to_string(),
                 submitted_response: submitted.to_string(),
-                expected_response: item.expected_response,
+                expected_response: field.expected,
                 fact_key: item.fact_key.clone(),
                 family_keys: item.family_keys.clone(),
-                correction_cue: item.correction_cue.clone(),
+                correction_cue: field.correction.to_string(),
             });
         }
     }
@@ -554,8 +600,8 @@ pub(super) fn score_integer_activity(
     } else {
         correct_count as f64 / item_count as f64
     };
-    let target_met = attempted_count == item_count && accuracy >= generated.target_accuracy;
-    let completion_reason = if attempted_count < item_count {
+    let target_met = all_fields_answered && accuracy >= generated.target_accuracy;
+    let completion_reason = if !all_fields_answered {
         "partial_submission".to_string()
     } else if target_met {
         "target_met".to_string()

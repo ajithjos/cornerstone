@@ -80,19 +80,22 @@ fn candidates(parameters: &Parameters) -> Vec<GeneratedActivityItem> {
             let part = to_ten + rest;
             let answer = whole - part;
             let coverage_key = format!("bridge_start:{whole}");
-            candidates.push(integer_candidate(
-                format!("subtraction:{whole}-{part}"),
-                [
-                    "bridge_through_10_for_subtraction".to_string(),
-                    "operation:subtraction".to_string(),
-                    coverage_key.clone(),
-                ],
-                [coverage_key],
-                bridge_band(whole),
-                format!("{whole} - {part} ="),
-                answer,
-                format!("Split {part} into {to_ten} and {rest}; step to 10, then subtract {rest}."),
-            ));
+            candidates.push(
+                integer_candidate(
+                    format!("subtraction:{whole}-{part}"),
+                    [
+                        "bridge_through_10_for_subtraction".to_string(),
+                        "operation:subtraction".to_string(),
+                        coverage_key.clone(),
+                    ],
+                    [coverage_key],
+                    bridge_band(whole),
+                    format!("{whole} - {part} ="),
+                    answer,
+                    format!("{whole} − {to_ten} = 10. Then 10 − {rest} = {answer}."),
+                )
+                .bridge_subtraction(whole, part),
+            );
         }
     }
     candidates

@@ -312,7 +312,7 @@ async fn post_written_generate(
     session_context_from_jar(&jar, &state).await?;
     let worksheet = written_arithmetic::generate(request)?;
     let descriptor =
-        crate::activity_packages::resolve_package(&state.config.content_root, "written-arithmetic", "1.0.0")?;
+        crate::activity_packages::resolve_package(&state.config.content_root, "written-arithmetic", "1.1.0")?;
     let mut presentation = serde_json::to_value(descriptor).map_err(Error::from)?;
     presentation["payload"] = serde_json::json!({"worksheet": worksheet, "mode": worksheet.request.mode});
     let mut response = serde_json::to_value(&worksheet).map_err(Error::from)?;

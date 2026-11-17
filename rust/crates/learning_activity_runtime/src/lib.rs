@@ -114,7 +114,25 @@ pub struct GeneratedActivityItem {
     pub response_kind: String,
     pub expected_response: i32,
     pub correction_cue: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<FactStep>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_prompt: Option<String>,
+    /// Each square takes the next working field, followed by the answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equation: Option<String>,
 }
+
+/// A required working field in a stored fact. Only its id and prompt go to the learner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FactStep {
+    pub item_id: String,
+    pub prompt: String,
+    pub expected_response: i32,
+    pub correction_cue: String,
+}
+
+pub use arithmetic_fact_fluency_v1::check_fact_responses;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DifficultyCoverage {
@@ -151,6 +169,14 @@ pub struct GeneratedActivity {
     pub written_plan: Option<written_arithmetic::StoredWorksheet>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package_descriptor: Option<serde_json::Value>,
+}
+
+impl GeneratedActivity {
+    pub fn has_fact_working(&self) -> bool {
+        self.items
+            .iter()
+            .any(|item| item.answer_prompt.is_some() || !item.steps.is_empty())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,8 +271,13 @@ pub fn generate_activity(
         return written_arithmetic::generate_activity(runtime, context);
     }
     let program = resolve_program(runtime)?;
-    (program.generate)(runtime, context)
-        .with_context(|| format!("runtime '{}' failed to generate activity", program.runtime_id))
+    let mut generated = (program.generate)(runtime, context)
+        .with_context(|| format!("runtime '{}' failed to generate activity", program.runtime_id))?;
+    // A missed checkpoint fact is retaught with working. Its recall timer belongs to the check.
+    if material.kind == "quick_check" && context.run_mode == RunMode::Retry && generated.has_fact_working() {
+        generated.max_duration_seconds = None;
+    }
+    Ok(generated)
 }
 
 pub fn score_activity(
@@ -272,13 +303,23 @@ pub fn score_activity(
             program.runtime_id,
         );
     }
+    validate_fact_response_ids(generated, responses)?;
+    Ok((program.score)(generated, responses))
+}
+
+fn validate_fact_response_ids(
+    generated: &GeneratedActivity,
+    responses: &[ActivityResponseInput],
+) -> anyhow::Result<()> {
     let mut generated_item_ids = BTreeSet::new();
     for item in &generated.items {
         if item.fact_key.trim().is_empty() {
             bail!("generated activity item '{}' has an empty fact_key", item.item_id);
         }
-        if !generated_item_ids.insert(item.item_id.as_str()) {
-            bail!("generated activity contains duplicate item_id '{}'", item.item_id);
+        for id in std::iter::once(&item.item_id).chain(item.steps.iter().map(|step| &step.item_id)) {
+            if !generated_item_ids.insert(id.as_str()) {
+                bail!("generated activity contains duplicate item_id '{id}'");
+            }
         }
     }
     let mut response_item_ids = BTreeSet::new();
@@ -290,7 +331,7 @@ pub fn score_activity(
             bail!("unknown response item_id '{}'", response.item_id);
         }
     }
-    Ok((program.score)(generated, responses))
+    Ok(())
 }
 
 pub fn resolve_program(runtime: &MaterialRuntime) -> anyhow::Result<&'static RuntimeProgramRegistration> {
@@ -380,6 +421,225 @@ mod tests {
 
     fn fact_keys(activity: &GeneratedActivity) -> BTreeSet<String> {
         activity.items.iter().map(|item| item.fact_key.clone()).collect()
+    }
+
+    #[test]
+    fn guided_bridge_grades_the_split_and_the_answer_as_one_fact() {
+        let material = build_material("bridge_through_10_subtraction", json!({"difficulty": "advanced"}));
+        let context = GenerationContext::retry(16).with_focus_facts(["subtraction:16-7".into()]);
+        let run = generate_activity(&material, &context).unwrap();
+        let fact = run
+            .items
+            .iter()
+            .find(|item| item.fact_key == "subtraction:16-7")
+            .unwrap();
+        assert_eq!(
+            fact.steps.iter().map(|s| s.expected_response).collect::<Vec<_>>(),
+            [6, 1]
+        );
+        assert_eq!(fact.expected_response, 9);
+
+        let mut answers = Vec::new();
+        for item in &run.items {
+            for step in &item.steps {
+                answers.push(ActivityResponseInput {
+                    item_id: step.item_id.clone(),
+                    value: step.expected_response.to_string(),
+                });
+            }
+            answers.push(ActivityResponseInput {
+                item_id: item.item_id.clone(),
+                value: item.expected_response.to_string(),
+            });
+        }
+        let full = score_activity(&material, &run, &answers).unwrap();
+        assert_eq!(full.correct_count, run.items.len());
+        assert!(full.target_met);
+        let idx = answers.iter().position(|r| r.item_id == fact.steps[1].item_id).unwrap();
+        answers[idx].value = "3".into();
+        let partial = check_fact_responses(&run, &answers[idx..=idx], false).unwrap();
+        assert_eq!(partial.total_count, 1);
+        assert_eq!(partial.feedback[0].expected.as_deref(), Some("1"));
+        assert_eq!(partial.feedback[0].cell_id, fact.steps[1].item_id);
+        let score = score_activity(&material, &run, &answers).unwrap();
+        assert_eq!(score.correct_count, score.item_count - 1);
+        assert_eq!(score.corrections[0].item_id, fact.steps[1].item_id);
+        assert_eq!(score.corrections[0].expected_response, 1);
+        assert_eq!(score.corrections[0].fact_key, fact.fact_key);
+        answers.remove(idx);
+        let missing = score_activity(&material, &run, &answers).unwrap();
+        assert_eq!(missing.completion_reason, "partial_submission");
+        assert!(!missing.target_met);
+        let finish = check_fact_responses(&run, &answers, true).unwrap();
+        assert_eq!(finish.correct_count + 1, finish.total_count);
+        answers.push(answers[0].clone());
+        assert!(check_fact_responses(&run, &answers, false).is_err());
+        assert!(score_activity(&material, &run, &answers).is_err());
+    }
+
+    #[test]
+    fn quick_ways_practises_all_four_moves_and_checks_them_without_working_prompts() {
+        let material = build_material("quick_ten_and_nine", json!({"question_count": 8}));
+        for context in [GenerationContext::practice(9), GenerationContext::check(9)] {
+            let run = generate_activity(&material, &context).unwrap();
+            let mut moves = BTreeSet::new();
+            for item in &run.items {
+                let parts: Vec<_> = item.content.split_whitespace().collect();
+                let start = parts[0].parse::<i32>().unwrap();
+                let delta = parts[2].parse::<i32>().unwrap() * if parts[1] == "+" { 1 } else { -1 };
+                moves.insert(delta);
+                assert_eq!(item.expected_response, start + delta);
+                if context.run_mode == RunMode::Practice && delta.abs() == 9 {
+                    assert_eq!(item.steps.len(), 1);
+                    assert_eq!(item.steps[0].expected_response, start + 10 * delta.signum());
+                    assert_eq!(item.equation.as_deref().unwrap().matches('□').count(), 2);
+                } else {
+                    assert!(item.steps.is_empty() && item.equation.is_none());
+                }
+            }
+            assert_eq!(moves, BTreeSet::from([-10, -9, 9, 10]));
+        }
+    }
+
+    #[test]
+    fn addition_steps_match_the_displayed_order_and_checkpoints_stay_independent() {
+        let mut material = bridge_addition_material(14);
+        let run = generate_activity(&material, &GenerationContext::practice(8)).unwrap();
+        for (index, item) in run.items.iter().enumerate() {
+            let mut parts = item.content.split_whitespace();
+            let left: i32 = parts.next().unwrap().parse().unwrap();
+            let right: i32 = parts.nth(1).unwrap().parse().unwrap();
+            let step_count = match index {
+                0..4 => 2,
+                4..9 => 1,
+                _ => 0,
+            };
+            assert_eq!(item.steps.len(), step_count);
+            let equation = match step_count {
+                2 => Some(format!("{left} + {right} = {left} + □ + □ = □")),
+                1 => Some(format!("{left} + {right} = {left} + {} + □ = □", 10 - left)),
+                _ => None,
+            };
+            assert_eq!(item.equation, equation);
+            assert_eq!(item.answer_prompt.is_some(), step_count > 0);
+            if step_count == 2 {
+                assert_eq!(left + item.steps[0].expected_response, 10);
+            }
+            if let Some(rest) = item.steps.last() {
+                assert!(rest.prompt.contains("reach 10"));
+                assert_eq!(10 - left + rest.expected_response, right);
+                assert_eq!(10 + rest.expected_response, item.expected_response);
+            }
+        }
+
+        for context in [GenerationContext::check(8), GenerationContext::review(8)] {
+            let recall = generate_activity(&material, &context).unwrap();
+            assert!(
+                recall
+                    .items
+                    .iter()
+                    .all(|i| i.steps.is_empty() && i.answer_prompt.is_none() && i.equation.is_none())
+            );
+            assert!(check_fact_responses(&recall, &[], false).is_err());
+        }
+        material.runtime.as_mut().unwrap().presentation = Some(catalog::MaterialPresentation {
+            package_id: "numeric-questions".into(),
+            version: "1.0.0".into(),
+        });
+        let scalar = generate_activity(&material, &GenerationContext::practice(8)).unwrap();
+        let persisted = serde_json::to_value(&scalar).unwrap();
+        assert!(persisted["items"][0].get("steps").is_none());
+        assert!(persisted["items"][0].get("answer_prompt").is_none());
+        let loaded = serde_json::from_value::<GeneratedActivity>(persisted).unwrap();
+        let answers = loaded
+            .items
+            .iter()
+            .map(|item| ActivityResponseInput {
+                item_id: item.item_id.clone(),
+                value: item.expected_response.to_string(),
+            })
+            .collect::<Vec<_>>();
+        assert!(score_activity(&material, &loaded, &answers).unwrap().target_met);
+    }
+
+    #[test]
+    fn within_ten_uses_related_facts_without_asking_for_the_answer_twice() {
+        let material = build_material("mixed_add_sub_to_10", json!({"item_forms": ["equation"]}));
+        let context = GenerationContext::retry(5).with_focus_facts(["subtraction:8-3".into(), "addition:3+4".into()]);
+        let run = generate_activity(&material, &context).unwrap();
+        let subtraction = run.items.iter().find(|i| i.fact_key == "subtraction:8-3").unwrap();
+        assert!(subtraction.steps.is_empty());
+        assert!(subtraction.answer_prompt.as_ref().unwrap().contains("3 + □ = 8"));
+        assert_eq!(subtraction.expected_response, 5);
+        let near_double = run.items.iter().find(|i| i.fact_key == "addition:3+4").unwrap();
+        assert_eq!(near_double.steps.len(), 1);
+        assert_eq!(near_double.steps[0].expected_response, 6);
+        assert_eq!(near_double.expected_response, 7);
+    }
+
+    #[test]
+    fn authored_foundation_drills_reach_their_coverage_gate_and_launch_independent_checks() {
+        let content = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../content");
+        let (library, _) = catalog::load_library_bundle(&content).unwrap();
+        for id in [
+            "fact_families_to_10",
+            "doubles_and_add_10",
+            "bridge_through_10_addition",
+            "bridge_through_10_subtraction",
+        ] {
+            let drill = library.material(&format!("{id}_drill")).unwrap();
+            let check = library.material(&format!("{id}_check")).unwrap();
+            validate_material_runtime(drill).unwrap();
+            validate_material_runtime(check).unwrap();
+            let target = drill.runtime.as_ref().unwrap().readiness.as_ref().unwrap();
+            for sequence in 0..32 {
+                let mut seen = BTreeSet::new();
+                for offset in 1..=target.recent_run_window {
+                    let context = GenerationContext::practice((sequence * target.recent_run_window + offset) as u64)
+                        .with_seen_facts(seen.iter().cloned());
+                    let run = generate_activity(drill, &context).unwrap_or_else(|e| panic!("{id} {sequence}: {e:#}"));
+                    assert!(run.items.iter().any(|item| item.answer_prompt.is_some()));
+                    assert!(run.coverage.requirements_met);
+                    assert!(run.items.len() >= target.target_correct_count.unwrap());
+                    seen.extend(fact_keys(&run));
+                }
+                assert!(
+                    seen.len() >= target.minimum_distinct_items,
+                    "{id} sequence {sequence}: {}",
+                    seen.len()
+                );
+            }
+            let independent = generate_activity(check, &GenerationContext::check(23)).unwrap();
+            assert!(independent.coverage.representative);
+            assert!(!independent.has_fact_working());
+            assert!(independent.max_duration_seconds.is_some());
+            let retry = generate_activity(
+                check,
+                &GenerationContext::retry(24).with_focus_facts([independent.items[0].fact_key.clone()]),
+            )
+            .unwrap();
+            assert!(retry.has_fact_working());
+            assert!(retry.max_duration_seconds.is_none());
+        }
+    }
+
+    #[test]
+    fn repeat_bridge_drills_meet_coverage_even_when_weak_families_fill_the_adaptive_quota() {
+        let material = bridge_addition_material(14);
+        for seed in 1..=256 {
+            let previous = generate_activity(&material, &GenerationContext::practice(seed)).unwrap();
+            let missed = previous.items.iter().take((seed % 13) as usize);
+            let weak_facts = missed.clone().map(|item| item.fact_key.clone());
+            let weak_families = missed
+                .flat_map(|item| item.family_keys.clone())
+                .collect::<BTreeSet<_>>();
+            let context = GenerationContext::practice(seed + 996)
+                .with_seen_facts(fact_keys(&previous))
+                .with_weak_facts(weak_facts)
+                .with_weak_families(weak_families.into_iter().take(8));
+            let repeat = generate_activity(&material, &context).unwrap_or_else(|e| panic!("{seed}: {e:#}"));
+            assert!(repeat.coverage.requirements_met);
+        }
     }
 
     #[test]

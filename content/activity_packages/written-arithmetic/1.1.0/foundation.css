@@ -1,0 +1,55 @@
+/* Shared activity foundation. Host appearance messages replace these defaults. */
+:root {
+  color-scheme: light;
+  --cs-background: #f7f7f2;
+  --cs-surface: #ffffff;
+  --cs-surface-muted: #f4f4ed;
+  --cs-text: #252820;
+  --cs-muted: #666c5f;
+  --cs-border: #dddfd4;
+  --cs-primary: #806016;
+  --cs-on-primary: #ffffff;
+  --cs-primary-container: #f8edc3;
+  --cs-on-primary-container: #252820;
+  --cs-error: #b3261e;
+  --cs-error-container: #f9dedc;
+  --cs-on-error-container: #410e0b;
+  --cs-success: #236b3c;
+  --cs-success-container: #e9f5ec;
+  --cs-focus: #806016;
+  --cs-radius: .85rem;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  color: var(--cs-text);
+  background: var(--cs-background);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-appearance="light"]) {
+    color-scheme: dark;
+    --cs-background: #161915;
+    --cs-surface: #20251f;
+    --cs-surface-muted: #1a1e19;
+    --cs-text: #eff2e9;
+    --cs-muted: #b9c2b3;
+    --cs-border: #424b3e;
+    --cs-primary: #f0c653;
+    --cs-on-primary: #252820;
+    --cs-primary-container: #3e351d;
+    --cs-on-primary-container: #f8e7af;
+    --cs-error: #ffb4ab;
+    --cs-error-container: #8c1d18;
+    --cs-on-error-container: #ffdad6;
+    --cs-success: #9cd8ac;
+    --cs-success-container: #203e2a;
+    --cs-focus: #f0c653;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input { font: inherit; }
+button { touch-action: manipulation; }
+[hidden] { display: none !important; }
+::selection { color: var(--cs-on-primary-container); background: var(--cs-primary-container); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

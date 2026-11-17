@@ -2,9 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
-const packageRoot = path.resolve(__dirname, '../../content/activity_packages/written-arithmetic/1.0.0');
+const vm = require('node:vm');
+const packageRoot = path.resolve(__dirname, '../../content/activity_packages/written-arithmetic/1.1.0');
 const { connect, validOrigin } = require(path.join(packageRoot, 'bridge.js'));
-const { validatePayload, normalizeResult, collectResponses } = require(path.join(packageRoot, 'activity.js'));
+const { validatePayload, normalizeResult } = require(path.join(packageRoot, 'activity.js'));
 
 const protocol = { protocol: 'cornerstone.activity', version: 1 };
 function fakeSurface() {
@@ -115,18 +116,153 @@ test('worksheet validation requires rectangular, uniquely identified backend cel
   const invalidDigits = payload();
   invalidDigits.worksheet.problems[0].rows[0].cells[1].max_digits = 0;
   assert.throws(() => validatePayload(invalidDigits), /cell/);
+  const badLabels = payload();
+  badLabels.worksheet.problems[0].column_labels = ['tens'];
+  assert.throws(() => validatePayload(badLabels), /column labels/);
+  const badSign = payload();
+  badSign.worksheet.problems[0].rows[0].trailing_sign = 'word';
+  assert.throws(() => validatePayload(badSign), /operation sign/);
 });
 
-test('per-exercise checks send only entered boxes, completion includes every working cell', () => {
-  const entries = new Map([
-    ['a', { cellId: 'a', problemId: 'q1', input: { value: ' 3 ' } }],
-    ['b', { cellId: 'b', problemId: 'q1', input: { value: '' } }],
-    ['c', { cellId: 'c', problemId: 'q2', input: { value: '8' } }],
-  ]);
-  assert.deepEqual(collectResponses(entries, 'q1', false), [{ item_id: 'a', value: '3' }]);
-  assert.deepEqual(collectResponses(entries, undefined, true), [
-    { item_id: 'a', value: '3' }, { item_id: 'b', value: '' }, { item_id: 'c', value: '8' },
-  ]);
+// Run the actual package click and input handlers, with only DOM and host IO stubbed.
+const cell = (id, text = '', max_digits = 1) => ({ id, text, max_digits });
+
+function openPractice(mode, problems, answers = { first: '1', second: '6', third: '4' }) {
+  const byId = new Map();
+  const all = [];
+  let focused;
+  function element(tag) {
+    const el = {
+      tag, value: '', children: [], attrs: {}, handlers: {}, classList: { toggle() {} },
+      setAttribute(key, value) { this.attrs[key] = value; },
+      removeAttribute(key) { delete this.attrs[key]; },
+      append(...nodes) { this.children.push(...nodes); },
+      replaceChildren(...nodes) { this.children = nodes; },
+      addEventListener(event, handler) { this.handlers[event] = handler; },
+      focus() { focused = this; },
+    };
+    all.push(el);
+    return el;
+  }
+  const document = {
+    getElementById(id) {
+      if (!byId.has(id)) byId.set(id, element('div'));
+      return byId.get(id);
+    },
+    createElement: element,
+  };
+  const requests = [];
+  let initialize;
+  const window = {
+    document, parent: {}, performance: { now: () => 1000 }, addEventListener() {},
+    CornerstoneActivityBridge: {
+      connect(_, ready) {
+        initialize = ready;
+        return { request: async (action, body) => {
+          requests.push({ action, ...JSON.parse(JSON.stringify(body)) });
+          const feedback = body.responses.map(({ item_id, value }) => ({
+            cell_id: item_id, correct: [answers[item_id]].flat().includes(value), expected: [answers[item_id]].flat().join(' or '),
+            explanation: 'Check the ones.',
+          }));
+          return { check_result: { feedback, total_count: feedback.length, correct_count: feedback.filter(cell => cell.correct).length } };
+        } };
+      },
+    },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(packageRoot, 'activity.js'), 'utf8'), { window });
+  const sheet = payload();
+  sheet.worksheet.problems = problems || [{
+    id: 'q1', prompt: '321 − 157', columns: 3, column_labels: ['hundreds', 'tens', 'ones'],
+    rows: [
+      { label: 'Exchange marks', kind: 'annotation', cells: [cell(null, '2'), cell('first', '', 2), cell(null)] },
+      { label: 'Answer', kind: 'answer', cells: [cell(null, '1'), cell('second'), cell(null, '4')] },
+    ],
+  }, {
+    id: 'q2', prompt: '7 − 3', columns: 1, column_labels: ['ones'],
+    rows: [{ label: 'Answer', kind: 'answer', cells: [cell('third')] }],
+  }];
+  initialize({ ...sheet, mode });
+  const inputs = all.filter((el) => el.tag === 'input');
+  function type(index, value) { inputs[index].value = value; inputs[index].handlers.input(); }
+  return {
+    all, inputs, requests, type, focused: () => focused,
+    checks: all.filter((el) => el.tag === 'button'),
+    complete: byId.get('complete'), notice: byId.get('notice'),
+  };
+}
+
+test('exercise checks report unfinished work; final submission waits for every editable box', async () => {
+  const run = openPractice('assisted');
+  const [first, second, third] = run.inputs;
+  assert.equal(run.inputs.length, 3);
+  assert.equal(first.maxLength, 2);
+  assert.equal(first.attrs['aria-label'], 'Question 1, Exchange marks, tens');
+  assert.equal(run.all.filter((el) => el.className === 'printed-prefix').length, 0);
+  assert.deepEqual(run.all.filter((el) => el.scope === 'col').map((el) => el.textContent), ['hundreds', 'tens', 'ones', 'ones']);
+
+  run.type(0, '1');
+  await run.checks[0].handlers.click();
+  assert.deepEqual(run.requests[0].responses, [{ item_id: 'first', value: '1' }, { item_id: 'second', value: '' }]);
+  assert.equal(second.attrs['aria-invalid'], 'false');
+  assert.equal(second.attrs['aria-describedby'], 'missing-1');
+  assert.ok(!run.all.some((el) => el.textContent === '✓ This question is correct.'));
+  await run.complete.handlers.click();
+  assert.equal(run.requests.length, 1);
+  assert.equal(run.focused(), second);
+  run.type(1, '5');
+  await run.checks[0].handlers.click();
+  assert.equal(second.attrs['aria-invalid'], 'true');
+  run.type(1, '6');
+  await run.checks[0].handlers.click();
+  assert.ok(run.all.some((el) => el.textContent === '✓ This question is correct.'));
+  await run.complete.handlers.click();
+  assert.equal(run.focused(), third);
+  run.type(2, '4');
+  await run.complete.handlers.click();
+  assert.deepEqual(run.requests.at(-1), {
+    action: 'complete', duration_seconds: 0,
+    responses: [{ item_id: 'first', value: '1' }, { item_id: 'second', value: '6' }, { item_id: 'third', value: '4' }],
+  });
+  assert.ok(run.inputs.every(input => input.disabled));
+  assert.equal(run.complete.disabled, true);
+});
+
+test('four-digit subtraction preserves full and short entries as entered', async () => {
+  const run = openPractice('assisted', [{
+    id: 'q1', prompt: '5674 − 2987', columns: 4, column_labels: ['thousands', 'hundreds', 'tens', 'ones'],
+    rows: [{ label: 'Exchange marks', kind: 'annotation', cells: [
+      cell('thousands'), cell('hundreds', '', 2), cell('tens', '', 2), cell(null),
+    ] }, { label: 'Answer', kind: 'answer', cells: ['a', 'b', 'c', 'd'].map(id => cell(id)) }],
+  }], { thousands: '4', hundreds: ['5', '15'], tens: ['6', '16'], a: '2', b: '6', c: '8', d: '7' });
+  ['4', '15', '6', '2', '6', '8', '7'].forEach((value, index) => run.type(index, value));
+  await run.checks[0].handlers.click();
+  assert.deepEqual(run.requests[0].responses.map(r => r.value), ['4', '15', '6', '2', '6', '8', '7']);
+  assert.ok(run.inputs.every(input => input.attrs['aria-invalid'] === 'false'));
+  run.type(1, '5');
+  run.type(2, '16');
+  run.type(2, '16x');
+  assert.equal(run.inputs[2].value, '16');
+  run.type(2, '');
+  run.type(2, '16');
+  await run.complete.handlers.click();
+  assert.deepEqual(run.requests.at(-1).responses.map(r => r.value), ['4', '5', '16', '2', '6', '8', '7']);
+  assert.ok(run.inputs.every(input => input.disabled && input.attrs['aria-invalid'] === 'false'));
+});
+
+test('assessment identifies a missing box without checking answers or submitting early', async () => {
+  const run = openPractice('assessment');
+  assert.equal(run.checks.length, 0);
+  run.type(0, '8');
+  await run.complete.handlers.click();
+  assert.deepEqual(run.requests, []);
+  assert.equal(run.inputs[0].attrs['aria-invalid'], 'false');
+  assert.equal(run.focused(), run.inputs[1]);
+  run.type(1, '6');
+  run.type(2, '4');
+  await run.complete.handlers.click();
+  assert.equal(run.requests.length, 1);
+  assert.equal(run.inputs[0].attrs['aria-invalid'], 'true');
+  assert.equal(run.complete.textContent, 'Assessment submitted');
 });
 
 test('server result presentation preserves working feedback without calculating grades', () => {

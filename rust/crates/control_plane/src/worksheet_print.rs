@@ -43,6 +43,8 @@ table { border-collapse: collapse; table-layout: fixed; margin-left: auto; }
 th { width: 18mm; font-size: 6.5pt; font-weight: normal; text-align: right; padding-right: 2mm; }
 td { width: 6mm; min-width: 6mm; height: 7mm; text-align: center; font: 15pt ui-monospace, monospace; }
 td.entry { border: 1px solid #98a2b3; }
+.operation-sign { width: 4mm; min-width: 4mm; }
+tr.remainder td { border-top: 1px solid #667085; }
 .whole-number { width: 8mm; min-width: 8mm; font-size: 11pt; }
 tr.annotation td { height: 5mm; font-size: 10pt; }
 tr.answer td, tr.dividend td { border-top: 2px solid #172033; }
@@ -79,12 +81,19 @@ fn append_pages(html: &mut String, worksheet: &Worksheet, answers: bool, layout:
         .unwrap_or(0);
     let (columns, per_page, height) = match layout {
         PrintLayout::Compact if answers => (3, 24, 11),
-        PrintLayout::Compact if longest > 10 => (4, 8, 91),
+        PrintLayout::Compact if longest >= 10 => (4, 8, 91),
         PrintLayout::Compact if longest > 5 => (4, 12, 59),
         PrintLayout::Compact => (4, 20, 36),
-        PrintLayout::Guided if longest > 10 => (2, 4, 96),
+        PrintLayout::Guided if longest >= 10 => (2, 4, 96),
         PrintLayout::Guided if longest > 5 => (2, 6, 64),
         PrintLayout::Guided => (3, 12, 44),
+    };
+    let instructions = match (layout, answers) {
+        (PrintLayout::Compact, true) => "Answers match the numbered questions on this sheet.",
+        (PrintLayout::Compact, false) => {
+            "Set out each calculation in columns. Show your working underneath. For division, give the quotient and any remainder."
+        }
+        _ => &worksheet.level.instructions,
     };
     let label = if answers { "Answer key" } else { "Practice worksheet" };
     for (page, problems) in worksheet.problems.chunks(per_page).enumerate() {
@@ -92,10 +101,7 @@ fn append_pages(html: &mut String, worksheet: &Worksheet, answers: bool, layout:
             html,
             "<section class=\"page\"><header><div class=\"eyebrow\">Cornerstone · {label}</div><h1>{}</h1><p class=\"details\">{}</p><p class=\"details\">Level: {} · Sheet: {} · Page {}</p>",
             escape(&worksheet.level.title),
-            escape(if matches!(layout, PrintLayout::Compact) {
-                if answers { "Answers match the numbered questions on this sheet." }
-                else { "Set out each calculation in columns. Use the space below for carrying, exchanges and working. For division, give the quotient and any remainder." }
-            } else { &worksheet.level.instructions }),
+            escape(instructions),
             escape(&worksheet.request.level_id),
             worksheet.request.seed.unwrap_or_default(),
             page + 1,
@@ -147,6 +153,7 @@ fn append_pages(html: &mut String, worksheet: &Worksheet, answers: bool, layout:
                     };
                     write!(html, "<td class=\"{class}\">{}</td>", escape(&cell.text)).expect("write to String");
                 }
+                append_sign(html, row);
                 html.push_str("</tr>");
             }
             html.push_str("</tbody></table></article>");
@@ -155,9 +162,20 @@ fn append_pages(html: &mut String, worksheet: &Worksheet, answers: bool, layout:
         if matches!(layout, PrintLayout::Compact) {
             html.push_str("Keep answer digits aligned. Show your working, then check with the inverse operation.");
         } else {
-            html.push_str("Keep answer digits aligned. Exchange boxes and the final remainder box can hold a whole number. Work carefully, then check with the inverse operation.");
+            html.push_str("Write one digit in each answer column. In division, write the whole remainder in its box.");
         }
         html.push_str("</footer></section>");
+    }
+}
+
+fn append_sign(html: &mut String, row: &written_arithmetic::WrittenRow) {
+    if !row.trailing_sign.is_empty() {
+        write!(
+            html,
+            r#"<td class="operation-sign">{}</td>"#,
+            escape(&row.trailing_sign)
+        )
+        .expect("write to String");
     }
 }
 
@@ -171,7 +189,7 @@ fn append_compact_problem(
         let value = problem
             .rows
             .iter()
-            .filter(|row| row.kind == "answer" || row.kind == "quotient")
+            .filter(|row| matches!(row.kind.as_str(), "answer" | "quotient" | "remainder"))
             .map(|row| row.cells.iter().map(|cell| cell.text.as_str()).collect::<String>())
             .collect::<Vec<_>>()
             .join(" remainder ");
@@ -205,6 +223,7 @@ fn append_compact_problem(
         for cell in &row.cells {
             write!(html, "<td>{}</td>", escape(&cell.text)).expect("write to String");
         }
+        append_sign(html, row);
         html.push_str("</tr>");
     }
     // No pre-drawn working cells: leave the remainder of the card for handwriting.
@@ -249,6 +268,22 @@ mod tests {
         assert_eq!(keyed.matches("Cornerstone · Answer key").count(), 1);
         let start = keyed.find("Cornerstone · Answer key").unwrap();
         assert!(!keyed[start..].contains("Name: _____________________"));
+    }
+
+    #[test]
+    fn guided_sheet_places_the_sign_on_the_right_and_key_shows_the_short_mark() {
+        let request = WorksheetRequest {
+            level_id: "subtraction_3".into(),
+            seed: Some(481973),
+            question_count: 1,
+            mode: PracticeMode::Assisted,
+        };
+        let html = render_with_layout(request, true, PrintLayout::Guided).unwrap();
+        let (sheet, key) = html.split_once("Cornerstone · Answer key").unwrap();
+        assert!(sheet.contains("321 − 157"));
+        assert!(sheet.contains(r#"class="entry whole-number"></td>"#));
+        assert!(sheet.contains(r#"<td class="operation-sign">−</td>"#));
+        assert!(key.contains(r#"class="entry whole-number">1</td>"#));
     }
 
     #[test]

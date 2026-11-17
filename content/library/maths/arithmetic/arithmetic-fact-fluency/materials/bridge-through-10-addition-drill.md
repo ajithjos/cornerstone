@@ -27,4 +27,4 @@ runtime:
 
 # Bridge Through 10 Addition Drill
 
-Start the live drill after the lesson note and guided practice. Revisit missed bridge facts promptly.
+Find how much makes 10. Work out how much is left to add. Then write the total. Start by writing both parts. Later, do the steps in your head.

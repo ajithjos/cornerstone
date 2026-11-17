@@ -12,7 +12,7 @@ runtime:
   template_id: subtraction_across_zeros
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:
@@ -21,7 +21,7 @@ runtime:
 
 # Subtraction: exchange across zeros
 
-Align the place values and work from ones to the left. When needed, exchange one unit from the next place for ten. Write changed top digits in the After exchange row; leave unchanged places blank.
+When a zero is in the way, look left for a digit that can give one. In 3,000 − 246, trade one thousand for ten hundreds. Trade one of those hundreds for ten tens, and one of those tens for ten ones. You now have 2 thousands, 9 hundreds, 9 tens and 10 ones. Start subtracting in the ones column.
 
 ## Before starting
 

@@ -12,7 +12,7 @@ runtime:
   template_id: addition_3_by_2
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 6
   scoring:

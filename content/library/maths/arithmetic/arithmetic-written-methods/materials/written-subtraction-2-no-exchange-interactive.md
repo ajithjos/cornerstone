@@ -12,7 +12,7 @@ runtime:
   template_id: subtraction_2_no_exchange
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:
@@ -21,7 +21,7 @@ runtime:
 
 # Subtraction: two digits, no exchanging
 
-Align the place values and work from ones to the left. When needed, exchange one unit from the next place for ten. Write changed top digits in the After exchange row; leave unchanged places blank.
+Start with the ones. Subtract the bottom digit from the top digit. Move one place left and subtract again.
 
 ## Before starting
 

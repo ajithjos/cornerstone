@@ -12,7 +12,7 @@ runtime:
   template_id: subtraction_3_by_2
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:
@@ -21,7 +21,7 @@ runtime:
 
 # Subtraction: three digits − two digits
 
-Align the place values and work from ones to the left. When needed, exchange one unit from the next place for ten. Write changed top digits in the After exchange row; leave unchanged places blank.
+Start with the ones. Trade a ten for ten ones if you need more ones. Suppose you had 7 tens and gave one away. Write **6** above the 7. If you also need more tens, trade a hundred for ten tens. Now you have **16 tens**. Keep **6** in the box and think **16**. You can also write **16**. Subtract using all 16 tens.
 
 ## Before starting
 

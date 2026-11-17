@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Written arithmetic · Beacon</title>
+    <link rel="stylesheet" href="foundation.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="bridge.js" defer></script>
+    <script src="activity.js" defer></script>
+  </head>
+  <body>
+    <main id="activity" aria-busy="true">
+      <header class="activity-header">
+        <div class="title-row">
+          <h1 id="activity-title">Written arithmetic</h1>
+          <span id="mode-badge" class="mode-badge" hidden></span>
+        </div>
+        <p id="instructions">Getting your practice ready…</p>
+        <p id="mode-guidance" class="mode-guidance"></p>
+      </header>
+      <div id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true">Waiting for your lesson.</div>
+      <div id="error" class="error-notice" role="alert" hidden></div>
+      <div id="exercises" class="exercise-list"></div>
+      <footer id="actions" class="actions" hidden>
+        <div id="result" hidden>
+          <p id="completion-title" class="completion-title"></p>
+          <p id="completion-detail" class="completion-detail"></p>
+        </div>
+        <button id="complete" type="button" class="button primary">Finish practice</button>
+      </footer>
+      <noscript>This written activity needs JavaScript. Open it in the Beacon with JavaScript enabled.</noscript>
+    </main>
+  </body>
+</html>

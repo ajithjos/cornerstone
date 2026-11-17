@@ -13,8 +13,7 @@ Written arithmetic lives inside the Arithmetic Written Methods playbooks. Each p
 
 Practice supplies assisted correction. Checkpoints are independent assessments; the learner cannot switch an assigned checkpoint into assisted practice. A separate free worksheet generator is also available for unrecorded paper or screen work.
 
-In assisted practice, **Check this exercise** checks the entered boxes in one
-calculation and explains mistakes. The learner can correct the working before
+In assisted practice, **Check this question** checks one calculation, explains mistakes and points out any boxes still to fill. The learner can correct the working before
 finishing. In assessment mode, explanations appear only after submission. Both
 modes lock the submitted attempt when completion succeeds.
 
@@ -87,7 +86,7 @@ runtime:
   template_id: addition_2_carry
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 6
   scoring:
@@ -106,14 +105,12 @@ typing.
 
 ## Understand the result
 
-Cell feedback counts required working boxes. Unused leading places, unchanged
-exchange boxes, and no-carry boxes may remain blank and earn no marks. An
-incorrect value entered in one of those optional boxes still needs correction.
-An exchange box or final remainder box can hold a whole number such as `13`.
+Each editable box in a fresh worksheet needs an entry. Answer columns take one digit. An exchange or final remainder can take two digits. Unused places are plain spaces. A child can check part of a calculation and finish typing before submitting the sheet.
 
-For an assigned attempt, the stored result counts complete calculations: a
-calculation is correct only when its required working is correct and it has no
-incorrect optional entries. The control plane records compact run, calculation,
+In subtraction, the child writes the digit left in the column that gave a unit. For `321 − 157`, giving one ten to the ones leaves 1 ten. Exchanging one hundred then adds 10 tens. In that tens exchange box, either `1` or `11` earns full credit. Display the working mark exactly as entered. Place the addition or subtraction sign after the ones digit of the top operand in guided and compact layouts.
+
+An assigned attempt awards one mark per completely correct calculation.
+The control plane records compact run, calculation,
 and level-family evidence. Assisted checks do not finish the activity, and a
 corrected assisted result remains practice evidence.
 

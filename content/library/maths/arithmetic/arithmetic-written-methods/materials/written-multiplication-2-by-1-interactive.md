@@ -12,7 +12,7 @@ runtime:
   template_id: multiplication_2_by_1
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:
@@ -21,7 +21,7 @@ runtime:
 
 # Short multiplication: two digits × one digit
 
-Work from ones to the left. Write the carry and each product digit. For a tens multiplier, include the zero in the ones place. Add partial products to finish. Leave unused leading places and no-carry boxes blank.
+Multiply each top digit by the ones digit, starting on the right. Add any carry to the next product.
 
 ## Before starting
 

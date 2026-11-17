@@ -1,0 +1,47 @@
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+main { max-width: 72rem; padding: 1.25rem; margin: 0 auto; }
+header { padding: .5rem .2rem 1rem; }
+.title-row { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem 1rem; }
+h1 { font-size: clamp(1.25rem, 3vw, 1.65rem); line-height: 1.2; margin: 0; }
+.badge { display: inline-block; padding: .4rem .7rem; color: var(--cs-on-primary-container); background: var(--cs-primary-container); border: 1px solid var(--cs-border); border-radius: 999px; font-size: .8rem; font-weight: 750; }
+.badge.assessment { color: var(--cs-on-primary-container); background: var(--cs-primary-container); border-color: var(--cs-border); }
+#instructions { margin: .85rem 0 .5rem; line-height: 1.55; }
+.notice, .error { padding: .8rem 1rem; margin-bottom: 1rem; border-radius: .7rem; line-height: 1.45; }
+.notice { background: var(--cs-primary-container); border: 1px solid var(--cs-border); color: var(--cs-on-primary-container); }
+.error { background: var(--cs-error-container); border: 1px solid var(--cs-border); color: var(--cs-on-error-container); }
+.questions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: .65rem; align-items: start; }
+.question { min-width: 0; background: var(--cs-surface); border: 1px solid var(--cs-border); border-radius: var(--cs-radius); padding: .7rem;  }
+.question-row { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+.question-number { display: inline-flex; align-items: center; justify-content: center; width: 1.9rem; height: 1.9rem; flex: 0 0 auto; border-radius: .5rem; background: var(--cs-primary-container); color: var(--cs-on-primary-container); font-size: .82rem; font-weight: 750; }
+.answer { width: 4.8rem; min-height: 2.5rem; padding: .4rem; font: 650 1.35rem ui-monospace, "SFMono-Regular", Consolas, monospace; border: 1.5px solid var(--cs-border); border-radius: .45rem; color: var(--cs-text); background: var(--cs-surface); text-align: center; }
+.answer:focus { outline: 3px solid var(--cs-focus); outline-offset: 1px; background: var(--cs-surface); }
+.answer:disabled { opacity: 1; -webkit-text-fill-color: var(--cs-text); color: var(--cs-text); }
+.answer.incorrect { border: 2px solid var(--cs-error); background: var(--cs-error-container); }
+.answer { flex-shrink: 0; min-height: 2.75rem; }
+.field-feedback { margin: .35rem 0 .5rem; line-height: 1.45; color: var(--cs-error); }
+.field-feedback.correct { color: var(--cs-success); }
+button.check { margin-top: 1rem; background: var(--cs-surface); color: var(--cs-primary); }
+button.check:hover:not(:disabled) { background: var(--cs-primary-container); color: var(--cs-on-primary-container); }
+footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1.1rem; margin-top: 1.1rem; background: var(--cs-surface); border: 1px solid var(--cs-border); border-radius: var(--cs-radius); }
+.result-title { margin: 0 0 .3rem; font-weight: 750; }
+.result-detail { margin: 0; color: var(--cs-muted); font-size: .88rem; line-height: 1.4; }
+button { min-height: 2.8rem; padding: .65rem 1.2rem; background: var(--cs-primary); color: var(--cs-on-primary); border: 1.5px solid var(--cs-primary); border-radius: .6rem; font: 700 1rem system-ui, sans-serif; line-height: 1.3; cursor: pointer; touch-action: manipulation; }
+button:hover:not(:disabled) { background: var(--cs-primary); }
+button:focus-visible { outline: 3px solid var(--cs-focus); outline-offset: 3px; }
+button:disabled { opacity: .6; cursor: default; }
+@media (max-width: 480px) { main { padding: .6rem; } .question { padding: .85rem .7rem; } .question-row { gap: .6rem; } .answer { width: 5.7rem; } footer button { width: 100%; } }
+
+.questions { grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); }
+.question-row { flex-wrap: nowrap; gap: .55rem; }
+.equation { display: flex; align-items: center; gap: .28em; min-width: 0; max-width: 100%; overflow-x: auto; padding: .2rem; font: 650 clamp(1rem, 2.1vw, 1.3rem) system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.term { white-space: pre; }
+.equation .answer { width: 2.6em; min-height: 2.4em; padding: .15em; font-size: 1em; }
+@media (max-width: 480px) {
+  .question-number { width: 1.4rem; height: 1.4rem; }
+  .question-row { gap: .25rem; }
+  .equation { gap: .18em; }
+  .equation .answer { width: 2.2em; }
+}

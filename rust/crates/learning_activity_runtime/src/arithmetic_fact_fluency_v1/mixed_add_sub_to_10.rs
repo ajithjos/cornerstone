@@ -116,7 +116,7 @@ pub(super) fn generate(runtime: &MaterialRuntime, context: &GenerationContext) -
         runtime,
         context,
         RUNTIME_ID,
-        "Answer each item in mixed order without counting for every question.".to_string(),
+        "Addition puts the parts together. Subtraction finds a missing part.".to_string(),
         parameters.question_count,
         candidates(&parameters),
         required,
@@ -154,22 +154,22 @@ fn push_bond_candidates(candidates: &mut Vec<GeneratedActivityItem>, parameters:
             format!("__ + {shown} = {}", parameters.bond_total),
             format!("{shown} + __ = {}", parameters.bond_total),
         ] {
-            candidates.push(integer_candidate(
-                addition_fact_key(shown, missing),
-                [
-                    "number_bonds_within_10".to_string(),
-                    "operation:addition".to_string(),
-                    "form:bond_missing".to_string(),
-                ],
-                ["form:bond_missing".to_string()],
-                fact_band(parameters.bond_total, shown == 0 || missing == 0),
-                content,
-                missing,
-                format!(
-                    "The two parts must total {}: {shown} and {missing}.",
-                    parameters.bond_total
-                ),
-            ));
+            candidates.push(
+                integer_candidate(
+                    addition_fact_key(shown, missing),
+                    [
+                        "number_bonds_within_10".to_string(),
+                        "operation:addition".to_string(),
+                        "form:bond_missing".to_string(),
+                    ],
+                    ["form:bond_missing".to_string()],
+                    fact_band(parameters.bond_total, shown == 0 || missing == 0),
+                    content,
+                    missing,
+                    format!("{shown} + {missing} = {}.", parameters.bond_total),
+                )
+                .with_answer_prompt(format!("What goes with {shown} to make {}?", parameters.bond_total)),
+            );
         }
     }
 }
@@ -180,19 +180,22 @@ fn push_addition_candidates(candidates: &mut Vec<GeneratedActivityItem>, paramet
         let end = if parameters.allow_zero { total } else { total - 1 };
         for left in start..=end {
             let right = total - left;
-            candidates.push(integer_candidate(
-                addition_fact_key(left, right),
-                [
-                    "add_within_10".to_string(),
-                    "operation:addition".to_string(),
-                    "form:equation".to_string(),
-                ],
-                ["form:equation".to_string(), "operation:addition".to_string()],
-                fact_band(total, left == 0 || right == 0),
-                format!("{left} + {right} ="),
-                total,
-                format!("Combine {left} and {right}; the whole is {total}."),
-            ));
+            candidates.push(
+                integer_candidate(
+                    addition_fact_key(left, right),
+                    [
+                        "add_within_10".to_string(),
+                        "operation:addition".to_string(),
+                        "form:equation".to_string(),
+                    ],
+                    ["form:equation".to_string(), "operation:addition".to_string()],
+                    fact_band(total, left == 0 || right == 0),
+                    format!("{left} + {right} ="),
+                    total,
+                    format!("{left} and {right} make {total}."),
+                )
+                .guide_addition(left, right),
+            );
         }
     }
 }
@@ -202,19 +205,26 @@ fn push_subtraction_candidates(candidates: &mut Vec<GeneratedActivityItem>, para
         let start = if parameters.allow_zero { 0 } else { 1 };
         let end = if parameters.allow_zero { whole } else { whole - 1 };
         for part in start..=end {
-            candidates.push(integer_candidate(
-                format!("subtraction:{whole}-{part}"),
-                [
-                    "subtract_within_10".to_string(),
-                    "operation:subtraction".to_string(),
-                    "form:equation".to_string(),
-                ],
-                ["form:equation".to_string(), "operation:subtraction".to_string()],
-                fact_band(whole, part == 0 || part == whole),
-                format!("{whole} - {part} ="),
-                whole - part,
-                format!("Start with {whole} and remove {part}; {} remains.", whole - part),
-            ));
+            candidates.push(
+                integer_candidate(
+                    format!("subtraction:{whole}-{part}"),
+                    [
+                        "subtract_within_10".to_string(),
+                        "operation:subtraction".to_string(),
+                        "form:equation".to_string(),
+                    ],
+                    ["form:equation".to_string(), "operation:subtraction".to_string()],
+                    fact_band(whole, part == 0 || part == whole),
+                    format!("{whole} - {part} ="),
+                    whole - part,
+                    format!(
+                        "{part} + {} = {whole}. Taking away {part} leaves {}.",
+                        whole - part,
+                        whole - part
+                    ),
+                )
+                .guide_subtraction(whole, part),
+            );
         }
     }
 }

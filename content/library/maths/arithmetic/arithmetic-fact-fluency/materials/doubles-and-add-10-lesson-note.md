@@ -11,7 +11,7 @@ estimated_minutes: 10
 
 # Doubles And Add 10 Lesson Note
 
-These are the next anchor facts to memorise exactly.
+A double has two equal parts. Double 4 means 4 and another 4. Together they make 8.
 
 ## Doubles to 20
 
@@ -63,7 +63,7 @@ This is a double.
 ### Example 2: `10 + 7`
 
 ```text
-This is an add-10 fact.
+One ten and seven ones make seventeen.
 10 + 7 = 17
 ```
 

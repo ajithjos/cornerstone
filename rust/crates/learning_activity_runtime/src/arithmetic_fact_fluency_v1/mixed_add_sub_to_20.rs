@@ -81,7 +81,7 @@ pub(super) fn generate(runtime: &MaterialRuntime, context: &GenerationContext) -
         runtime,
         context,
         RUNTIME_ID,
-        "Work through the mixed facts and missing-number items without rushing into guesses.".to_string(),
+        "Find the number that makes each fact true.".to_string(),
         parameters.question_count,
         candidates(&parameters),
         required_coverage(&parameters),
@@ -96,19 +96,22 @@ fn candidates(parameters: &Parameters) -> Vec<GeneratedActivityItem> {
                 for shown in 1..=19 {
                     let missing = 20 - shown;
                     for content in [format!("__ + {shown} = 20"), format!("{shown} + __ = 20")] {
-                        candidates.push(integer_candidate(
-                            addition_fact_key(shown, missing),
-                            [
-                                "number_bonds_within_20".to_string(),
-                                "operation:addition".to_string(),
-                                "form:bond_missing".to_string(),
-                            ],
-                            ["form:bond_missing".to_string()],
-                            DifficultyBand::Challenge,
-                            content,
-                            missing,
-                            format!("The two parts must total 20: {shown} and {missing}."),
-                        ));
+                        candidates.push(
+                            integer_candidate(
+                                addition_fact_key(shown, missing),
+                                [
+                                    "number_bonds_within_20".to_string(),
+                                    "operation:addition".to_string(),
+                                    "form:bond_missing".to_string(),
+                                ],
+                                ["form:bond_missing".to_string()],
+                                DifficultyBand::Challenge,
+                                content,
+                                missing,
+                                format!("{shown} + {missing} = 20."),
+                            )
+                            .with_answer_prompt(format!("What goes with {shown} to make 20?")),
+                        );
                     }
                 }
             }
@@ -116,19 +119,22 @@ fn candidates(parameters: &Parameters) -> Vec<GeneratedActivityItem> {
                 for whole in 10..=20 {
                     for remaining in 1..whole {
                         let part = whole - remaining;
-                        candidates.push(integer_candidate(
-                            format!("subtraction:{whole}-{part}"),
-                            [
-                                "missing_number_addition_and_subtraction_within_20".to_string(),
-                                "operation:subtraction".to_string(),
-                                "form:missing_subtraction".to_string(),
-                            ],
-                            ["form:missing_subtraction".to_string()],
-                            fact_band(whole),
-                            format!("{whole} - __ = {remaining}"),
-                            part,
-                            format!("Find what was removed: {remaining} plus {part} makes {whole}."),
-                        ));
+                        candidates.push(
+                            integer_candidate(
+                                format!("subtraction:{whole}-{part}"),
+                                [
+                                    "missing_number_addition_and_subtraction_within_20".to_string(),
+                                    "operation:subtraction".to_string(),
+                                    "form:missing_subtraction".to_string(),
+                                ],
+                                ["form:missing_subtraction".to_string()],
+                                fact_band(whole),
+                                format!("{whole} - __ = {remaining}"),
+                                part,
+                                format!("{remaining} + {part} = {whole}."),
+                            )
+                            .with_answer_prompt(format!("{remaining} + □ = {whole}. How much was taken away?")),
+                        );
                     }
                 }
             }
@@ -139,38 +145,44 @@ fn candidates(parameters: &Parameters) -> Vec<GeneratedActivityItem> {
                             for total in 4..=20 {
                                 for left in 1..total {
                                     let right = total - left;
-                                    candidates.push(integer_candidate(
-                                        addition_fact_key(left, right),
-                                        [
-                                            "add_within_20".to_string(),
-                                            "operation:addition".to_string(),
-                                            "form:equation".to_string(),
-                                        ],
-                                        ["form:equation".to_string(), "operation:addition".to_string()],
-                                        fact_band(total),
-                                        format!("{left} + {right} ="),
-                                        total,
-                                        format!("Combine {left} and {right}; the whole is {total}."),
-                                    ));
+                                    candidates.push(
+                                        integer_candidate(
+                                            addition_fact_key(left, right),
+                                            [
+                                                "add_within_20".to_string(),
+                                                "operation:addition".to_string(),
+                                                "form:equation".to_string(),
+                                            ],
+                                            ["form:equation".to_string(), "operation:addition".to_string()],
+                                            fact_band(total),
+                                            format!("{left} + {right} ="),
+                                            total,
+                                            format!("{left} and {right} make {total}."),
+                                        )
+                                        .guide_addition(left, right),
+                                    );
                                 }
                             }
                         }
                         Operation::Subtraction => {
                             for whole in 4..=20 {
                                 for part in 1..whole {
-                                    candidates.push(integer_candidate(
-                                        format!("subtraction:{whole}-{part}"),
-                                        [
-                                            "subtract_within_20".to_string(),
-                                            "operation:subtraction".to_string(),
-                                            "form:equation".to_string(),
-                                        ],
-                                        ["form:equation".to_string(), "operation:subtraction".to_string()],
-                                        fact_band(whole),
-                                        format!("{whole} - {part} ="),
-                                        whole - part,
-                                        format!("Start with {whole} and remove {part}; {} remains.", whole - part),
-                                    ));
+                                    candidates.push(
+                                        integer_candidate(
+                                            format!("subtraction:{whole}-{part}"),
+                                            [
+                                                "subtract_within_20".to_string(),
+                                                "operation:subtraction".to_string(),
+                                                "form:equation".to_string(),
+                                            ],
+                                            ["form:equation".to_string(), "operation:subtraction".to_string()],
+                                            fact_band(whole),
+                                            format!("{whole} - {part} ="),
+                                            whole - part,
+                                            format!("{part} + {} = {whole}.", whole - part),
+                                        )
+                                        .guide_subtraction(whole, part),
+                                    );
                                 }
                             }
                         }

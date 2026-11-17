@@ -27,4 +27,4 @@ runtime:
 
 # Bridge Through 10 Subtraction Drill
 
-Start the live drill after the lesson note and guided practice. Revisit missed bridge facts promptly.
+Find how much takes you back to 10. Work out how much is left to take away. Then write your answer. Start by writing both parts. Later, do the steps in your head.

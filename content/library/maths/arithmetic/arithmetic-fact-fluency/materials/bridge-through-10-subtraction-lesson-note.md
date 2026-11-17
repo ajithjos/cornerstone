@@ -8,44 +8,20 @@ skill_ids:
 estimated_minutes: 12
 ---
 
-# Bridge Through 10 Subtraction Lesson Note
+# Subtract by going back to 10
 
-This page teaches subtraction through `20` by stopping at `10` on the way down.
+To work out `16 − 7`, take away 7 in two parts.
 
-## The rule
+1. **Go back to 10.** Take away 6. Now `16 − 6 = 10`.
+2. **Find the rest of the 7.** `7 = 6 + 1`. You have already taken away 6. Take away just 1 more.
+3. **Finish.** `10 − 1 = 9`. So `16 − 7 = 9`.
 
-When a subtraction crosses `10`, first subtract the part that takes you to `10`. Then subtract the rest.
+Write the whole calculation on one line. **16 − 7 = 16 − 6 − 1 = 9**.
 
-## Worked examples
+The same idea works for nine. **18 − 9 = 18 − 8 − 1 = 9**.
 
-### Example 1: `13 - 5`
+## Try another
 
-```text
-13 needs 3 removed to reach 10
-split 5 into 3 and 2
-13 - 5 = 13 - 3 - 2 = 10 - 2 = 8
-```
+For `13 − 5`, how much takes you back to 10? How much of the 5 is left to take away?
 
-### Example 2: `15 - 8`
-
-```text
-15 needs 5 removed to reach 10
-split 8 into 5 and 3
-15 - 8 = 15 - 5 - 3 = 10 - 3 = 7
-```
-
-### Example 3: `17 - 9`
-
-```text
-17 needs 7 removed to reach 10
-split 9 into 7 and 2
-17 - 9 = 17 - 7 - 2 = 8
-```
-
-## Say this to yourself
-
-```text
-Go back to 10 first.
-Then subtract the rest.
-Do not count backwards one by one.
-```
+**Check your thinking.** Take away 3 to reach 10. There are 2 more to take away. `10 − 2 = 8`, so `13 − 5 = 8`.

@@ -50,6 +50,8 @@ struct ValidatedPackage {
     files: BTreeMap<String, Vec<u8>>,
 }
 
+pub const NUMERIC_VERSION: &str = "1.1.0";
+
 pub fn resolve_package(content_root: &Path, package_id: &str, version: &str) -> Result<PackageDescriptor> {
     Ok(load_package(content_root, package_id, version)?.descriptor)
 }
@@ -68,7 +70,7 @@ pub fn validate_library_packages(content_root: &Path, bundle: &catalog::LibraryB
             .presentation
             .as_ref()
             .map(|presentation| (presentation.package_id.clone(), presentation.version.clone()))
-            .unwrap_or_else(|| ("numeric-questions".to_owned(), "1.0.0".to_owned()));
+            .unwrap_or_else(|| ("numeric-questions".to_owned(), NUMERIC_VERSION.to_owned()));
         ensure!(
             registered.contains(&identity),
             "material {} references an unregistered activity package",

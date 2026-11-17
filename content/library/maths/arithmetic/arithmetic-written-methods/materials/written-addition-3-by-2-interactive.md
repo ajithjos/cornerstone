@@ -12,7 +12,7 @@ runtime:
   template_id: addition_3_by_2
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:
@@ -21,7 +21,7 @@ runtime:
 
 # Addition: three digits + two digits
 
-Align the place values. Work from ones to the left. Exchange ten units of a place for one unit of the next place. Write the carry above that next column. Leave unused leading places and no-carry boxes blank.
+Add the ones first, then move left. If a column makes 10 or more, write the ones digit below and carry 1 to the next column. Add that 1 when you reach it.
 
 ## Before starting
 

@@ -134,7 +134,11 @@ What changes here:
 - subtraction becomes a structured method instead of backward counting
 - mixed subtraction through `20` becomes steadier and quicker
 
-### 5. [Multiplication Tables Through 10](.././playlists/multiplication-tables-to-10.md)
+### 5. [Quick ways with 10 and 9](../playlists/quick-ten-and-nine.md)
+
+Practise one ten more or less. Use the same jump for nine and adjust by one.
+
+### 6. [Multiplication Tables Through 10](.././playlists/multiplication-tables-to-10.md)
 
 The learner memorises the multiplication table facts that will support written multiplication and division.
 
@@ -144,7 +148,7 @@ What changes here:
 - commuted facts are recognised instead of relearned separately
 - facts through `10 x 10` become available for short and long multiplication
 
-### 6. [Division Facts From Tables](.././playlists/division-facts-from-tables.md)
+### 7. [Division Facts From Tables](.././playlists/division-facts-from-tables.md)
 
 The learner reads division facts from known multiplication facts.
 

@@ -12,7 +12,7 @@ estimated_minutes: 16
 
 # Column Addition And Subtraction Practice
 
-Use squared paper. Write one digit in each square and leave a row above the numbers for carries or revised amounts. Show your working.
+Use squared paper. Write one digit in each answer square. Leave a row above the numbers for your working. If a column has 6 tens left and gets 10 more, keep 6 as your mark and think sixteen tens. You can also write 16.
 
 Choose **one level per session**, not the whole page. Solve its four questions, then two questions from an earlier level. Correct mistakes before taking another set.
 

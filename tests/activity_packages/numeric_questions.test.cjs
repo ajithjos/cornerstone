@@ -109,3 +109,58 @@ test('completion button sends answers through the bridge without native form sub
   assert.equal(button.disabled, true);
   assert.equal(elements.get('result-title').textContent, 'Target met');
 });
+
+test('guided package checks a single step, catches blanks before finishing, then submits one complete question', async () => {
+  const script = fs.readFileSync(path.join(root, 'numeric-questions/1.1.0/activity.js'), 'utf8');
+  const elements = new Map(), inputs = [], buttons = [], requests = [];
+  let initialize, focused;
+  function element() {
+    return { value: '', hidden: false, classList: { toggle() {} }, listeners: new Map(),
+      addEventListener(type, handler) { this.listeners.set(type, handler); },
+      setAttribute() {}, append() {}, focus() { focused = this; } };
+  }
+  const document = {
+    getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
+    createElement(tag) {
+      const node = element();
+      if (tag === 'input') inputs.push(node);
+      if (tag === 'button') buttons.push(node);
+      return node;
+    },
+  };
+  const window = { document, parent: {}, performance: { now: () => 1000 }, addEventListener() {},
+    CornerstoneActivityBridge: { connect(_, ready) {
+      initialize = ready;
+      return { request: async (action, body) => {
+        requests.push(JSON.parse(JSON.stringify({ action, body })));
+        if (action === 'check') return { feedback: [{ cell_id: 'split', correct: true }] };
+        return { run_outcome_label: 'Practice target met', activity_summary: { correct_count: 1, item_count: 1 },
+          check_result: { feedback: body.responses.map(r => ({ cell_id: r.item_id, correct: true })) } };
+      } };
+    } },
+  };
+  require('node:vm').runInNewContext(script, { window });
+  initialize({ mode: 'assisted', instructions: 'Step back to ten.', capabilities: { check: true }, items: [{
+    item_id: 'answer', response_kind: 'integer', content: '16 − 7 =',
+    steps: [{ item_id: 'split', prompt: '16 − □ = 10' }, { item_id: 'left', prompt: 'How much more?' }],
+    answer_prompt: 'What is left?', equation: '16 − 7 = 16 − □ − □ = □',
+  }] });
+  const check = buttons[0].listeners.get('click');
+  const finish = elements.get('submit').listeners.get('click');
+  inputs[0].value = '6';
+  await check();
+  assert.equal(requests.length, 0);
+  assert.equal(focused, inputs[1]);
+  inputs[2].value = '9';
+  await finish();
+  assert.equal(focused, inputs[1]);
+  assert.equal(requests.length, 0);
+  inputs[1].value = '1';
+  await check();
+  await finish();
+  assert.deepEqual(requests[1].body.responses.map(r => [r.item_id, r.value]),
+    [['split', '6'], ['left', '1'], ['answer', '9']]);
+  assert.equal(requests[1].action, 'complete');
+  assert.equal(elements.get('result-detail').textContent, '1 of 1 questions correct.');
+  assert.ok(inputs.every(input => input.disabled));
+});

@@ -12,7 +12,7 @@ runtime:
   template_id: division_3_exact
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:

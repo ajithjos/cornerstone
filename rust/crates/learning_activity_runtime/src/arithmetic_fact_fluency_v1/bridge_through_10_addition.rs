@@ -78,23 +78,26 @@ fn candidates(parameters: &Parameters) -> Vec<GeneratedActivityItem> {
     let mut candidates = Vec::new();
     for left in parameters.left_range() {
         let needed = 10 - left;
-        for leftover in 1..=(9 - needed).max(1) {
+        for leftover in 1..=(9 - needed) {
             let right = needed + leftover;
             let answer = left + right;
             let coverage_key = format!("bridge_start:{left}");
-            candidates.push(integer_candidate(
-                addition_fact_key(left, right),
-                [
-                    "bridge_through_10_for_addition".to_string(),
-                    "operation:addition".to_string(),
-                    coverage_key.clone(),
-                ],
-                [coverage_key],
-                bridge_band(answer),
-                format!("{left} + {right} ="),
-                answer,
-                format!("Split {right} into {needed} and {leftover}; make 10, then add {leftover}."),
-            ));
+            candidates.push(
+                integer_candidate(
+                    addition_fact_key(left, right),
+                    [
+                        "bridge_through_10_for_addition".to_string(),
+                        "operation:addition".to_string(),
+                        coverage_key.clone(),
+                    ],
+                    [coverage_key],
+                    bridge_band(answer),
+                    format!("{left} + {right} ="),
+                    answer,
+                    format!("{left} + {needed} = 10. Then 10 + {leftover} = {answer}."),
+                )
+                .bridge_addition(left, right),
+            );
         }
     }
     candidates
@@ -102,8 +105,9 @@ fn candidates(parameters: &Parameters) -> Vec<GeneratedActivityItem> {
 
 fn bridge_band(total: i32) -> DifficultyBand {
     match total {
-        ..=12 => DifficultyBand::Foundation,
-        13..=15 => DifficultyBand::Core,
+        // The first bridge leaves just one more to add to 10.
+        ..=11 => DifficultyBand::Foundation,
+        12..=15 => DifficultyBand::Core,
         _ => DifficultyBand::Challenge,
     }
 }

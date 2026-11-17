@@ -43,6 +43,8 @@ pub struct WrittenProblem {
     pub id: String,
     pub prompt: String,
     pub columns: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub column_labels: Vec<String>,
     pub rows: Vec<WrittenRow>,
 }
 
@@ -50,6 +52,8 @@ pub struct WrittenProblem {
 pub struct WrittenRow {
     pub label: String,
     pub kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub trailing_sign: String,
     pub cells: Vec<WrittenCell>,
 }
 
@@ -313,22 +317,43 @@ impl LevelSpec {
         let (operation, instructions, prerequisite) = match self.operation {
             Operation::Addition => (
                 "addition",
-                "Align the place values. Work from ones to the left. Exchange ten units of a place for one unit of the next place. Write the carry above that next column. Leave unused leading places and no-carry boxes blank.",
+                if matches!(self.cases, Cases::WithoutExchange) {
+                    "Start with the ones. Add the two digits in each column. Write the sum below them."
+                } else {
+                    "Start with the ones. Add down each column. If you make ten or more, write the ones digit and carry 1 to the next column. Add that 1 when you get there."
+                },
                 "Read tens and ones and recall addition facts to 20. Start without carrying, then add carrying before increasing the digits.",
             ),
             Operation::Subtraction => (
                 "subtraction",
-                "Align the place values and work from ones to the left. When needed, exchange one unit from the next place for ten. Write changed top digits in the After exchange row; leave unchanged places blank.",
+                match self.cases {
+                    Cases::WithoutExchange => {
+                        "Start with the ones. Take the bottom digit away from the top digit. Write the answer below. Do the same in the tens column."
+                    }
+                    Cases::AcrossZeros => {
+                        "Start with the ones. If a zero is in the way, look left for a place that can give one. Trade it for ten in the next place. Each zero that gets ten and passes one on has 9 left."
+                    }
+                    _ if self.top_digits == 2 => {
+                        "Start with the ones. If you need more ones, trade 1 ten for 10 ones. Write how many tens are left above the tens column. Subtract the ones, then the tens."
+                    }
+                    _ => {
+                        "Start with the ones. Write how many are left above a digit that gives one away. If 7 tens are left and 10 more come in, think 17. You can write 7 or 17 in that working box."
+                    }
+                },
                 "Understand place value and subtraction facts. Explain that one ten is ten ones. Practise one exchange before exchanging across zeros.",
             ),
             Operation::Multiplication => (
                 "multiplication",
-                "Work from ones to the left. Write the carry and each product digit. For a tens multiplier, include the zero in the ones place. Add partial products to finish. Leave unused leading places and no-carry boxes blank.",
+                if self.bottom_digits == 1 {
+                    "Start with the ones. Multiply each top digit by the bottom digit and add any carry. Write each answer digit in its column."
+                } else {
+                    "Multiply by the ones digit first. Then multiply by the tens digit, with a zero in the ones place. Add the two rows to find the answer."
+                },
                 "Recall the needed multiplication facts and add in columns. Become accurate with a one-digit multiplier before using two digits.",
             ),
             Operation::Division => (
                 "division",
-                "Work from left to right. Divide the current amount, write the quotient digit, and carry the remainder into the next place. In long division, show subtract, remainder, and bring-down rows. The final remainder box holds the whole remainder (up to two digits). Check: divisor × quotient + remainder = dividend.",
+                "Start on the left. Divide, then bring the next digit down beside what is left. Once your answer starts, write a digit in each place, even if it is 0. Write what is left in the last remainder box. Write 0 if it divides exactly.",
                 "Recall multiplication and division facts and understand place value. Practise exact short division before remainders and a two-digit divisor.",
             ),
         };
@@ -349,6 +374,9 @@ pub fn levels() -> Vec<WrittenLevel> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Answer {
     expected: String,
+    /// Total available to subtract from after all exchanges. Only new exchange boxes accept these two notations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exchange_total: Option<String>,
     explanation: String,
     allow_blank: bool,
     max_digits: usize,
@@ -360,14 +388,17 @@ pub struct StoredWorksheet {
     answers: BTreeMap<String, Answer>,
 }
 
-/// Generate a blank grid. Neither answers nor solution cues are sent to the learner.
+// Free worksheets are regenerated for checking. Bump this when a grid layout changes its cell positions.
+const CELL_LAYOUT_VERSION: &str = "v2";
+
+/// Generate the learner grid with its printed notation and empty response boxes.
 pub fn generate(request: WorksheetRequest) -> Result<Worksheet> {
-    Ok(build(request)?.worksheet)
+    Ok(generate_stored(request)?.worksheet)
 }
 
 /// Generate the same grid with working filled in for an adult answer sheet.
 pub fn generate_solved(request: WorksheetRequest) -> Result<Worksheet> {
-    let mut plan = build(request)?;
+    let mut plan = build(request, true)?;
     for problem in &mut plan.worksheet.problems {
         for row in &mut problem.rows {
             for cell in &mut row.cells {
@@ -381,7 +412,8 @@ pub fn generate_solved(request: WorksheetRequest) -> Result<Worksheet> {
 }
 
 pub fn generate_stored(request: WorksheetRequest) -> Result<StoredWorksheet> {
-    build(request)
+    let assisted = request.mode == PracticeMode::Assisted;
+    build(request, assisted)
 }
 
 pub fn check(request: CheckRequest) -> Result<CheckResult> {
@@ -389,7 +421,14 @@ pub fn check(request: CheckRequest) -> Result<CheckResult> {
         request.worksheet.seed.is_some(),
         "checking requires the worksheet's generated seed"
     );
-    let plan = build(request.worksheet)?;
+    ensure!(
+        request
+            .responses
+            .iter()
+            .all(|response| response.cell_id.split('.').nth(1) == Some(CELL_LAYOUT_VERSION)),
+        "The worksheet boxes have changed. Generate a fresh worksheet to check your answers."
+    );
+    let plan = generate_stored(request.worksheet)?;
     check_stored(&plan, &request.responses, request.finish)
 }
 
@@ -431,6 +470,8 @@ pub fn check_stored(plan: &StoredWorksheet, responses: &[CellResponse], finish: 
         let value = value.map(String::as_str).unwrap_or("");
         let correct = if answer.allow_blank {
             value.is_empty() || value.bytes().all(|digit| digit == b'0')
+        } else if let Some(total) = &answer.exchange_total {
+            value == answer.expected || value == total
         } else {
             value.parse::<u32>().ok() == answer.expected.parse::<u32>().ok() && !value.is_empty()
         };
@@ -444,7 +485,10 @@ pub fn check_stored(plan: &StoredWorksheet, responses: &[CellResponse], finish: 
         feedback.push(CellFeedback {
             cell_id: cell_id.clone(),
             correct,
-            expected: (!correct || finish).then(|| answer.expected.clone()),
+            expected: (!correct || finish).then(|| match &answer.exchange_total {
+                Some(total) if total != &answer.expected => format!("{} or {total}", answer.expected),
+                _ => answer.expected.clone(),
+            }),
             explanation: if correct && !finish {
                 "Correct.".into()
             } else {
@@ -478,7 +522,7 @@ impl Generator {
     }
 }
 
-fn build(mut request: WorksheetRequest) -> Result<StoredWorksheet> {
+fn build(mut request: WorksheetRequest, assisted: bool) -> Result<StoredWorksheet> {
     ensure!(
         (1..=24).contains(&request.question_count),
         "question_count must be between 1 and 24"
@@ -529,7 +573,14 @@ fn build(mut request: WorksheetRequest) -> Result<StoredWorksheet> {
         if !acceptable || !pairs.insert(key) {
             continue;
         }
-        problems.push(problem(spec.operation, a, b, problems.len() + 1, &mut answers));
+        problems.push(problem(
+            spec.operation,
+            a,
+            b,
+            problems.len() + 1,
+            &mut answers,
+            assisted,
+        ));
         if problems.len() == request.question_count {
             break;
         }
@@ -538,10 +589,14 @@ fn build(mut request: WorksheetRequest) -> Result<StoredWorksheet> {
         problems.len() == request.question_count,
         "could not generate the requested distinct practice set"
     );
+    let mut level = spec.public();
+    if spec.operation == Operation::Subtraction && !assisted && spec.top_digits >= 3 {
+        level.instructions = "Start with the ones. Above a digit that gave one away, write how many are left. If ten more come into that column, you can also write the full amount there. Use the full amount to subtract.".into();
+    }
     Ok(StoredWorksheet {
         worksheet: Worksheet {
             request,
-            level: spec.public(),
+            level,
             problems,
         },
         answers,
@@ -602,6 +657,7 @@ impl<'a> Builder<'a> {
                 id: format!("q{index}"),
                 prompt: format!("{a} {sign} {b}"),
                 columns,
+                column_labels: (0..columns).rev().map(|place| place_name(place).into()).collect(),
                 rows: Vec::new(),
             },
             answers,
@@ -611,6 +667,7 @@ impl<'a> Builder<'a> {
         WrittenRow {
             label: label.into(),
             kind: kind.into(),
+            trailing_sign: String::new(),
             cells: vec![
                 WrittenCell {
                     id: None,
@@ -620,6 +677,11 @@ impl<'a> Builder<'a> {
                 self.problem.columns
             ],
         }
+    }
+    fn signed_operands(&mut self, top: u32, bottom: u32, sign: &str) {
+        self.fixed_number("", top);
+        self.problem.rows.last_mut().unwrap().trailing_sign = sign.into();
+        self.fixed_number("", bottom);
     }
     fn fixed_number(&mut self, label: &str, number: u32) {
         let mut row = self.blank_row(label, "operand");
@@ -633,47 +695,42 @@ impl<'a> Builder<'a> {
         row: &mut WrittenRow,
         col: usize,
         expected: String,
-        allow_blank: bool,
         explanation: String,
         max_digits: usize,
-    ) {
-        let id = format!("{}.r{}.c{}", self.problem.id, self.problem.rows.len(), col);
+    ) -> &mut Answer {
+        let id = format!(
+            "{}.{CELL_LAYOUT_VERSION}.r{}.c{}",
+            self.problem.id,
+            self.problem.rows.len(),
+            col
+        );
         row.cells[col] = WrittenCell {
             id: Some(id.clone()),
             text: String::new(),
             max_digits,
         };
-        self.answers.insert(
-            id,
-            Answer {
+        self.answers
+            .entry(id)
+            .insert_entry(Answer {
                 expected,
+                exchange_total: None,
                 explanation,
-                allow_blank,
+                allow_blank: false,
                 max_digits,
-            },
-        );
+            })
+            .into_mut()
+    }
+    fn push_annotation(&mut self, row: WrittenRow) {
+        if row.cells.iter().any(|cell| cell.id.is_some() || !cell.text.is_empty()) {
+            self.problem.rows.push(row);
+        }
     }
     fn number_row(&mut self, label: &str, kind: &str, number: u32, end: usize, explanation: &str) {
         let mut row = self.blank_row(label, kind);
-        let width = digits(number);
-        for col in 0..=end {
-            let place = end - col;
-            let leading = place >= width;
-            let expected = if leading {
-                String::new()
-            } else {
-                digit(number, place).to_string()
-            };
-            let cue = if leading {
-                format!("{explanation} Leave this unused leading place blank (or write 0).")
-            } else {
-                format!(
-                    "{explanation} Write {} in the {} place of this row.",
-                    digit(number, place),
-                    place_name(place)
-                )
-            };
-            self.input(&mut row, col, expected, leading, cue, 1);
+        for place in 0..digits(number) {
+            let expected = digit(number, place);
+            let cue = format!("{explanation} Write {expected} in the {} place.", place_name(place));
+            self.input(&mut row, end - place, expected.to_string(), cue, 1);
         }
         self.problem.rows.push(row);
     }
@@ -685,86 +742,67 @@ fn problem(
     b: u32,
     index: usize,
     answers: &mut BTreeMap<String, Answer>,
+    assisted: bool,
 ) -> WrittenProblem {
     match operation {
         Operation::Addition => addition(a, b, index, answers),
-        Operation::Subtraction => subtraction(a, b, index, answers),
+        Operation::Subtraction => subtraction(a, b, index, answers, assisted),
         Operation::Multiplication => multiplication(a, b, index, answers),
         Operation::Division => division(a, b, index, answers),
     }
 }
 
 fn addition(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answer>) -> WrittenProblem {
-    let n = digits(a).max(digits(b));
-    let mut grid = Builder::new(Operation::Addition, a, b, index, n + 1, answers);
-    add_carry_row(&mut grid, a, b, n, "Carry");
-    grid.fixed_number("", a);
-    grid.fixed_number("+", b);
+    let width = digits(a + b);
+    let mut grid = Builder::new(Operation::Addition, a, b, index, width, answers);
+    add_carry_row(&mut grid, a, b, "Carry");
+    grid.signed_operands(a, b, "+");
     let mut row = grid.blank_row("Answer", "answer");
     let mut carry = 0;
-    for place in 0..=n {
-        let total = digit(a, place) + digit(b, place) + carry;
-        let leading = place == n && total == 0;
-        let cue = format!(
-            "{} column: {} + {} + {} carried = {}. Write {} and carry {} into the next place.",
-            place_name(place),
-            digit(a, place),
-            digit(b, place),
-            carry,
-            total,
-            total % 10,
-            total / 10
-        );
-        grid.input(
-            &mut row,
-            n - place,
-            if leading {
-                String::new()
-            } else {
-                (total % 10).to_string()
-            },
-            leading,
-            cue,
-            1,
-        );
+    let operand_width = digits(a).max(digits(b));
+    for place in 0..width {
+        let left = digit(a, place);
+        let right = digit(b, place);
+        let total = left + right + carry;
+        let answer = total % 10;
+        let sum = if carry == 0 {
+            format!("{left} + {right}")
+        } else {
+            format!("{left} + {right} + {carry}")
+        };
+        let cue = if place == operand_width {
+            format!("Write the final carry, {answer}, in the {} column.", place_name(place))
+        } else {
+            format!("In the {} column, {sum} = {total}. Write {answer}.", place_name(place))
+        };
+        grid.input(&mut row, width - place - 1, answer.to_string(), cue, 1);
         carry = total / 10;
     }
     grid.problem.rows.push(row);
     grid.problem
 }
 
-fn add_carry_row(grid: &mut Builder<'_>, a: u32, b: u32, n: usize, label: &str) {
+fn add_carry_row(grid: &mut Builder<'_>, a: u32, b: u32, label: &str) {
     let mut row = grid.blank_row(label, "annotation");
     let mut carry = 0;
-    for place in 0..n {
+    // A carry beyond the last operand digit goes directly in the answer.
+    for place in 0..digits(a).max(digits(b)) - 1 {
         let total = digit(a, place) + digit(b, place) + carry;
-        let next = total / 10;
-        let cue = format!(
-            "{} + {} + {} carried = {} in the {} column. Carry {} into the {} column; write {} in the {} column.",
-            digit(a, place),
-            digit(b, place),
-            carry,
-            total,
-            place_name(place),
-            next,
-            place_name(place + 1),
-            total % 10,
-            place_name(place)
-        );
-        grid.input(
-            &mut row,
-            grid.problem.columns - place - 2,
-            if next == 0 { String::new() } else { next.to_string() },
-            next == 0,
-            cue,
-            1,
-        );
-        carry = next;
+        carry = total / 10;
+        if carry > 0 {
+            let cue = format!(
+                "The {} column adds up to {total}. Write {} below and carry 1 to the {} column.",
+                place_name(place),
+                total % 10,
+                place_name(place + 1)
+            );
+            grid.input(&mut row, grid.problem.columns - place - 2, carry.to_string(), cue, 1);
+        }
     }
-    grid.problem.rows.push(row);
+    grid.push_annotation(row);
 }
 
-fn subtraction(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answer>) -> WrittenProblem {
+fn subtraction(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answer>, assisted: bool) -> WrittenProblem {
     let n = digits(a);
     let mut grid = Builder::new(Operation::Subtraction, a, b, index, n, answers);
     let mut top = (0..n).map(|place| digit(a, place)).collect::<Vec<_>>();
@@ -781,53 +819,45 @@ fn subtraction(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answ
             top[place] += 10;
         }
     }
-    let mut exchange = grid.blank_row("After exchange", "annotation");
+    let mut exchange = grid.blank_row("Exchange marks", "annotation");
     for (place, &value) in top.iter().enumerate() {
-        let changed = value != digit(a, place);
-        let cue = if changed {
-            format!(
-                "Rewrite the {} digit as {} after exchanging. One unit of a place is ten of the next smaller place; when an exchange passes through a zero, nine remain there.",
+        let original = digit(a, place);
+        if value == original {
+            continue;
+        }
+        let col = n - place - 1;
+        let left = value % 10;
+        if left != original {
+            let before_giving = left + 1;
+            let mut cue = format!(
+                "Give 1 from the {} column to the {} column. {before_giving} − 1 = {left}.",
                 place_name(place),
-                value
-            )
-        } else {
-            format!(
-                "The {} digit did not change. Leave its exchange box blank.",
-                place_name(place)
-            )
-        };
-        grid.input(
-            &mut exchange,
-            n - place - 1,
-            if changed { value.to_string() } else { String::new() },
-            !changed,
-            cue,
-            2,
-        );
+                place_name(place - 1)
+            );
+            if original == 0 {
+                cue = format!("Exchange 1 from the left for 10 {}. {cue}", place_name(place));
+            }
+            if value >= 10 {
+                cue.push_str(&format!(
+                    " This column then gets ten more. {left} + 10 = {value}. Write {left} or {value} in the working box. Use {value} when you subtract."
+                ));
+            } else {
+                cue.push_str(&format!(" Write {left} in the box."));
+            }
+            // Independent checks use equal-sized boxes so their lengths do not reveal an incoming ten.
+            let max_digits = if !assisted || value >= 10 { 2 } else { 1 };
+            grid.input(&mut exchange, col, left.to_string(), cue, max_digits)
+                .exchange_total = Some(value.to_string());
+        }
     }
-    grid.problem.rows.push(exchange);
-    grid.fixed_number("", a);
-    grid.fixed_number("−", b);
+    grid.push_annotation(exchange);
+    grid.signed_operands(a, b, "−");
     let mut row = grid.blank_row("Answer", "answer");
-    let result_width = digits(a - b);
-    for (place, &value) in top.iter().enumerate() {
-        let answer = value - digit(b, place);
-        let leading = place >= result_width;
-        let cue = format!(
-            "{} column after exchange: {} − {} = {}. Subtract the bottom digit from the rewritten top digit.",
-            place_name(place),
-            value,
-            digit(b, place),
-            answer
-        );
-        grid.input(
-            &mut row,
-            n - place - 1,
-            if leading { String::new() } else { answer.to_string() },
-            leading,
-            cue,
-            1,
-        );
+    for (place, &value) in top.iter().enumerate().take(digits(a - b)) {
+        let bottom = digit(b, place);
+        let answer = value - bottom;
+        let cue = format!("In the {} column, {value} − {bottom} = {answer}.", place_name(place));
+        grid.input(&mut row, n - place - 1, answer.to_string(), cue, 1);
     }
     grid.problem.rows.push(row);
     grid.problem
@@ -836,7 +866,7 @@ fn subtraction(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answ
 fn multiplication(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answer>) -> WrittenProblem {
     let n = digits(a);
     let m = digits(b);
-    let width = n + m;
+    let width = digits(a * b);
     let mut grid = Builder::new(Operation::Multiplication, a, b, index, width, answers);
     if m > 1 {
         grid.fixed_number("", a);
@@ -846,29 +876,24 @@ fn multiplication(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, A
         let multiplier = digit(b, multiplier_place);
         let mut carries = grid.blank_row(&format!("Carry ×{multiplier}"), "annotation");
         let mut carry = 0;
-        for place in 0..n {
+        for place in 0..n - 1 {
             let total = digit(a, place) * multiplier + carry;
-            let next = total / 10;
-            let cue = format!(
-                "{} × {} + {} carried = {}. Write {} in this partial product and carry {} to the next place.",
-                digit(a, place),
-                multiplier,
-                carry,
-                total,
-                total % 10,
-                next
-            );
-            grid.input(
-                &mut carries,
-                width - place - multiplier_place - 2,
-                if next == 0 { String::new() } else { next.to_string() },
-                next == 0,
-                cue,
-                1,
-            );
-            carry = next;
+            carry = total / 10;
+            if carry > 0 {
+                let cue = format!(
+                    "This column makes {total}. Write {} below and carry {carry} to the next column.",
+                    total % 10
+                );
+                grid.input(
+                    &mut carries,
+                    width - place - multiplier_place - 2,
+                    carry.to_string(),
+                    cue,
+                    1,
+                );
+            }
         }
-        grid.problem.rows.push(carries);
+        grid.push_annotation(carries);
         if m == 1 {
             grid.fixed_number("", a);
             grid.fixed_number("×", b);
@@ -892,13 +917,8 @@ fn multiplication(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, A
         };
         let mut row = grid.blank_row(&label, if m == 1 { "answer" } else { "working" });
         let mut incoming_carry = 0;
-        for place in 0..width {
-            let leading = place >= digits(partial);
-            let expected = if leading {
-                String::new()
-            } else {
-                digit(partial, place).to_string()
-            };
+        for place in 0..digits(partial) {
+            let expected = digit(partial, place).to_string();
             let cue = if place < multiplier_place {
                 "Write 0 in the ones place: multiplying by tens shifts every product digit one place to the left."
                     .into()
@@ -916,24 +936,20 @@ fn multiplication(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, A
                 );
                 incoming_carry = total / 10;
                 cue
-            } else if incoming_carry != 0 {
-                let cue = format!(
+            } else {
+                format!(
                     "Write the final carried {} in this place. {explanation}",
                     incoming_carry
-                );
-                incoming_carry = 0;
-                cue
-            } else {
-                format!("Leave this unused leading place blank (or write 0). {explanation}")
+                )
             };
-            grid.input(&mut row, width - place - 1, expected, leading, cue, 1);
+            grid.input(&mut row, width - place - 1, expected, cue, 1);
         }
         grid.problem.rows.push(row);
     }
     if m > 1 {
         let first = a * (b % 10);
         let second = a * (b / 10) * 10;
-        add_carry_row(&mut grid, first, second, width - 1, "Addition carry");
+        add_carry_row(&mut grid, first, second, "Addition carry");
         grid.number_row(
             "Answer",
             "answer",
@@ -961,14 +977,9 @@ fn division(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answer>
             "At this place, divide {current} by {b}: {q}, remainder {next_remainder}, because {b} × {q} = {}. Once the quotient has started, write every quotient digit, including zero at the end.",
             b * q
         );
-        grid.input(
-            &mut quotient,
-            col,
-            if leading { String::new() } else { q.to_string() },
-            leading,
-            cue,
-            1,
-        );
+        if !leading {
+            grid.input(&mut quotient, col, q.to_string(), cue, 1);
+        }
         if q != 0 {
             started = true;
         }
@@ -980,25 +991,17 @@ fn division(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answer>
         let mut carry = grid.blank_row("Carry remainder", "annotation");
         for col in 1..n {
             let previous = stages[col - 1].3;
+            if previous == 0 {
+                continue;
+            }
             let cue = format!(
                 "The preceding division leaves remainder {previous}. Carry it into this place: {previous} × 10 + {} = {}.",
                 digit(a, n - col - 1),
                 stages[col].1
             );
-            grid.input(
-                &mut carry,
-                col,
-                if previous == 0 {
-                    String::new()
-                } else {
-                    previous.to_string()
-                },
-                previous == 0,
-                cue,
-                1,
-            );
+            grid.input(&mut carry, col, previous.to_string(), cue, 1);
         }
-        grid.problem.rows.push(carry);
+        grid.push_annotation(carry);
     }
     grid.fixed_number(&format!("{b} ⟌"), a);
     grid.problem.rows.last_mut().expect("dividend row").kind = "dividend".into();
@@ -1025,22 +1028,23 @@ fn division(a: u32, b: u32, index: usize, answers: &mut BTreeMap<String, Answer>
                 col,
                 &format!("Multiply this quotient digit by the divisor: {q} × {b} = {product}."),
             );
-            grid.number_row(
-                "Remainder",
-                "working",
-                rest,
-                col,
-                &format!("Subtract {current} − {product} = {rest}. The remainder must be less than {b}."),
-            );
+            if col + 1 < n {
+                grid.number_row(
+                    "Remainder",
+                    "working",
+                    rest,
+                    col,
+                    &format!("Subtract {current} − {product} = {rest}. The remainder must be less than {b}."),
+                );
+            }
             first = false;
         }
     }
-    let mut last = grid.blank_row("Remainder (whole number)", "answer");
+    let mut last = grid.blank_row("Remainder (whole number)", "remainder");
     grid.input(
         &mut last,
         n - 1,
         remainder.to_string(),
-        false,
         format!(
             "The final remainder is {remainder}, less than {b}. Check: {b} × {} + {remainder} = {a}.",
             a / b
@@ -1105,7 +1109,12 @@ pub fn generate_activity(
             PracticeMode::Assisted
         },
     };
-    let mut stored = build(request)?;
+    let assisted = request.mode == PracticeMode::Assisted
+        && runtime
+            .presentation
+            .as_ref()
+            .is_none_or(|package| package.package_id == "written-arithmetic" && package.version == "1.1.0");
+    let mut stored = build(request, assisted)?;
     let spec = LEVELS
         .iter()
         .find(|level| level.id == runtime.template_id)
@@ -1127,19 +1136,19 @@ pub fn generate_activity(
         let mut selected = Vec::new();
         let mut seen = BTreeSet::new();
         for key in focus {
-            if let Some((a, b)) = parse_fact_key(key, spec) {
-                if seen.insert((a, b)) {
-                    selected.push((a, b));
-                }
-                if selected.len() == limit {
-                    break;
-                }
+            if selected.len() == limit {
+                break;
+            }
+            if let Some((a, b)) = parse_fact_key(key, spec)
+                && seen.insert(fact_key(spec, a, b))
+            {
+                selected.push((a, b));
             }
         }
         if context.run_mode != crate::RunMode::Retry || selected.is_empty() {
             for problem in &stored.worksheet.problems {
                 let (a, b) = operands(problem);
-                if selected.len() < parameters.question_count && seen.insert((a, b)) {
+                if selected.len() < parameters.question_count && seen.insert(fact_key(spec, a, b)) {
                     selected.push((a, b));
                 }
             }
@@ -1148,9 +1157,20 @@ pub fn generate_activity(
         stored.worksheet.problems = selected
             .into_iter()
             .enumerate()
-            .map(|(index, (a, b))| problem(spec.operation, a, b, index + 1, &mut stored.answers))
+            .map(|(index, (a, b))| problem(spec.operation, a, b, index + 1, &mut stored.answers, assisted))
             .collect();
         stored.worksheet.request.question_count = stored.worksheet.problems.len();
+    }
+    // The original package displays signs only in the left row label.
+    if runtime.presentation.as_ref().is_some_and(|p| p.version == "1.0.0") {
+        for problem in &mut stored.worksheet.problems {
+            let mut operands = problem.rows.iter_mut().filter(|r| r.kind == "operand");
+            if let (Some(top), Some(bottom)) = (operands.next(), operands.next())
+                && !top.trailing_sign.is_empty()
+            {
+                bottom.label = std::mem::take(&mut top.trailing_sign);
+            }
+        }
     }
     let family = format!("written-level:{}", spec.id);
     let items = stored
@@ -1175,6 +1195,9 @@ pub fn generate_activity(
                 response_kind: "written_grid".into(),
                 expected_response: expected as i32,
                 correction_cue: stored.worksheet.level.instructions.clone(),
+                steps: Vec::new(),
+                answer_prompt: None,
+                equation: None,
             }
         })
         .collect::<Vec<_>>();
@@ -1345,7 +1368,7 @@ mod tests {
     }
     fn worked(operation: Operation, a: u32, b: u32) -> (WrittenProblem, BTreeMap<String, Answer>) {
         let mut answers = BTreeMap::new();
-        let problem = problem(operation, a, b, 1, &mut answers);
+        let problem = problem(operation, a, b, 1, &mut answers, true);
         (problem, answers)
     }
     fn row_value(problem: &WrittenProblem, answers: &BTreeMap<String, Answer>, label: &str) -> String {
@@ -1357,10 +1380,12 @@ mod tests {
             .cells
             .iter()
             .map(|cell| {
-                cell.id
+                let digit = cell
+                    .id
                     .as_ref()
                     .map(|id| answers[id].expected.as_str())
-                    .unwrap_or(&cell.text)
+                    .unwrap_or(&cell.text);
+                digit.to_string()
             })
             .collect::<String>()
     }
@@ -1383,7 +1408,7 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_grades_its_cells_without_regenerating() {
-        let mut stored = build(request("addition_2_carry", 31, 2)).unwrap();
+        let mut stored = generate_stored(request("addition_2_carry", 31, 2)).unwrap();
         let responses = values(&stored);
         stored.worksheet.request.seed = Some(9999);
         let serialized = serde_json::to_value(&stored).unwrap();
@@ -1438,11 +1463,25 @@ mod tests {
     }
 
     #[test]
+    fn focused_practice_keeps_the_requested_size_and_skips_commuted_duplicates() {
+        let mut runtime = registered_runtime("addition_3");
+        let focus = vec!["written:addition_3:944:479".into(), "written:addition_3:935:100".into()];
+        let context = crate::GenerationContext::practice(0).with_weak_facts(focus);
+        let mixed = generate_activity(&runtime, &context).unwrap();
+        let keys = mixed.items.iter().map(|item| &item.fact_key).collect::<BTreeSet<_>>();
+        assert_eq!(mixed.items.len(), 6);
+        assert_eq!(keys.len(), 6);
+        runtime.parameters = serde_json::json!({"question_count": 1});
+        let single = generate_activity(&runtime, &context).unwrap();
+        assert_eq!(single.items.len(), 1);
+    }
+
+    #[test]
     fn all_levels_are_reproducible_unique_and_solved_submissions_pass() {
         for level in LEVELS {
             for seed in 0..32 {
                 let req = request(level.id, seed, 24);
-                let plan = build(req.clone()).unwrap();
+                let plan = generate_stored(req.clone()).unwrap();
                 assert_eq!(plan.worksheet, generate(req.clone()).unwrap());
                 assert_eq!(
                     plan.worksheet
@@ -1453,8 +1492,20 @@ mod tests {
                         .len(),
                     24
                 );
+                assert!(
+                    plan.answers
+                        .values()
+                        .all(|answer| !answer.allow_blank && !answer.expected.is_empty())
+                );
                 for problem in &plan.worksheet.problems {
+                    assert_eq!(problem.column_labels.len(), problem.columns);
                     assert!(problem.rows.iter().all(|row| row.cells.len() == problem.columns));
+                    assert!(
+                        problem
+                            .rows
+                            .iter()
+                            .all(|row| row.cells.iter().any(|cell| cell.id.is_some() || !cell.text.is_empty()))
+                    );
                     assert!(
                         problem
                             .rows
@@ -1480,12 +1531,12 @@ mod tests {
     fn carrying_and_exchange_across_zeros_are_explicit() {
         let (sum, sum_answers) = worked(Operation::Addition, 55, 68);
         assert_eq!(row_value(&sum, &sum_answers, "Answer"), "123");
-        assert_eq!(row_value(&sum, &sum_answers, "Carry"), "11");
+        assert_eq!(row_value(&sum, &sum_answers, "Carry"), "1");
         let (sub, sub_answers) = worked(Operation::Subtraction, 1000, 1);
-        assert_eq!(row_value(&sub, &sub_answers, "After exchange"), "09910");
+        assert_eq!(row_value(&sub, &sub_answers, "Exchange marks"), "099");
         assert_eq!(row_value(&sub, &sub_answers, "Answer"), "999");
         let (sub, sub_answers) = worked(Operation::Subtraction, 302, 178);
-        assert_eq!(row_value(&sub, &sub_answers, "After exchange"), "2912");
+        assert_eq!(row_value(&sub, &sub_answers, "Exchange marks"), "29");
         assert_eq!(row_value(&sub, &sub_answers, "Answer"), "124");
     }
 
@@ -1525,14 +1576,14 @@ mod tests {
                     .collect::<String>()
             })
             .collect::<Vec<_>>();
-        assert_eq!(remainders, ["4", "4"]);
+        assert_eq!(remainders, ["4"]);
     }
 
     #[test]
     fn generated_cases_match_level_promises_and_arithmetic_invariants() {
         for spec in LEVELS {
             for seed in 0..16 {
-                let plan = build(request(spec.id, seed, 24)).unwrap();
+                let plan = generate_stored(request(spec.id, seed, 24)).unwrap();
                 for problem in &plan.worksheet.problems {
                     let parts = problem.prompt.split_whitespace().collect::<Vec<_>>();
                     let a: u32 = parts[0].parse().unwrap();
@@ -1594,37 +1645,85 @@ mod tests {
     }
 
     #[test]
-    fn optional_places_never_award_marks_and_wrong_entries_count_as_errors() {
-        for level in LEVELS {
-            let req = request(level.id, 47, 1);
-            let plan = build(req.clone()).unwrap();
-            let empty = check(CheckRequest {
-                worksheet: req.clone(),
-                responses: vec![],
-                finish: true,
-            })
-            .unwrap();
-            assert_eq!(empty.correct_count, 0, "{}", level.id);
-            assert_eq!(
-                empty.total_count,
-                plan.answers.values().filter(|answer| !answer.allow_blank).count()
-            );
-            if let Some((cell_id, _)) = plan.answers.iter().find(|(_, answer)| answer.allow_blank) {
-                let mut responses = values(&plan);
-                responses
-                    .iter_mut()
-                    .find(|response| response.cell_id == *cell_id)
-                    .unwrap()
-                    .value = "1".into();
-                let result = check(CheckRequest {
-                    worksheet: req,
-                    responses,
-                    finish: true,
-                })
-                .unwrap();
-                assert_eq!(result.total_count, empty.total_count + 1);
-                assert_eq!(result.correct_count, empty.total_count);
+    fn old_snapshots_keep_optional_boxes_and_full_exchange_amounts() {
+        let stored: StoredWorksheet = serde_json::from_value(serde_json::json!({
+            "worksheet": {
+                "request": request("subtraction_3", 14, 1),
+                "level": LEVELS.iter().find(|level| level.id == "subtraction_3").unwrap().public(),
+                "problems": [{"id":"q1","prompt":"352 − 117","columns":3,"rows":[
+                    {"label":"After exchange","kind":"annotation","cells":[
+                        {"id":"q1.r0.c0","text":"","max_digits":1},
+                        {"id":"q1.r0.c1","text":"","max_digits":2},
+                        {"id":"q1.r0.c2","text":"","max_digits":2}
+                    ]}
+                ]}]
+            },
+            "answers": {
+                "q1.r0.c0":{"expected":"","allow_blank":true,"max_digits":1,"explanation":"Leave blank."},
+                "q1.r0.c1":{"expected":"4","allow_blank":false,"max_digits":2,"explanation":"Leave 4 tens."},
+                "q1.r0.c2":{"expected":"12","allow_blank":false,"max_digits":2,"explanation":"Use 12 ones."}
             }
+        }))
+        .unwrap();
+        let mut responses = vec![
+            CellResponse {
+                cell_id: "q1.r0.c1".into(),
+                value: "4".into(),
+            },
+            CellResponse {
+                cell_id: "q1.r0.c2".into(),
+                value: "12".into(),
+            },
+        ];
+        let correct = check_stored(&stored, &responses, true).unwrap();
+        assert_eq!((correct.correct_count, correct.total_count), (2, 2));
+        responses.push(CellResponse {
+            cell_id: "q1.r0.c0".into(),
+            value: "1".into(),
+        });
+        let wrong = check_stored(&stored, &responses, true).unwrap();
+        assert_eq!((wrong.correct_count, wrong.total_count), (2, 3));
+    }
+
+    #[test]
+    fn free_checks_reject_pre_upgrade_position_ids_before_grading() {
+        let req = request("subtraction_3", 481973, 1);
+        let plan = generate_stored(req.clone()).unwrap();
+        let mut responses = values(&plan);
+        responses[0].cell_id = responses[0].cell_id.replace(".v2.", ".");
+        assert_eq!(responses[0].cell_id, "q1.r0.c0");
+        for finish in [false, true] {
+            let error = check(CheckRequest {
+                worksheet: req.clone(),
+                responses: responses.clone(),
+                finish,
+            })
+            .unwrap_err();
+            assert!(error.to_string().contains("Generate a fresh worksheet"));
+        }
+    }
+
+    #[test]
+    fn older_pinned_package_gets_readable_exchange_boxes_in_practice_and_retry() {
+        let mut runtime = registered_runtime("subtraction_3");
+        runtime.presentation = Some(catalog::MaterialPresentation {
+            package_id: "written-arithmetic".into(),
+            version: "1.0.0".into(),
+        });
+        for context in [
+            crate::GenerationContext::practice(481973),
+            crate::GenerationContext::retry(0).with_focus_facts(["written:subtraction_3:321:157".into()]),
+        ] {
+            let generated = generate_activity(&runtime, &context).unwrap();
+            let plan = generated.written_plan.unwrap();
+            let problem = &plan.worksheet.problems[0];
+            assert_eq!(problem.prompt, "321 − 157");
+            assert!(problem.rows[0].cells.iter().all(|cell| cell.text.is_empty()));
+            assert_eq!(
+                plan.answers[problem.rows[0].cells[1].id.as_ref().unwrap()].expected,
+                "1"
+            );
+            assert!(!plan.worksheet.level.instructions.contains("printed"));
         }
     }
 
@@ -1635,7 +1734,7 @@ mod tests {
         assert!(generate(request("addition_2_carry", 1, 25)).is_err());
         assert!(generate(request("addition_2_carry", u64::MAX, 1)).is_err());
         let req = request("addition_2_carry", 1, 1);
-        let plan = build(req.clone()).unwrap();
+        let plan = generate_stored(req.clone()).unwrap();
         let response = values(&plan)[0].clone();
         assert!(
             check(CheckRequest {
@@ -1673,19 +1772,213 @@ mod tests {
     }
 
     #[test]
-    fn blank_optional_annotations_but_not_exchanged_zero_are_accepted() {
-        let (problem, answers) = worked(Operation::Subtraction, 100, 1);
-        let exchange = &problem.rows[0];
-        let id = exchange.cells[0].id.as_ref().unwrap();
-        assert_eq!(answers[id].expected, "0");
-        assert!(!answers[id].allow_blank);
-        let (problem, answers) = worked(Operation::Addition, 12, 13);
-        assert!(
-            problem.rows[0]
+    fn two_exchanges_in_one_column_need_just_the_digit_left() {
+        let stored = generate_stored(request("subtraction_3", 481973, 1)).unwrap();
+        let problem = &stored.worksheet.problems[0];
+        assert_eq!(problem.prompt, "321 − 157");
+        let row = &problem.rows[0];
+        assert_eq!(row.label, "Exchange marks");
+        assert_eq!(row_value(problem, &stored.answers, "Answer"), "164");
+        assert_eq!(stored.answers[row.cells[0].id.as_ref().unwrap()].expected, "2");
+        let middle = &row.cells[1];
+        let id = middle.id.as_ref().unwrap();
+        assert!(middle.text.is_empty());
+        assert_eq!(middle.max_digits, 2);
+        assert_eq!(stored.answers[id].expected, "1");
+        assert!(row.cells[2].text.is_empty());
+        assert!(row.cells[2].id.is_none());
+        let responses = values(&stored);
+        for response in &responses {
+            assert!(
+                check_stored(&stored, std::slice::from_ref(response), false)
+                    .unwrap()
+                    .feedback[0]
+                    .correct
+            );
+        }
+        let final_check = check_stored(&stored, &responses, true).unwrap();
+        assert_eq!((final_check.correct_count, final_check.total_count), (5, 5));
+
+        let mut full = responses;
+        full.iter_mut().find(|response| response.cell_id == *id).unwrap().value = "11".into();
+        for finish in [false, true] {
+            let result = check(CheckRequest {
+                worksheet: stored.worksheet.request.clone(),
+                responses: full.clone(),
+                finish,
+            })
+            .unwrap();
+            assert_eq!((result.correct_count, result.total_count), (5, 5));
+        }
+    }
+
+    #[test]
+    fn four_digit_exchanges_accept_either_notation_in_each_box_independently() {
+        let example = LevelSpec {
+            id: "four_digit_example",
+            title: "Four-digit subtraction",
+            operation: Operation::Subtraction,
+            top_digits: 4,
+            bottom_digits: 4,
+            cases: Cases::Mixed,
+        };
+        for mode in [PracticeMode::Assisted, PracticeMode::Assessment] {
+            let mut answers = BTreeMap::new();
+            let problem = subtraction(3772, 1888, 1, &mut answers, mode == PracticeMode::Assisted);
+            assert_eq!(row_value(&problem, &answers, "Answer"), "1884");
+            let ids = problem.rows[0]
                 .cells
                 .iter()
-                .filter_map(|cell| cell.id.as_ref())
-                .all(|id| answers[id].allow_blank)
+                .filter_map(|cell| cell.id.clone())
+                .collect::<Vec<_>>();
+            assert_eq!(ids.len(), 3);
+            let mut req = request(example.id, 0, 1);
+            req.mode = mode;
+            let stored = StoredWorksheet {
+                worksheet: Worksheet {
+                    request: req,
+                    level: example.public(),
+                    problems: vec![problem],
+                },
+                answers,
+            };
+            let stored: StoredWorksheet = serde_json::from_slice(&serde_json::to_vec(&stored).unwrap()).unwrap();
+            for (hundreds, tens) in [("6", "6"), ("16", "6"), ("6", "16"), ("16", "16")] {
+                let mut responses = values(&stored);
+                for (id, value) in [(&ids[1], hundreds), (&ids[2], tens)] {
+                    responses
+                        .iter_mut()
+                        .find(|response| response.cell_id == *id)
+                        .unwrap()
+                        .value = value.into();
+                    if mode == PracticeMode::Assisted {
+                        let one = CellResponse {
+                            cell_id: id.clone(),
+                            value: value.into(),
+                        };
+                        assert!(check_stored(&stored, &[one], false).unwrap().feedback[0].correct);
+                    }
+                }
+                let result = check_stored(&stored, &responses, true).unwrap();
+                assert_eq!((result.correct_count, result.total_count), (7, 7));
+            }
+            for wrong in ["7", "17", "26", "06", ""] {
+                let response = CellResponse {
+                    cell_id: ids[1].clone(),
+                    value: wrong.into(),
+                };
+                let result = check_stored(&stored, &[response], true).unwrap();
+                let feedback = result.feedback.iter().find(|cell| cell.cell_id == ids[1]).unwrap();
+                assert!(!feedback.correct, "{wrong}");
+                assert_eq!(feedback.expected.as_deref(), Some("6 or 16"));
+            }
+            if mode == PracticeMode::Assessment {
+                let wrong = CellResponse {
+                    cell_id: ids[0].clone(),
+                    value: "12".into(),
+                };
+                let result = check_stored(&stored, &[wrong], true).unwrap();
+                assert!(
+                    !result
+                        .feedback
+                        .iter()
+                        .find(|cell| cell.cell_id == ids[0])
+                        .unwrap()
+                        .correct
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn assigned_checkpoint_scores_zero_or_ten_only_where_ten_was_received() {
+        let mut runtime = registered_runtime("subtraction_3");
+        runtime.parameters = serde_json::json!({"question_count":1});
+        let activity = generate_activity(&runtime, &crate::GenerationContext::check(11)).unwrap();
+        let plan = activity.written_plan.as_ref().unwrap();
+        let problem = &plan.worksheet.problems[0];
+        assert_eq!(problem.prompt, "913 − 545");
+        let exchange = &problem.rows[0];
+        let hundreds = exchange.cells[0].id.as_ref().unwrap();
+        let tens = exchange.cells[1].id.as_ref().unwrap();
+        assert!(
+            exchange
+                .cells
+                .iter()
+                .filter(|cell| cell.id.is_some())
+                .all(|cell| cell.max_digits == 2)
         );
+        assert!(
+            !serde_json::to_string(&plan.worksheet)
+                .unwrap()
+                .contains("exchange_total")
+        );
+        for (hundreds_value, tens_value, correct) in [
+            ("8", "0", true),
+            ("8", "10", true),
+            ("8", "00", false),
+            ("8", "20", false),
+            ("18", "10", false),
+            ("08", "0", false),
+        ] {
+            let mut responses = values(plan);
+            for (id, value) in [(hundreds, hundreds_value), (tens, tens_value)] {
+                responses
+                    .iter_mut()
+                    .find(|response| response.cell_id == *id)
+                    .unwrap()
+                    .value = value.into();
+            }
+            let responses = responses
+                .into_iter()
+                .map(|entry| crate::ActivityResponseInput {
+                    item_id: entry.cell_id,
+                    value: entry.value,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(score_activity(&activity, &responses).unwrap().target_met, correct);
+        }
+    }
+
+    #[test]
+    fn independent_subtraction_checks_hide_the_added_ten_but_keep_the_same_working_and_key() {
+        let mut req = request("subtraction_3", 481973, 1);
+        req.mode = PracticeMode::Assessment;
+        let stored = generate_stored(req.clone()).unwrap();
+        let problem = &stored.worksheet.problems[0];
+        assert_eq!(problem.prompt, "321 − 157");
+        let exchange = &problem.rows[0];
+        assert!(exchange.cells.iter().all(|cell| cell.text.is_empty()));
+        assert!(exchange.cells[0].id.is_some() && exchange.cells[1].id.is_some());
+        assert!(exchange.cells[2].id.is_none());
+        assert!(!stored.worksheet.level.instructions.contains("printed"));
+        let responses = values(&stored);
+        assert!(check_stored(&stored, &responses, false).is_err());
+        let result = check_stored(&stored, &responses, true).unwrap();
+        assert_eq!((result.correct_count, result.total_count), (5, 5));
+        let key = generate_solved(req).unwrap();
+        let key_marks = &key.problems[0].rows[0].cells;
+        assert_eq!(key_marks[1].text, "1");
+        assert!(key_marks[2].text.is_empty());
+    }
+
+    #[test]
+    fn only_needed_places_are_boxes_and_a_zero_left_after_giving_is_required() {
+        let (sub, answers) = worked(Operation::Subtraction, 100, 1);
+        let exchange = &sub.rows[0];
+        let id = exchange.cells[0].id.as_ref().unwrap();
+        assert_eq!(answers[id].expected, "0");
+        let answer = sub.rows.last().unwrap();
+        assert!(answer.cells[0].id.is_none());
+        let (sum, _) = worked(Operation::Addition, 12, 13);
+        assert_eq!(sum.columns, 2);
+        assert_eq!(sum.rows.len(), 3);
+        assert!(sum.rows.iter().all(|row| row.kind != "annotation"));
+        let (sum, _) = worked(Operation::Addition, 92, 19);
+        assert_eq!(sum.columns, 3);
+        assert!(sum.rows[0].cells[0].id.is_none());
+        assert!(sum.rows[0].cells[1].id.is_some());
+        let (sub, _) = worked(Operation::Subtraction, 54, 12);
+        assert!(sub.rows.iter().all(|row| row.kind != "annotation"));
     }
 }

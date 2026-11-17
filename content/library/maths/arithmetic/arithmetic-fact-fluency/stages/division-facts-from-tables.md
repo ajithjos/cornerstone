@@ -1,7 +1,7 @@
 ---
 id: division_facts_from_tables
 title: Division Facts From Tables
-sequence: 6
+sequence: 7
 ---
 
 # Division Facts From Tables

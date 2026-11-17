@@ -2395,42 +2395,13 @@ pub async fn preview_material_activity(
     if request.revision != revision {
         bail!("This material changed. Reopen the preview for a fresh set.");
     }
-    let cells = request
-        .responses
-        .iter()
-        .map(|r| written_arithmetic::CellResponse {
-            cell_id: r.item_id.clone(),
-            value: r.value.clone(),
-        })
-        .collect::<Vec<_>>();
     if !finish {
-        if generated.generation_context.run_mode == runtime::RunMode::Check {
-            bail!("checkpoint feedback is available after submission");
-        }
-        let plan = generated
-            .written_plan
-            .as_ref()
-            .ok_or_else(|| anyhow!("this activity does not support step feedback"))?;
-        return Ok(serde_json::to_value(written_arithmetic::check_stored(
-            plan, &cells, false,
-        )?)?);
+        return Ok(serde_json::to_value(assisted_check(&generated, &request.responses)?)?);
     }
-    let responses = request
-        .responses
-        .iter()
-        .map(|r| runtime::ActivityResponseInput {
-            item_id: r.item_id.clone(),
-            value: r.value.clone(),
-        })
-        .collect::<Vec<_>>();
-    let scored = runtime::score_activity(material, &generated, &responses)?;
+    let scored = runtime::score_activity(material, &generated, &request.responses)?;
     let duration = request.duration_seconds.clamp(0, 86400);
     let target_met = scored.target_met && generated.max_duration_seconds.is_none_or(|max| duration as u32 <= max);
-    let check_result = generated
-        .written_plan
-        .as_ref()
-        .map(|plan| written_arithmetic::check_stored(plan, &cells, true))
-        .transpose()?;
+    let check_result = working_feedback(&generated, &request.responses, true)?;
     Ok(
         json!({"preview": true, "run_status": "completed", "run_outcome": if target_met { "target_met" } else { "target_not_met" },
         "run_outcome_label": if target_met { "Preview finished · Target met" } else { "Preview finished · Keep practising" },
@@ -2480,7 +2451,7 @@ pub async fn start_session_material_activity(
     let generation_context = build_generation_context(
         &state.pool,
         &session.learner_id,
-        &material.id,
+        material,
         &evidence_material_id,
         run_mode,
         Vec::new(),
@@ -2554,7 +2525,7 @@ pub async fn start_review_item_activity(
     let generation_context = build_generation_context(
         &state.pool,
         &review_item.learner_id,
-        &session_material.material_id,
+        material,
         &review_item.evidence_material_id,
         runtime::RunMode::Review,
         json_string_array(&review_item.fact_focus),
@@ -2603,7 +2574,7 @@ pub async fn retry_missed_activity_facts(
     let generation_context = build_generation_context(
         &state.pool,
         &source.learner_id,
-        &source.material_id,
+        material,
         &source.evidence_material_id,
         runtime::RunMode::Retry,
         focus_fact_keys,
@@ -2625,7 +2596,7 @@ pub async fn retry_missed_activity_facts(
 async fn build_generation_context(
     pool: &PgPool,
     learner_id: &str,
-    _material_id: &str,
+    material: &catalog::MaterialDocument,
     evidence_material_id: &str,
     run_mode: runtime::RunMode,
     focus_fact_keys: Vec<String>,
@@ -2664,7 +2635,26 @@ async fn build_generation_context(
         .take(12)
         .map(|progress| progress.fact_key.clone())
         .collect::<Vec<_>>();
-    let seen_fact_keys = if run_mode == runtime::RunMode::Practice {
+    // The next run must add variety to the same window the checkpoint will score.
+    let readiness = material.runtime.as_ref().and_then(|r| r.readiness.as_ref());
+    let seen_fact_keys = if let (runtime::RunMode::Practice, Some(authored)) = (run_mode, readiness) {
+        let (target, _, _) = effective_readiness_target(pool, learner_id, &material.id, authored).await?;
+        let prior_runs = target.recent_run_window.saturating_sub(1).max(1) as i64;
+        query_scalar::<_, String>(
+            "select distinct fact->>'fact_key'
+             from (select result from activity_instance
+                   where learner_id = $1 and material_id = $2 and mode = 'practice'
+                     and status = 'finished' and result is not null
+                   order by finished_at desc limit $3) recent
+             cross join lateral jsonb_array_elements(recent.result->'fact_results') fact
+             where fact ? 'fact_key' and (fact->>'attempted_count')::int > 0",
+        )
+        .bind(learner_id)
+        .bind(&material.id)
+        .bind(prior_runs)
+        .fetch_all(pool)
+        .await?
+    } else if run_mode == runtime::RunMode::Practice {
         fact_progress
             .iter()
             .filter(|progress| progress.attempted_count > 0)
@@ -2821,22 +2811,87 @@ fn attach_activity_package(
         generated.package_descriptor = Some(serde_json::to_value(crate::activity_packages::resolve_package(
             &state.config.content_root,
             "numeric-questions",
-            "1.0.0",
+            crate::activity_packages::NUMERIC_VERSION,
         )?)?);
     }
     Ok(())
 }
 
 fn activity_presentation(generated: &GeneratedActivity) -> anyhow::Result<Option<ActivityPresentation>> {
-    let presentation = generated.package_descriptor.as_ref().map(|descriptor| -> anyhow::Result<ActivityPresentation> {
-        let payload = if let Some(plan) = &generated.written_plan {
-            json!({ "worksheet": plan.worksheet, "mode": plan.worksheet.request.mode, "capabilities": { "check": plan.worksheet.request.mode == PracticeMode::Assisted } })
-        } else {
-            json!({ "instructions": generated.instructions, "mode": if generated.generation_context.run_mode == runtime::RunMode::Check { "assessment" } else { "assisted" }, "capabilities": { "check": false }, "items": generated.items.iter().map(|item| json!({"item_id":item.item_id,"content":item.content,"response_kind":item.response_kind})).collect::<Vec<_>>() })
-        };
-        Ok(ActivityPresentation { package: serde_json::from_value(descriptor.clone())?, payload })
-    }).transpose()?;
-    Ok(presentation)
+    let Some(descriptor) = &generated.package_descriptor else {
+        return Ok(None);
+    };
+    let payload = if let Some(plan) = &generated.written_plan {
+        json!({
+            "worksheet": plan.worksheet, "mode": plan.worksheet.request.mode,
+            "capabilities": { "check": plan.worksheet.request.mode == PracticeMode::Assisted }
+        })
+    } else {
+        let assessment = generated.generation_context.run_mode == runtime::RunMode::Check;
+        let items = generated
+            .items
+            .iter()
+            .map(|item| {
+                let mut public =
+                    json!({ "item_id": item.item_id, "content": item.content, "response_kind": item.response_kind });
+                if let Some(equation) = &item.equation {
+                    public["equation"] = json!(equation);
+                }
+                if !item.steps.is_empty() {
+                    public["steps"] = json!(
+                        item.steps
+                            .iter()
+                            .map(|step| json!({ "item_id": step.item_id, "prompt": step.prompt }))
+                            .collect::<Vec<_>>()
+                    );
+                }
+                if let Some(prompt) = &item.answer_prompt {
+                    public["answer_prompt"] = json!(prompt);
+                }
+                public
+            })
+            .collect::<Vec<_>>();
+        json!({
+            "instructions": generated.instructions, "mode": if assessment { "assessment" } else { "assisted" },
+            "capabilities": { "check": !assessment && generated.has_fact_working() }, "items": items
+        })
+    };
+    Ok(Some(ActivityPresentation {
+        package: serde_json::from_value(descriptor.clone())?,
+        payload,
+    }))
+}
+
+fn working_feedback(
+    generated: &GeneratedActivity,
+    responses: &[runtime::ActivityResponseInput],
+    finish: bool,
+) -> anyhow::Result<Option<written_arithmetic::CheckResult>> {
+    if let Some(plan) = &generated.written_plan {
+        let cells = responses
+            .iter()
+            .map(|r| written_arithmetic::CellResponse {
+                cell_id: r.item_id.clone(),
+                value: r.value.clone(),
+            })
+            .collect::<Vec<_>>();
+        return Ok(Some(written_arithmetic::check_stored(plan, &cells, finish)?));
+    }
+    if generated.has_fact_working() {
+        return Ok(Some(runtime::check_fact_responses(generated, responses, finish)?));
+    }
+    Ok(None)
+}
+
+fn assisted_check(
+    generated: &GeneratedActivity,
+    responses: &[runtime::ActivityResponseInput],
+) -> anyhow::Result<written_arithmetic::CheckResult> {
+    if generated.generation_context.run_mode == runtime::RunMode::Check {
+        bail!("assessment feedback is available only after submission");
+    }
+    working_feedback(generated, responses, false)?
+        .ok_or_else(|| anyhow!("this activity does not support step feedback"))
 }
 
 fn activity_start_response(
@@ -2897,19 +2952,7 @@ pub async fn check_activity_instance(
         bail!("assessment feedback is available only after submission");
     }
     let generated: GeneratedActivity = serde_json::from_value(row.plan).context("stored activity plan is invalid")?;
-    let plan = generated
-        .written_plan
-        .as_ref()
-        .ok_or_else(|| anyhow!("this activity does not support assisted cell feedback"))?;
-    let responses = request
-        .responses
-        .iter()
-        .map(|response| written_arithmetic::CellResponse {
-            cell_id: response.item_id.clone(),
-            value: response.value.clone(),
-        })
-        .collect::<Vec<_>>();
-    written_arithmetic::check_stored(plan, &responses, false)
+    assisted_check(&generated, &request.responses)
 }
 
 fn run_mode_db(run_mode: runtime::RunMode) -> &'static str {
@@ -3074,31 +3117,9 @@ pub async fn complete_activity_instance(
     if activity_row.mode != run_mode_db(generated.generation_context.run_mode) {
         bail!("stored activity mode does not match its immutable plan");
     }
-    let runtime_responses = request
-        .responses
-        .iter()
-        .map(|response| runtime::ActivityResponseInput {
-            item_id: response.item_id.clone(),
-            value: response.value.clone(),
-        })
-        .collect::<Vec<_>>();
     let scored =
-        runtime::score_activity(material, &generated, &runtime_responses).context("failed to score activity")?;
-    let check_result = generated
-        .written_plan
-        .as_ref()
-        .map(|plan| {
-            let cells = request
-                .responses
-                .iter()
-                .map(|response| written_arithmetic::CellResponse {
-                    cell_id: response.item_id.clone(),
-                    value: response.value.clone(),
-                })
-                .collect::<Vec<_>>();
-            written_arithmetic::check_stored(plan, &cells, true)
-        })
-        .transpose()?;
+        runtime::score_activity(material, &generated, &request.responses).context("failed to score activity")?;
+    let check_result = working_feedback(&generated, &request.responses, true)?;
     let duration_target_met = generated
         .max_duration_seconds
         .map(|max_seconds| duration_seconds as u32 <= max_seconds)

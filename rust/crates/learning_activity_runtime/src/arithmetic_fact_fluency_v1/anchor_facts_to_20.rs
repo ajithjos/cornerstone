@@ -58,7 +58,7 @@ pub(super) fn generate(runtime: &MaterialRuntime, context: &GenerationContext) -
         runtime,
         context,
         RUNTIME_ID,
-        "Answer the anchor facts quickly and exactly, without counting on.".to_string(),
+        "Use your doubles and your ten-plus facts.".to_string(),
         parameters.question_count,
         candidates(&parameters),
         required,
@@ -81,29 +81,35 @@ fn candidates(parameters: &Parameters) -> Vec<GeneratedActivityItem> {
             Mode::Double => {
                 for value in 1..=10 {
                     let answer = value * 2;
-                    candidates.push(integer_candidate(
-                        addition_fact_key(value, value),
-                        ["recall_doubles_to_20".to_string(), coverage_key.clone()],
-                        [coverage_key.clone()],
-                        anchor_band(value),
-                        format!("{value} + {value} ="),
-                        answer,
-                        format!("This is double {value}: {value} and {value} make {answer}."),
-                    ));
+                    candidates.push(
+                        integer_candidate(
+                            addition_fact_key(value, value),
+                            ["recall_doubles_to_20".to_string(), coverage_key.clone()],
+                            [coverage_key.clone()],
+                            anchor_band(value),
+                            format!("{value} + {value} ="),
+                            answer,
+                            format!("Two groups of {value} make {answer}."),
+                        )
+                        .guide_addition(value, value),
+                    );
                 }
             }
             Mode::Add10 => {
                 for addend in 1..=9 {
                     let answer = 10 + addend;
-                    candidates.push(integer_candidate(
-                        addition_fact_key(10, addend),
-                        ["add_10_to_single_digits".to_string(), coverage_key.clone()],
-                        [coverage_key.clone()],
-                        anchor_band(addend),
-                        format!("10 + {addend} ="),
-                        answer,
-                        format!("Keep the ten and add {addend}: the answer is {answer}."),
-                    ));
+                    candidates.push(
+                        integer_candidate(
+                            addition_fact_key(10, addend),
+                            ["add_10_to_single_digits".to_string(), coverage_key.clone()],
+                            [coverage_key.clone()],
+                            anchor_band(addend),
+                            format!("10 + {addend} ="),
+                            answer,
+                            format!("Start with 10. Add {addend} more to make {answer}."),
+                        )
+                        .guide_addition(10, addend),
+                    );
                 }
             }
         }

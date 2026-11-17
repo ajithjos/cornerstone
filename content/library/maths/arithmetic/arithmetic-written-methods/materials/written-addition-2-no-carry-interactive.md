@@ -12,7 +12,7 @@ runtime:
   template_id: addition_2_no_carry
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:
@@ -21,7 +21,7 @@ runtime:
 
 # Addition: two digits, no carrying
 
-Align the place values. Work from ones to the left. Exchange ten units of a place for one unit of the next place. Write the carry above that next column. Leave unused leading places and no-carry boxes blank.
+Add the ones first, then move left.
 
 ## Before starting
 

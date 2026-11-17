@@ -2,17 +2,28 @@ mod anchor_facts_to_20;
 mod bridge_through_10_addition;
 mod bridge_through_10_subtraction;
 mod division_facts_from_tables;
+mod fact_working;
 mod mixed_add_sub_to_10;
 mod mixed_add_sub_to_20;
 mod multiplication_tables_to_10;
+mod quick_ten_and_nine;
 mod readiness_within_5;
 mod shared;
 
 use super::RuntimeProgramRegistration;
+pub use fact_working::check_fact_responses;
 
 const ENGINE_ID: &str = "arithmetic_fact_fluency.v1";
 
 pub const PROGRAMS: &[RuntimeProgramRegistration] = &[
+    RuntimeProgramRegistration {
+        runtime_id: quick_ten_and_nine::RUNTIME_ID,
+        engine_id: ENGINE_ID,
+        template_id: quick_ten_and_nine::TEMPLATE_ID,
+        validate: quick_ten_and_nine::validate,
+        generate: quick_ten_and_nine::generate,
+        score: shared::score_integer_activity,
+    },
     RuntimeProgramRegistration {
         runtime_id: readiness_within_5::RUNTIME_ID,
         engine_id: ENGINE_ID,

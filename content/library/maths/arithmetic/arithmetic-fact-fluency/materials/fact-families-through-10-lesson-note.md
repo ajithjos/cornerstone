@@ -11,11 +11,11 @@ estimated_minutes: 12
 
 # Fact Families Through 10 Lesson Note
 
-This is the reference page for addition families through `10`.
+Put two parts together to add. Take one part away to subtract.
 
-The main facts to memorise are the addition pairs for each whole from `1` to `10`.
+For `8 − 3`, ask “What goes with 3 to make 8?” You know `3 + 5 = 8`, so `8 − 3 = 5`.
 
-Subtraction should come from those known addition facts. Do not treat subtraction as a separate random table.
+For `3 + 4`, you can use a double. You know `3 + 3 = 6`. One more makes 7.
 
 ## How to read a fact family
 

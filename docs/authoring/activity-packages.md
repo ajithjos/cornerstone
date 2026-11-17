@@ -17,8 +17,8 @@ The packages currently supplied are:
 
 | Package | Presentation | Supported actions |
 | --- | --- | --- |
-| `written-arithmetic/1.0.0` | Column grids for the four operations | Assisted `check`; `complete` in either mode |
-| `numeric-questions/1.0.0` | One integer input per fact-fluency question | `complete` only; corrections after submission |
+| `written-arithmetic/1.1.0` | Column grids for the four operations | Assisted `check`; `complete` in either mode |
+| `numeric-questions/1.1.0` | Fact questions with optional guided working | Assisted `check` where enabled, and `complete` |
 
 Each package is self-contained. Shared authoring sources live in
 `content/activity_foundation/bridge.js` and `foundation.css`. Build their package
@@ -37,14 +37,14 @@ Package layout:
 ```text
 content/activity_packages/
   registry.json
-  written-arithmetic/1.0.0/
+  written-arithmetic/1.1.0/
     manifest.json
     index.html
     styles.css
     foundation.css
     bridge.js
     activity.js
-  numeric-questions/1.0.0/
+  numeric-questions/1.1.0/
     manifest.json
     index.html
     styles.css
@@ -66,8 +66,8 @@ entry identifies the exact package directory:
   "packages": [
     {
       "package_id": "written-arithmetic",
-      "version": "1.0.0",
-      "path": "written-arithmetic/1.0.0"
+      "version": "1.1.0",
+      "path": "written-arithmetic/1.1.0"
     }
   ]
 }
@@ -104,7 +104,7 @@ runtime:
   template_id: addition_2_carry
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 6
   scoring:
@@ -112,7 +112,7 @@ runtime:
 ```
 
 A written material must select a package. New fact-fluency attempts without an
-explicit presentation use `numeric-questions/1.0.0`. Static materials do not need
+explicit presentation use `numeric-questions/1.1.0`. Static materials do not need
 a package.
 
 When an assigned activity starts, the control plane resolves the package and
@@ -121,7 +121,7 @@ stores its descriptor beside the immutable activity plan. The descriptor contain
 `integrity`, and an entry URL of this form:
 
 ```text
-/api/v1/activity-packages/written-arithmetic/1.0.0/index.html?integrity=<manifest-sha256>
+/api/v1/activity-packages/written-arithmetic/1.1.0/index.html?integrity=<manifest-sha256>
 ```
 
 The server reads assets from the content directory at request time. It verifies
@@ -170,7 +170,7 @@ Every message uses `protocol: "cornerstone.activity"` and `version: 1`.
   "type": "request",
   "request_id": "activity-1",
   "action": "complete",
-  "responses": [{"item_id": "q1.r3.c2", "value": "3"}],
+  "responses": [{"item_id": "q1.v2.r3.c2", "value": "3"}],
   "duration_seconds": 42
 }
 ```
@@ -282,31 +282,29 @@ For written arithmetic:
 }
 ```
 
-Rows have `label`, `kind`, and `cells`. Each cell has `id` (null for fixed
-content), `text`, and `max_digits`. The package renders those explicit rows and
+Each problem supplies place names in `column_labels`. Rows have `label`, `kind`, and `cells`. Each cell has `id` (null for fixed
+content), `text`, and `max_digits`. An optional row-level `trailing_sign` places the operation sign after the ones digit. The package renders those explicit rows and
 sends the editable cell ID as `item_id`; it does not reconstruct the arithmetic
-method. An assisted check sends entered cells for the chosen exercise. Completion
-sends all editable cells, including blanks.
+method. An assisted check covers the chosen exercise. Completion asks the learner to fill every editable box.
 
 For numeric questions:
 
 ```text
 {
   instructions,
-  items: [{ item_id, content, response_kind: "integer" }],
+  items: [{ item_id, content, response_kind: "integer", steps?: [{ item_id, prompt }], answer_prompt?, equation? }],
   mode: "assisted" | "assessment",
-  capabilities: { check: false }
+  capabilities: { check: true | false }
 }
 ```
 
-The numeric package submits all answers together and displays no early feedback.
-This preserves the existing fact-fluency checking policy.
+In guided practice the optional equation supplies one square per working field and a final square for the answer. The child fills a row, checks it once, and sees one correction or success message. One fact earns one mark when all of its fields are correct. Recall checkpoints use a single answer field per question and return corrections after submission. Stored attempts keep their original package version, plan and marking rules.
 
 A written check returns `correct_count`, `total_count`, `complete`, and
 `feedback` entries with `cell_id`, `correct`, `expected`, and `explanation`.
 Assigned completion returns the existing `CompleteActivityResponse`, including
-`run_outcome_label`, `activity_summary`, and current-run corrections. Written
-completion additionally includes `check_result` with cell-level feedback. Free
+`run_outcome_label`, `activity_summary`, and current-run corrections. Written and guided fact
+completion additionally include `check_result` with cell-level feedback. Free
 worksheet completion returns the written check result directly. Packages display
 these server results; they do not calculate scores or infer mastery.
 

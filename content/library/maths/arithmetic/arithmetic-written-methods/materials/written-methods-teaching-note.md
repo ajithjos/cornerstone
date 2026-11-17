@@ -66,6 +66,10 @@ In an independent assessment, allow no hints or worked answers until submission.
 
 Printed practice and on-screen practice should use the same written structure. On paper, leave a row for carries and plenty of room for each partial product or long-division subtraction. A marked final answer alone cannot show whether the method was correct; inspect the working too.
 
+## Marking subtraction exchanges
+
+Compare **987 − 128** with **987 − 198**. In both, the tens give one away, so the child writes **7** above the 8. Ask “How many tens will you subtract from?” In the first example, seven tens are enough. In the second, the child trades a hundred for ten more tens. Say “Keep the 7 and think seventeen.” Accept either **7** or **17** in that working box. Check that the child uses 17 − 9 for the tens answer.
+
 ## Correction cues
 
 - Misaligned numbers: “Point to the ones in each number. Put those in one column.”

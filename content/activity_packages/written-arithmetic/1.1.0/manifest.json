@@ -1,0 +1,20 @@
+{
+  "package_id": "written-arithmetic",
+  "version": "1.1.0",
+  "protocol_version": 1,
+  "entry": "index.html",
+  "files": [
+    "activity.js",
+    "bridge.js",
+    "foundation.css",
+    "index.html",
+    "styles.css"
+  ],
+  "sha256": {
+    "activity.js": "2a50d0534d05b099aed672eba1cde8397d441ce0111fe07d14a4a85065926e7b",
+    "bridge.js": "985194aa8f27228934ca908034c5864f1272e375e65aa027c629dba1146ed473",
+    "foundation.css": "c4017ef18b6b434b7d4772838e481dbf028ebcfbf5b50d1f92f92b6d878d456a",
+    "index.html": "13c7e56fa5a4e60258a241c4570feca75baa9e5930d3069968c43c9c99ab952c",
+    "styles.css": "1c2c5ea75cf0051f20035ab34823e7b162677582ec2699de4cd0f3bd6152aac5"
+  }
+}

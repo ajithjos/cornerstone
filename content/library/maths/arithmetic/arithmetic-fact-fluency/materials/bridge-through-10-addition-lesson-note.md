@@ -8,52 +8,20 @@ skill_ids:
 estimated_minutes: 12
 ---
 
-# Bridge Through 10 Addition Lesson Note
+# Add by making 10
 
-This page teaches a method, not a chant.
+To work out `8 + 5`, add 5 in two parts.
 
-## The rule
+1. **Make 10.** Add 2 to 8. Now `8 + 2 = 10`.
+2. **Find the rest of the 5.** `5 = 2 + 3`. You have already added 2. Add just 3 more.
+3. **Finish.** `10 + 3 = 13`. So `8 + 5 = 13`.
 
-When a sum crosses `10`, take enough from one addend to make `10` first. Then add the rest.
+Write the whole calculation on one line. **8 + 5 = 8 + 2 + 3 = 13**.
 
-## Worked examples
+The same idea works for nine. **9 + 9 = 9 + 1 + 8 = 18**.
 
-### Example 1: `8 + 5`
+## Try another
 
-```text
-8 needs 2 to make 10
-split 5 into 2 and 3
-8 + 5 = 8 + 2 + 3 = 10 + 3 = 13
-```
+For `7 + 8`, how much makes 10? How much of the 8 is left to add?
 
-### Example 2: `7 + 8`
-
-```text
-7 needs 3 to make 10
-split 8 into 3 and 5
-7 + 8 = 7 + 3 + 5 = 10 + 5 = 15
-```
-
-### Example 3: `9 + 6`
-
-```text
-9 needs 1 to make 10
-split 6 into 1 and 5
-9 + 6 = 9 + 1 + 5 = 15
-```
-
-## What you already know that helps
-
-```text
-bonds to 10
-doubles
-10 + n facts
-```
-
-## Say this to yourself
-
-```text
-Make 10 first.
-Take only the part I need.
-Then add the rest.
-```
+**Check your thinking.** Add 3 to make 10. There are 5 left to add. `10 + 5 = 15`, so `7 + 8 = 15`.

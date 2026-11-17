@@ -1,7 +1,7 @@
 ---
 id: multiplication_tables_to_10
 title: Multiplication Tables Through 10
-sequence: 5
+sequence: 6
 ---
 
 # Multiplication Tables Through 10

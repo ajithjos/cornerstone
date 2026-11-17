@@ -12,7 +12,7 @@ runtime:
   template_id: multiplication_4_by_2
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:
@@ -21,7 +21,7 @@ runtime:
 
 # Long multiplication: four digits × two digits
 
-Work from ones to the left. Write the carry and each product digit. For a tens multiplier, include the zero in the ones place. Add partial products to finish. Leave unused leading places and no-carry boxes blank.
+Multiply by the ones digit first. On the next row, multiply by the tens digit and put a zero in the ones place. Add the two rows.
 
 ## Before starting
 

@@ -12,7 +12,7 @@ runtime:
   template_id: addition_2_by_1
   presentation:
     package_id: written-arithmetic
-    version: 1.0.0
+    version: 1.1.0
   parameters:
     question_count: 9
   scoring:
@@ -21,7 +21,7 @@ runtime:
 
 # Addition: two digits + one digit
 
-Align the place values. Work from ones to the left. Exchange ten units of a place for one unit of the next place. Write the carry above that next column. Leave unused leading places and no-carry boxes blank.
+Add the ones first. If they make ten or more, write the ones digit below and carry 1 to the tens column. Add up the tens.
 
 ## Before starting
 

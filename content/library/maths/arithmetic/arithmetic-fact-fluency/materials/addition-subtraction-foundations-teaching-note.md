@@ -63,7 +63,7 @@ take enough from the second number to make 10
 add the leftover part
 ```
 
-Example: `7 + 8 = 7 + 3 + 5 = 15`
+For `8 + 5`, ask “How many more does 8 need to make 10?” Wait for **2**. “You've used 2 of the 5. How many are left to add?” Wait for **3**. Finish together with `10 + 3 = 13`.
 
 For subtraction:
 
@@ -72,7 +72,7 @@ say how much must be removed to reach 10
 remove the rest after that
 ```
 
-Example: `15 - 8 = 15 - 5 - 3 = 7`
+For `16 − 7`, ask “How many can you take off 16 to land on 10?” Wait for **6**. “You wanted to take away 7. You have taken away 6. How many more must come off?” Wait for **1**. Finish together with `10 − 1 = 9`. If the child suggests 3 for the second step, count the two parts together. Six and one make the seven you want to take away.
 
 ## Stop rule
 

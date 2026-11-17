@@ -910,11 +910,7 @@ pub struct CompleteActivityRequest {
     pub notes: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct ActivityResponseInput {
-    pub item_id: String,
-    pub value: String,
-}
+pub use learning_activity_runtime::ActivityResponseInput;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CompleteActivityResponse {

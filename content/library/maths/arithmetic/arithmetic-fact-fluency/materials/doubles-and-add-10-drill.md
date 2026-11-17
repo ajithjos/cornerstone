@@ -30,4 +30,4 @@ runtime:
 
 # Doubles And Add 10 Drill
 
-Start the live drill after the lesson note and guided practice. Keep doubles and add-10 facts balanced.
+For a double, put two equal groups together. For 10 plus a number, think of one ten and the extra ones.
