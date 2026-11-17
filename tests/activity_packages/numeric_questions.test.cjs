@@ -110,12 +110,15 @@ test('completion button sends answers through the bridge without native form sub
   assert.equal(elements.get('result-title').textContent, 'Target met');
 });
 
-test('guided package checks a single step, catches blanks before finishing, then submits one complete question', async () => {
-  const script = fs.readFileSync(path.join(root, 'numeric-questions/1.1.0/activity.js'), 'utf8');
+test('guided fact row catches blanks, clears a corrected field, and submits the whole equation', async () => {
+  const script = fs.readFileSync(path.join(root, 'numeric-questions/1.1.1/activity.js'), 'utf8');
   const elements = new Map(), inputs = [], buttons = [], requests = [];
-  let initialize, focused;
+  let initialize, focused, feedback;
   function element() {
-    return { value: '', hidden: false, classList: { toggle() {} }, listeners: new Map(),
+    const classes = new Set();
+    return { value: '', hidden: false, classes,
+      classList: { toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); } },
+      listeners: new Map(),
       addEventListener(type, handler) { this.listeners.set(type, handler); },
       setAttribute() {}, append() {}, focus() { focused = this; } };
   }
@@ -123,6 +126,7 @@ test('guided package checks a single step, catches blanks before finishing, then
     getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
     createElement(tag) {
       const node = element();
+      if (tag === 'p') feedback = node;
       if (tag === 'input') inputs.push(node);
       if (tag === 'button') buttons.push(node);
       return node;
@@ -133,7 +137,9 @@ test('guided package checks a single step, catches blanks before finishing, then
       initialize = ready;
       return { request: async (action, body) => {
         requests.push(JSON.parse(JSON.stringify({ action, body })));
-        if (action === 'check') return { feedback: [{ cell_id: 'split', correct: true }] };
+        if (action === 'check') return { feedback: body.responses.map(r => ({
+          cell_id: r.item_id, correct: r.item_id !== 'left' || r.value === '1', explanation: 'Take away one more.',
+        })) };
         return { run_outcome_label: 'Practice target met', activity_summary: { correct_count: 1, item_count: 1 },
           check_result: { feedback: body.responses.map(r => ({ cell_id: r.item_id, correct: true })) } };
       } };
@@ -155,9 +161,18 @@ test('guided package checks a single step, catches blanks before finishing, then
   await finish();
   assert.equal(focused, inputs[1]);
   assert.equal(requests.length, 0);
-  inputs[1].value = '1';
+  inputs[1].value = '2';
   await check();
+  assert.ok(inputs[0].classes.has('correct'));
+  assert.ok(inputs[1].classes.has('incorrect'));
+  assert.equal(feedback.textContent, 'Take away one more.');
+  inputs[1].value = '1';
+  inputs[1].listeners.get('input')();
+  assert.equal(inputs[1].classes.has('incorrect'), false);
+  assert.equal(feedback.hidden, true);
   await finish();
+  assert.equal(feedback.textContent, '✓ This question is correct.');
+  assert.ok(inputs.every(input => input.classes.has('correct')));
   assert.deepEqual(requests[1].body.responses.map(r => [r.item_id, r.value]),
     [['split', '6'], ['left', '1'], ['answer', '9']]);
   assert.equal(requests[1].action, 'complete');

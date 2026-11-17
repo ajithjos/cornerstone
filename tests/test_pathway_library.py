@@ -104,7 +104,12 @@ def validate_pathway_tree(pathway_entry: dict) -> None:
         for skill_id in playlist["skill_ids"]:
             assert skill_id in skills
             playlist_skill_ids.add(skill_id)
-        roles = {"teach": {"teaching_note"}, "learn": {"lesson_note"}, "practice": PRACTICE_KINDS, "checkpoint": {"quick_check"}}
+        roles = {
+            "teach": {"teaching_note"},
+            "learn": {"lesson_note"},
+            "practice": PRACTICE_KINDS,
+            "checkpoint": {"quick_check"},
+        }
         for section_id, ids in sections.items():
             assert len(ids) == len(set(ids))
             for material_id in ids:

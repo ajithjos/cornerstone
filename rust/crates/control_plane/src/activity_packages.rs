@@ -50,7 +50,7 @@ struct ValidatedPackage {
     files: BTreeMap<String, Vec<u8>>,
 }
 
-pub const NUMERIC_VERSION: &str = "1.1.0";
+pub const NUMERIC_VERSION: &str = "1.1.1";
 
 pub fn resolve_package(content_root: &Path, package_id: &str, version: &str) -> Result<PackageDescriptor> {
     Ok(load_package(content_root, package_id, version)?.descriptor)

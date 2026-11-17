@@ -223,10 +223,9 @@ pub(super) fn build_generated_activity(
         context,
     )?;
     let guided = matches!(context.run_mode, RunMode::Practice | RunMode::Retry)
-        && runtime
-            .presentation
-            .as_ref()
-            .is_none_or(|package| package.package_id == "numeric-questions" && package.version == "1.1.0");
+        && runtime.presentation.as_ref().is_none_or(|package| {
+            package.package_id == "numeric-questions" && matches!(package.version.as_str(), "1.1.0" | "1.1.1")
+        });
     // Fade bridge practice from writing both parts, to finding the rest, to recall.
     // A retry reteaches the complete split, even for a previously missed recall item.
     let fade_bridge = context.run_mode == RunMode::Practice

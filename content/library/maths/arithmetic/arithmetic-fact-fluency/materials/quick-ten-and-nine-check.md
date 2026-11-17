@@ -10,7 +10,7 @@ runtime:
   template_id: quick_ten_and_nine
   presentation:
     package_id: numeric-questions
-    version: 1.1.0
+    version: 1.1.1
   parameters:
     question_count: 10
   scoring:

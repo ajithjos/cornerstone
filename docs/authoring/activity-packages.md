@@ -18,7 +18,7 @@ The packages currently supplied are:
 | Package | Presentation | Supported actions |
 | --- | --- | --- |
 | `written-arithmetic/1.1.0` | Column grids for the four operations | Assisted `check`; `complete` in either mode |
-| `numeric-questions/1.1.0` | Fact questions with optional guided working | Assisted `check` where enabled, and `complete` |
+| `numeric-questions/1.1.1` | Fact questions with optional guided working | Assisted `check` where enabled, and `complete` |
 
 Each package is self-contained. Shared authoring sources live in
 `content/activity_foundation/bridge.js` and `foundation.css`. Build their package
@@ -44,7 +44,7 @@ content/activity_packages/
     foundation.css
     bridge.js
     activity.js
-  numeric-questions/1.1.0/
+  numeric-questions/1.1.1/
     manifest.json
     index.html
     styles.css
@@ -112,7 +112,7 @@ runtime:
 ```
 
 A written material must select a package. New fact-fluency attempts without an
-explicit presentation use `numeric-questions/1.1.0`. Static materials do not need
+explicit presentation use `numeric-questions/1.1.1`. Static materials do not need
 a package.
 
 When an assigned activity starts, the control plane resolves the package and

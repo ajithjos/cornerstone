@@ -1,0 +1,20 @@
+{
+  "package_id": "numeric-questions",
+  "version": "1.1.1",
+  "protocol_version": 1,
+  "entry": "index.html",
+  "files": [
+    "activity.js",
+    "bridge.js",
+    "foundation.css",
+    "index.html",
+    "styles.css"
+  ],
+  "sha256": {
+    "activity.js": "d4e3cd9fbb8257a05997432aece3106a7266bf38d905a62f6b9f194fa0af9869",
+    "bridge.js": "985194aa8f27228934ca908034c5864f1272e375e65aa027c629dba1146ed473",
+    "foundation.css": "c4017ef18b6b434b7d4772838e481dbf028ebcfbf5b50d1f92f92b6d878d456a",
+    "index.html": "050cd828252fa2c9afe70c5c42e060850316070a707c7864554e5942f3899653",
+    "styles.css": "c92d6af2659051ff31b71f8899c5583dbe203b8c49a9b3a0b77e4f7b920706a0"
+  }
+}
